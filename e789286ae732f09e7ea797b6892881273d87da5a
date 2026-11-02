@@ -1,0 +1,34 @@
+# Context
+
+## Background
+Task T009 (Looper backlog, milestone M2): translate SDL controller
+and keyboard input into the core InputFrame of docs/SPEC.md section 5.
+
+## Why This Way
+The once-per-tick edge semantics live in the SDL-free InputAdapter
+inside stackfall/input.hpp, so the portable suite (stackfall_tests)
+can verify specification section 11 item 19 without linking SDL. The
+SDL layer only maps events onto GameAction values; that keeps the
+deterministic core free of platform types and keeps the mapping tables
+in a single file (src/input_sdl.cpp) for the physical RG503 mapping
+review.
+
+## Gotchas
+- SDL 2.30 auto-generates a default mapping for virtual joysticks of
+  type SDL_JOYSTICK_TYPE_GAMECONTROLLER. The developer pad attaches as
+  type UNKNOWN so a mapping test starts from an unmapped device and
+  only SDL_GAMECONTROLLERCONFIG or addVirtualControllerMapping turns
+  it into a controller.
+- SDL_JoystickSetVirtualButton sets state; events appear on the next
+  SDL_JoystickUpdate. A press and release inside one script pump
+  produced no event at all until the script driver began calling
+  SDL_JoystickUpdate after every pad command.
+- Focus loss drops every source, not only the keyboard: releases for
+  held pad buttons may never arrive after an overlay steals focus, and
+  a re-press is safer than a stuck direction.
+
+## Related
+- Evidence and reproduction commands: notes/agent-testing.md, section
+  T009, and build/agent-checks/2026-11-02-t009-input/.
+- The --input-script/--input-log/--virtual-controller developer
+  options are the bounded precursor of the T023 unattended harness.
