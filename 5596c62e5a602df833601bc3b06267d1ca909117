@@ -1,0 +1,1 @@
+Recovered the verified T007 publication after an external backlog edit. Preserved all 28 tasks and edited documents. Migrated init to the default to-do.json task path. Native recovery and Debug/Release checks pass in an isolated copy. Backup: /home/agent/.looper-recovery/stackfall-20261102T205212Z
