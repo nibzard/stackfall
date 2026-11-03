@@ -177,11 +177,11 @@ Findings route through the Looper result contract; neither the reviewer
 nor this worker edits `to-do.json`. Three fix tasks were reported, one
 per accepted root cause, each depending on T027 only:
 
-| routed key | reviewer keys | priority | files |
-| --- | --- | --- | --- |
-| control-hint-glyph-scale | small-control-and-menu-hints, control-hints-too-small | 2 | src/renderer_sdl.cpp, include/stackfall/renderer_sdl.hpp |
-| ghost-outline-contrast | ghost-outline-low-contrast | 3 | src/renderer_sdl.cpp, include/stackfall/renderer_sdl.hpp |
-| letterbox-scene-centered | letterbox-scene-not-centered | 3 | src/main.cpp |
+| routed key | task | reviewer keys | priority | files |
+| --- | --- | --- | --- | --- |
+| control-hint-glyph-scale | T030 | small-control-and-menu-hints, control-hints-too-small | 2 | src/renderer_sdl.cpp, include/stackfall/renderer_sdl.hpp |
+| ghost-outline-contrast | T031 | ghost-outline-low-contrast | 3 | src/renderer_sdl.cpp, include/stackfall/renderer_sdl.hpp |
+| letterbox-scene-centered | T032 | letterbox-scene-not-centered | 3 | src/main.cpp |
 
 Duplicate suppression, verified against the accepted backlog
 (`to-do.json.context/.../backlog.json` at commit `179107b`):
@@ -197,8 +197,11 @@ Duplicate suppression, verified against the accepted backlog
 
 T028 must depend on the three created fix tasks through Looper
 planning; the fix tasks depend on T027 and never on T028, so the
-dependency graph stays acyclic. That wiring is reported as a follow-up
-attached to T028 itself.
+dependency graph stays acyclic. That wiring is now in the accepted
+backlog: T028 depends on T027, T030, T031, and T032. The durable copy
+of the three required findings, with their acceptance criteria, lives in
+[tools/design-review/prior-findings.json](../tools/design-review/prior-findings.json),
+because the initial packet itself is untracked build output.
 
 ### Fix record: control-hint-glyph-scale (T030, 2026-11-03)
 
@@ -358,33 +361,119 @@ tools/design-review/capture.sh`, source identity in `source.sha256`):
 The device runs fullscreen at 960x544, so `beginFrame` draws nothing there
 and the fix changes no device pixel.
 
-### What T028 does next
+## T028: verify fixes and close the review (2026-11-03)
 
-All three required findings now have fixes and passing pixel checks
-(T030, T031, T032), so the second review round can start once Looper
-planning wires T028 to the three fix tasks. Recapture a fresh packet and
-run the bounded review round over the affected frames (`gameplay-early`,
-`hold-locked`, `spawn-visible`, `tall-stack`, and the letterbox session):
+The three required fixes landed through T030, T031, and T032, and T028
+depends on all three plus T027, so the closure gate could run. One
+capture and one bounded review round verified them.
+
+Commands, run in the T028 worktree at commit `130cc66`:
 
 ```bash
 DR_RUN_ID=verify tools/design-review/capture.sh
+python3 tools/design-review/check_fixes.py \
+  --packet build/agent-checks/design-review/verify/packet \
+  --json build/agent-checks/design-review/verify/fix-checks.json
 DR_ROUND=verify \
 DR_IMAGES=gameplay-early,hold-locked,spawn-visible,tall-stack,letterbox-640x480 \
-DR_PRIOR_FINDINGS=build/agent-checks/design-review/initial/packet/review-initial/open-findings.json \
+DR_PRIOR_FINDINGS=tools/design-review/prior-findings.json \
 tools/design-review/review.sh
-python3 tools/design-review/check_fixes.py \
-  --packet build/agent-checks/design-review/verify/packet
+HARNESS_RUN_ID=t028-verify-harness tests/harness/run.sh
+T024_RUN_ID=t028-verify-t024 tests/harness/t024.sh
 ```
 
-`open-findings.json` in the initial packet carries the three required
-findings with their acceptance criteria, so the verification round can
-judge each one against fresh frames. Capture rebuilds all twelve images
-(the capture side is unbounded); `DR_IMAGES` keeps the review round
-inside its image bound. `check_fixes.py` decides every criterion from
-pixels alone. Optional cosmetic work and the deferred product questions
-(T029, the final owner review) do not block closure.
+The initial packet's `open-findings.json` no longer exists in this
+worktree, so the round read the required findings from the durable
+tracked copy `tools/design-review/prior-findings.json`, which restates
+the three accepted findings with their acceptance criteria.
 
-### Open questions
+### Independent pixel verification
+
+`check_fixes.py` decides every criterion from pixels alone. The before
+side is the pre-fix packet `t028-preflight` (commit `13e337d`, binary
+`c82d264d...`, seed 31337, captured 2026-11-03; its worktree keeps it
+at
+`../../task-33a11f7dfadedbac/build/agent-checks/design-review/t028-preflight/packet`,
+relative to this one); the after side is the fresh `verify` packet
+(commit `130cc66`, binary `ec0c12aa...`, seed 31337, twelve images).
+Both packets come from the same `packet.tsv` sessions and scripts, so
+the frames differ only by the fixes.
+
+| criterion | before (`t028-preflight`) | after (`verify`) |
+| --- | --- | --- |
+| control-hint-glyph-scale | FAIL: tallest text run 12 px, hint rows 7 px | PASS: 14 logical px, runs `[12, 14, 14, 14, 14, 14, 14]`, text ends at y=287 inside the panel |
+| ghost-outline-contrast | FAIL: outline `(35, 91, 53)`, 2.44:1 | PASS: outline `(57, 159, 83)`, 5.82:1, 368 outline px |
+| letterbox-scene-centered | FAIL: top bar 0 px, bottom bar 118 px | PASS: 640x480 window, bars 59 px and 59 px |
+
+Three of three required criteria pass; the report is saved as
+`verify/fix-checks.json`.
+
+The reviewer's one limitation — the menu footer hints were not attached
+— is closed by direct measurement of the fresh frames: the title,
+pause, and game-over footer lines each measure exactly one 14 px text
+row on `title.png`, `pause.png`, and `gameover.png` (exact
+`kTextDim`/`kText` pixel match), the height the T030 record claims and
+the render suite pins.
+
+### The verification review round
+
+`review.sh`, round `verify`, one call of five images
+(`gameplay-early`, `hold-locked`, `spawn-visible`, `tall-stack`,
+`letterbox-640x480`), 39 s of the 600 s bound, exit 0. Reviewer
+identity in `review-verify/runner.json`: `codex-cli 0.166.0`, model
+`gpt-6.1-sol` from the existing configuration, read-only sandbox,
+prompt from standard input, strict output schema, full JSONL transcript,
+saved standard error, exit status. The transcript shows the reviewer
+read `docs/DESIGN_REVIEW.md` and `check_fixes.py`, ran the checker
+itself inside the read-only sandbox, and inspected every attached image;
+`check_review.py` validated the report with zero problems.
+
+All three prior findings came back `verified:` with direct evidence and
+high confidence, and the reviewer reported zero new findings, so nothing
+new needs routing:
+
+- `control-hint-glyph-scale`: verified. 14 px glyphs, both columns
+  inside the panel.
+- `ghost-outline-contrast`: verified. 5.82:1, hollow and distinct in
+  `gameplay-early` and `tall-stack`.
+- `letterbox-scene-centered`: verified. 59 black rows above and below,
+  native placement unchanged.
+
+One evidence wart, recorded here so an audit reads it right: the
+manifest stamps every capture with round label `initial`
+(`make_packet.py` records the capture round, which `capture.sh` always
+names `initial`), so `review-verify/merged.json` carries
+`"round": "initial"` although the round is `verify`. The round is on
+record in `review-verify/runner.json`, the directory name, and
+`call-01.exit`.
+
+### Affected tests, rerun
+
+- Passed: `ctest` 5 of 5 inside the capture, including the pinned-seed
+  regression hashes and the 924-check render suite that covers the hint
+  scale, the ghost blend, and the letterbox bars from pixels.
+- Passed: `tests/harness/run.sh`, 163 of 163
+  (`build/agent-checks/t028-verify-harness/`).
+- Passed: `tests/harness/t024.sh`, 287 of 287
+  (`build/agent-checks/t028-verify-t024/`), including the letterboxed
+  X11 play session.
+
+### Dispositions and closure
+
+| finding | disposition |
+| --- | --- |
+| control-hint-glyph-scale (T030) | fixed; pixel check, reviewer, and tests agree |
+| ghost-outline-contrast (T031) | fixed; pixel check, reviewer, and tests agree |
+| letterbox-scene-centered (T032) | fixed; pixel check, reviewer, and tests agree |
+| hold-lock-status-implicit | optional cosmetic, deferred; does not gate closure |
+| hidden I-piece spawn rule (T029) | deferred product question for the owner; does not gate closure |
+
+No finding was rejected in this round and no new required defect
+appeared, so no follow-up task needs routing. Every required finding of
+the review is resolved, so the round-M2 closure gate closes. The two
+review rounds stand as run: `initial` (T027) and `verify` (T028).
+
+## Open questions
 
 - None new. The hidden I-piece spawn rule stays with T029, physical
   controller and audio judgments with T018 and T020, and the final
