@@ -25,7 +25,10 @@
 // --screenshot-dir receives one BMP per named checkpoint, --fixture-dir
 // resolves the `fixture` script command, and --tick-per-frame runs exactly one
 // simulation tick per frame with pacing off, which makes a scripted session's
-// tick numbering independent of wall-clock batching. Every one of them is
+// tick numbering independent of wall-clock batching. The stability pass of
+// task T025 adds --frame-times, which records the raw duration of every frame
+// of a real-time paced run for the median and percentile measurements.
+// Every one of them is
 // inert unless a harness passes it.
 //
 // High-score persistence (task T012) runs through src/storage.cpp: the store
@@ -77,6 +80,7 @@
 #include "stackfall/input_sdl.hpp"
 #include "stackfall/observe.hpp"
 #include "stackfall/renderer_sdl.hpp"
+#include "stackfall/script.hpp"
 #include "stackfall/storage.hpp"
 #include "stackfall/version.hpp"
 
@@ -213,6 +217,7 @@ struct Options {
   const char* observations;    // nullptr: no checkpoint records
   const char* screenshotDir;   // nullptr: checkpoint shots log as unavailable
   const char* fixtureDir;      // nullptr: `fixture` commands cannot resolve
+  const char* frameTimes;      // nullptr: no per-frame time record (T025)
   bool tickPerFrame;           // developer: one tick per frame, pacing off
 };
 
@@ -223,7 +228,7 @@ void printUsage() {
       "                 [--input-script FILE] [--virtual-controller]\n"
       "                 [--save-dir DIR] [--observations FILE]\n"
       "                 [--screenshot-dir DIR] [--fixture-dir DIR]\n"
-      "                 [--tick-per-frame]\n"
+      "                 [--frame-times FILE] [--tick-per-frame]\n"
       "  --frames N            render N frames, then exit (0 = until quit)\n"
       "  --seed N              start the round from seed N (deterministic)\n"
       "  --input-log FILE      record one line per simulation tick\n"
@@ -233,6 +238,8 @@ void printUsage() {
       "  --observations FILE   write one record per checkpoint command\n"
       "  --screenshot-dir DIR  write one BMP per checkpoint command\n"
       "  --fixture-dir DIR     resolve `fixture` script commands here\n"
+      "  --frame-times FILE    record one microsecond frame duration per\n"
+      "                        frame of a real-time paced run (T025)\n"
       "  --tick-per-frame      one simulation tick per frame, pacing off\n"
       "  --help                show this text\n");
 }
@@ -262,7 +269,8 @@ bool parseUnsigned(const char* text, std::uint64_t* out) {
 // values, so a missing option value warns and drops the option.
 Options parseOptions(int argc, char** argv) {
   Options options{0,   false, false, 0,    nullptr, nullptr,
-                  false, nullptr, nullptr, nullptr, nullptr, false};
+                  false, nullptr, nullptr, nullptr, nullptr,
+                  nullptr, false};
   for (int i = 1; i < argc; ++i) {
     const char* arg = argv[i];
     const bool needsValue = std::strcmp(arg, "--frames") == 0 ||
@@ -272,7 +280,8 @@ Options parseOptions(int argc, char** argv) {
                             std::strcmp(arg, "--save-dir") == 0 ||
                             std::strcmp(arg, "--observations") == 0 ||
                             std::strcmp(arg, "--screenshot-dir") == 0 ||
-                            std::strcmp(arg, "--fixture-dir") == 0;
+                            std::strcmp(arg, "--fixture-dir") == 0 ||
+                            std::strcmp(arg, "--frame-times") == 0;
     if (needsValue) {
       if (i + 1 >= argc) {
         std::fprintf(stderr, "Warning: %s needs a value; ignored\n", arg);
@@ -305,6 +314,8 @@ Options parseOptions(int argc, char** argv) {
         options.observations = value;
       } else if (std::strcmp(arg, "--screenshot-dir") == 0) {
         options.screenshotDir = value;
+      } else if (std::strcmp(arg, "--frame-times") == 0) {
+        options.frameTimes = value;
       } else {
         options.fixtureDir = value;
       }
@@ -734,7 +745,6 @@ class InputScript {
     const std::string state = tail.substr(0, tailEnd);
 
     Command command;
-    std::uint64_t number = 0;
     if (verb == "key" || verb == "pad") {
       // "key <name> down|up" and "pad <name> down|up".
       const bool down = state == "down";
@@ -758,12 +768,15 @@ class InputScript {
         command.value = button;
       }
     } else if (verb == "wait" || verb == "stall") {
-      if (!parseUnsigned(name.c_str(), &number)) {
-        return reportSyntax(raw, "wait/stall needs a number");
+      // The count runs through the shared bounded rule of the core, never a
+      // narrowing cast: a fuzzed count above the 32-bit range once became a
+      // negative SDL_Delay argument that hung the session (T025 fuzz pass).
+      if (!stackfall::parseScriptCount(name.c_str(), &command.value)) {
+        return reportSyntax(raw, "wait/stall needs a number from 0 to "
+                                 "3600000");
       }
       command.kind =
           verb == "wait" ? Command::Kind::Wait : Command::Kind::Stall;
-      command.value = static_cast<int>(number);
     } else if (verb == "detach") {
       command.kind = Command::Kind::Detach;
     } else if (verb == "restart") {
@@ -1292,8 +1305,8 @@ int runMainLoop(Renderer& renderer, SDL_Renderer* sdlRenderer,
                 AudioDriver& audio, CueDetector& cueDetector,
                 InputScript* script, ScriptContext* scriptContext,
                 std::FILE* inputLog, std::FILE* observations,
-                const char* screenshotDir, bool tickPerFrame,
-                Uint64 frameLimit) {
+                std::FILE* frameTimes, const char* screenshotDir,
+                bool tickPerFrame, Uint64 frameLimit) {
   const Uint64 frequency = SDL_GetPerformanceFrequency();
   const Uint64 tickUnit = frequency;  // scaled units per 1/60 s tick
   const Uint64 stallCounts = frequency * kStallWarnMs / 1000;
@@ -1332,6 +1345,20 @@ int runMainLoop(Renderer& renderer, SDL_Renderer* sdlRenderer,
       const Uint64 now = SDL_GetPerformanceCounter();
       Uint64 delta = now - previous;
       previous = now;
+      // The frame-time record of the T025 measurements: one line per frame
+      // with the raw, unclamped interval from the previous frame's start, in
+      // microseconds, so median and percentile math happens outside the loop.
+      // It is a paced-run instrument; the deterministic mode below has no
+      // frame pacing to measure and writes nothing.
+      if (frameTimes != nullptr) {
+        const Uint64 countsPerUs = frequency / 1000000;
+        std::fprintf(frameTimes, "%llu\n",
+                     countsPerUs == 0
+                         ? static_cast<unsigned long long>(
+                               countsToMs(delta, frequency) * 1000)
+                         : static_cast<unsigned long long>(delta /
+                                                           countsPerUs));
+      }
       if (delta > maxFrameCounts) {
         logf(
             "Frame stall of %llu ms clamped to %llu ms; skipping catch-up\n",
@@ -1673,10 +1700,26 @@ int main(int argc, char** argv) {
     scriptPtr = &script;
   }
 
+  // The frame-time record of the T025 measurement runs, opened beside the
+  // other structured streams and closed on the ordinary exit path below.
+  std::FILE* frameTimes = nullptr;
+  if (options.frameTimes != nullptr) {
+    frameTimes = std::fopen(options.frameTimes, "w");
+    if (frameTimes == nullptr) {
+      logErrorf("Warning: cannot open frame-time record \"%s\"\n",
+                options.frameTimes);
+    }
+  }
+
   const int exitCode = runMainLoop(
       sceneRenderer, renderer, controllers, input, game, highScores, settings,
       audio, cueDetector, scriptPtr, &context, inputLog, observations,
-      options.screenshotDir, options.tickPerFrame, options.frameLimit);
+      frameTimes, options.screenshotDir, options.tickPerFrame,
+      options.frameLimit);
+
+  if (frameTimes != nullptr) {
+    std::fclose(frameTimes);
+  }
 
   // EXIT state (specification section 4.7): release every resource in the
   // reverse order of creation and leave a clean process. A script may have

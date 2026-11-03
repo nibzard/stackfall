@@ -38,6 +38,7 @@
 #include "stackfall/observe.hpp"
 #include "stackfall/pieces.hpp"
 #include "stackfall/fixture.hpp"
+#include "stackfall/script.hpp"
 
 namespace {
 
@@ -163,7 +164,6 @@ bool parseScriptLine(const std::string& raw, std::vector<Command>* commands,
       rest.empty() || nameEnd == 0 ? "" : rest.substr(0, nameEnd);
 
   Command command;
-  std::uint64_t number = 0;
   const auto fail = [&](const char* why) {
     std::fprintf(stderr, "reference script line %d (%s): %s\n", lineNumber,
                  raw.c_str(), why);
@@ -193,11 +193,14 @@ bool parseScriptLine(const std::string& raw, std::vector<Command>* commands,
       command.kind = Command::Kind::Pad;
     }
   } else if (verb == "wait" || verb == "stall") {
-    if (!parseUnsigned(name.c_str(), &number)) {
-      return fail("wait/stall needs a number");
+    // The one shared rule of the two mirrored parsers: the count runs
+    // through the core's bounded parser, so neither copy can turn a huge
+    // number into a truncated delay (T025 fuzz pass; tests/test_script.cpp
+    // pins the exact range both sides accept).
+    if (!stackfall::parseScriptCount(name.c_str(), &command.value)) {
+      return fail("wait/stall needs a number from 0 to 3600000");
     }
     command.kind = verb == "wait" ? Command::Kind::Wait : Command::Kind::Stall;
-    command.value = static_cast<int>(number);
   } else if (verb == "detach") {
     command.kind = Command::Kind::Detach;
   } else if (verb == "restart") {
