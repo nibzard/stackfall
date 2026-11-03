@@ -74,12 +74,24 @@ void beginFrame(SDL_Renderer* renderer);
 // restored either way.
 bool readOutputPixels(SDL_Renderer* renderer, SDL_Surface* surface);
 
-// The playing field: 10 x 20 cells of 24 px from (360, 32) to (599, 511).
-inline constexpr int kBoardCellSize = 24;
-inline constexpr int kBoardOriginX = 360;
-inline constexpr int kBoardOriginY = 32;
-inline constexpr int kBoardPixelWidth = kBoardWidth * kBoardCellSize;    // 240
-inline constexpr int kBoardPixelHeight = kBoardHeight * kBoardCellSize;  // 480
+// The playing field: 10 x 20 cells of 27 px from (345, 2) to (614, 541),
+// the board-cells-27px geometry of specification section 6.1. The board is
+// centered on the canvas - (345 + 614) / 2 = 480 and (2 + 541) / 2 = 272 -
+// and its one-pixel frame, one pixel outside it, still ends at y=542 on the
+// 544-row canvas, so no board pixel clips.
+inline constexpr int kBoardCellSize = 27;
+inline constexpr int kBoardOriginX = 345;
+inline constexpr int kBoardOriginY = 2;
+inline constexpr int kBoardPixelWidth = kBoardWidth * kBoardCellSize;    // 270
+inline constexpr int kBoardPixelHeight = kBoardHeight * kBoardCellSize;  // 540
+
+// The board frame of section 6.1: one pixel of outline around the whole
+// field, x=344..615 and y=1..542. drawBoardFrame() draws exactly this
+// rectangle, and the suite asserts its edges on the canvas.
+constexpr SDL_Rect boardFrame() {
+  return SDL_Rect{kBoardOriginX - 1, kBoardOriginY - 1, kBoardPixelWidth + 2,
+                  kBoardPixelHeight + 2};
+}
 
 // Preview pieces reuse the shape cell coordinates at a smaller cell
 // (specification section 6.1).
@@ -94,7 +106,7 @@ inline constexpr int kRightPanelWidth = 280;  // x = 630..910
 
 // One preview box: four cells at the preview size plus breathing room. Five
 // slots plus their padding and the three score fields fit between the board
-// top and bottom rows (y = 32..511).
+// top and bottom rows (y = 2..541).
 inline constexpr int kPreviewBoxWidth = 120;
 inline constexpr int kPreviewBoxHeight = 56;
 inline constexpr int kHoldBoxHeight = 60;

@@ -1631,3 +1631,102 @@ defects worth recording:
   960x544 dimensions, per-screen color structure, and board-region
   content by PIL census; T024's visual review already covered these
   screens with open inspection.
+
+## T038: 27 px board geometry (2026-11-03)
+
+Round M3 layout change, key `looper:finding:board-cells-27px`. The board
+moved from 24 px cells at (360, 32) to the owner-approved geometry of
+`docs/SPEC.md` section 6.1: 27 px cells, a 270x540 field at (345, 2) with
+occupied bounds x=345..614 and y=2..541, and the one-pixel frame at
+x=344..615 and y=1..542, centered on the 960x544 canvas. The owner's plan
+note `/notes/stackfall-27px-board-plan-2026-11-03.md` is not in this
+repository (`notes/` holds only the three running reports); the numbers
+above are the ones the accepted backlog quotes from it in T038, in T037,
+and in the focused-HUD decision note the backlog also carries.
+
+What landed:
+
+- `include/stackfall/renderer_sdl.hpp`: `kBoardCellSize` 27,
+  `kBoardOriginX` 345, `kBoardOriginY` 2, plus `boardFrame()`, the
+  272x542 frame rectangle at (344, 1) that `drawBoardFrame` now draws.
+  The hold and next panels keep their columns and stay anchored to the
+  board top, so they follow the field up 30 px.
+- `src/renderer_sdl.cpp`: `drawBoardFrame` draws `boardFrame()`. Every
+  other board draw already went through the origin and cell constants:
+  the well, the grid, settled cells, the active piece, and the ghost all
+  moved with them, and the overlays stay centered on the canvas, which is
+  also the board center (480, 272).
+- `tests/test_renderer_sdl.cpp`: a new `run_board_boundary_checks` holds
+  the geometry contract and the top and bottom visible rows (whole cells,
+  frame outside them, background past the frame on all four sides, the
+  grid's first and last lines inside the field), the 1.5x scaling check
+  carries the new device columns, and the pause check requires the veil
+  to reach the frame's bottom-right corner. The render suite reports 985
+  checks.
+- `tools/design-review/check_fixes.py`: the hint band and the ghost
+  region moved to the new coordinates, and the hint check now measures
+  the columns it measures the rows of, so "stays inside the left panel"
+  is a real bound (rightmost text column 309 against the panel edge 324)
+  instead of the earlier vacuous row limit.
+- `tools/design-review/build_prompt.py` and `docs/SPEC.md` section 6.1
+  state the new geometry.
+
+Verification, under `build/agent-checks/`:
+
+- Passed: `ctest` 5 of 5 in `build/` and `build-rel/`.
+- Passed: `tests/harness/run.sh` 163 of 163
+  (`t038-board-27px-harness/`).
+- Passed: `tests/harness/t024.sh` 287 of 287, including its X11
+  letterbox session (`t038-board-27px-t024/`). Every letterboxed frame
+  keeps 59 px bars top and bottom.
+- Passed: fresh packet `design-review/t038-board-27px/packet` (seed
+  31337, twelve images, `DR_RUN_ID=t038-board-27px
+  tools/design-review/capture.sh`, native 960x544 scenes plus the
+  640x480 letterbox scene). `check_fixes.py` passes all three required
+  criteria: hint glyphs 14 logical px with the text inside the panel, the
+  ghost outline at 5.82:1 against the well, letterbox bars 59 and 59 px.
+  Report saved as `fix-checks.json`.
+- Passed, measured from the packet pixels: the well spans exactly
+  x=345..614 and y=2..541 (540 rows, 261 well columns plus nine grid
+  lines), the frame holds x=344 and x=615 and y=1 and y=542 complete on
+  all four sides in every play frame, canvas rows 0 and 543 and columns
+  343 and 616 hold only background, the grid lines sit at x=372..588 and
+  y=29..515 in 27 px steps, and no image has content on its outer edge.
+- Passed, measured the same way: the left panel content stays in
+  x=64..309 and y=4..277, the right panel content in x=702..837 and
+  y=4..467, columns 325..343 are empty, so nothing overlaps the frame and
+  nothing clips.
+- Passed, open inspection of `gameplay-early`, `letterbox-640x480`,
+  `tall-stack`, `pause`, `hold-locked`, and `gameover` through the image
+  review service: the field is centered with a complete frame, the
+  letterbox scene is centered with equal bars and readable text, the tall
+  stack leaves a clear gap below the top frame, both overlays sit
+  centered over the dimmed field, and no text touches the frame. Two of
+  the service's first-pass claims did not survive the pixel census and
+  were rejected: the top frame row is present at y=1 in every play frame,
+  and the score values draw bright (232, 236, 246), not dim.
+
+Commands:
+
+```bash
+ctest --test-dir build --output-on-failure
+cmake --build build-rel && ctest --test-dir build-rel
+HARNESS_RUN_ID=t038-board-27px-harness tests/harness/run.sh
+T024_RUN_ID=t038-board-27px-t024 tests/harness/t024.sh
+DR_RUN_ID=t038-board-27px tools/design-review/capture.sh
+python3 tools/design-review/check_fixes.py \
+  --packet build/agent-checks/design-review/t038-board-27px/packet \
+  --json build/agent-checks/design-review/t038-board-27px/fix-checks.json
+```
+
+### Findings and open questions
+
+- The HUD composition task T037 (`focused-gameplay-hud`) still owns the
+  panel regrouping, the gameplay legend removal, and the pause-to-controls
+  route. It must now run at this geometry: its contract already names the
+  27 px numbers, and the panels it will move sit 34 px (left content) and
+  87 px (right content) from the frame.
+- T015's accepted `depends_on` still lists no layout task. The gate the
+  owner's notes order - final desktop verification after the final layout
+  task - needs Looper planning to add it; workers cannot edit the
+  backlog. T015's blocker already records this.

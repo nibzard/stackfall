@@ -21,10 +21,11 @@ SCOPE = """\
 
 The following decisions are approved. Do not report them as defects.
 
-- Canvas 960x544. Board cells are 24x24 pixels. The board occupies
-  x=360..599 and y=32..511. The left panel (x=52..324) holds the hold box
-  and the control hints. The right panel (x=630..910) holds five next
-  previews and the score, lines, and level.
+- Canvas 960x544. Board cells are 27x27 pixels. The board occupies
+  x=345..614 and y=2..541, centered on the canvas, inside a one-pixel
+  frame at x=344..615 and y=1..542. The left panel (x=52..324) holds the
+  hold box and the control hints. The right panel (x=630..910) holds five
+  next previews and the score, lines, and level.
 - All graphics are procedural: filled rectangles and lines only, drawn
   from a source-defined 5x7 pixel glyph table. No sprites, no texture
   files, no image assets, no external fonts.

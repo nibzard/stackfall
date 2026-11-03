@@ -347,8 +347,8 @@ void Renderer::drawGridLines() const {
 // The border alone: the well fill happens with the background so the grid
 // lines land on it (specification section 6.2, steps 1 and 2).
 void Renderer::drawBoardFrame() const {
-  drawRectOutline(kFrame, kBoardOriginX - 1, kBoardOriginY - 1,
-                  kBoardPixelWidth + 2, kBoardPixelHeight + 2);
+  const SDL_Rect frame = boardFrame();
+  drawRectOutline(kFrame, frame.x, frame.y, frame.w, frame.h);
 }
 
 void Renderer::drawSettledCells(const Game& game) const {
