@@ -1,0 +1,1 @@
+Publish the integrated desktop game and current backlog at the owner request. Debug build and all five CTest suites pass. The snapshot preserves Looper history through T025; T026 remains active in its separate worktree. Approved spawn, layout, and recording plans remain queued and are not claimed as implemented.
