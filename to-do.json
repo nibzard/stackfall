@@ -363,7 +363,7 @@
       "id": "T015",
       "title": "Verify M3 gate with full desktop regression",
       "priority": 2,
-      "status": "todo",
+      "status": "blocked",
       "details": "Round M3 gate. Run the complete verification pass: ctest in Debug and Release configurations, every section 11 check that does not need the physical device (all 20 items except the ARM64 hash comparison and on-device parts), and repeated full-game desktop sessions covering DAS/ARR tuning, lock-delay edge cases, seven-bag edge cases, and restart behavior. Acceptance (M3 gate): no known rule or state bugs after repeated full-game desktop sessions; deterministic hashes match pinned values; high scores survive restarts; Release build performs smoothly on desktop.\n\nUnattended verification policy: Agents run all desktop sessions. Require the T024 visual report and T025 stability report under docs/AGENT_TESTING.md. Preserve seeds, commands, screenshots, logs, and source identity. No human or physical device test is required to pass this software gate.\n\nPerformance gate: Require T026 and its notes/performance.md evidence. Verify every retained optimization against independent benchmarks and behavior checks. Do not claim desktop performance passes while the report lists an unresolved target failure. No human or physical device test is required.\n\nIndependent design gate: Require T027 screenshot review and T028 verification of required fixes. Findings must route into real, deduplicated Looper tasks with linked evidence. Preserve final-only human and device acceptance.\n\nResume correction (2026-11-03): The depends_on list gates scheduling. T014 evidence is supplied by an agent. No separate operator evidence or manual deferral removal is required for this desktop software gate.",
       "depends_on": [
         "T008",
@@ -375,11 +375,33 @@
         "T026",
         "T028"
       ],
+      "files": [
+        "README.md",
+        "docs/AGENT_TESTING.md",
+        "notes/agent-testing.md",
+        "tests/harness/check_t015.py",
+        "tests/harness/scripts/m3-bag-20261103.script.txt",
+        "tests/harness/scripts/m3-bag-31337.script.txt",
+        "tests/harness/scripts/m3-bag-777.script.txt",
+        "tests/harness/scripts/m3-das-arr.script.txt",
+        "tests/harness/scripts/m3-highscore.script.txt",
+        "tests/harness/scripts/m3-lock-delay.script.txt",
+        "tests/harness/scripts/m3-restart.script.txt",
+        "tests/harness/t015.sh"
+      ],
+      "blockers": [
+        "An operator must complete this prerequisite; coding workers cannot execute it.",
+        "Deferred: T037 (focused-gameplay-hud) completes the approved HUD composition at the landed 27 px geometry",
+        "The owner-approved desktop layout pass (task T037, stable key focused-gameplay-hud, subsuming the separately queued board-cells-27px plan) is pending: both owner decision notes (/notes/stackfall-27px-board-plan-2026-11-03.md and /notes/stackfall-focused-hud-plan-2026-11-03.md) say 'Make final desktop gate T015 depend on this task' / 'Gate final desktop verification T015 on the final layout task', and T037's own contract repeats the gate instruction for Looper planning, but T015's accepted depends_on does not list it and workers cannot edit the backlog. The board is still 24-px cells at (360, 32) (include/stackfall/renderer_sdl.hpp:78-80). The M3 software verification itself passes; only the final layout identity would change the evidence."
+      ],
       "tags": [
         "M3",
-        "looper:finding:m3-desktop-gate-full-regression"
+        "looper:deferred",
+        "looper:finding:m3-desktop-gate-full-regression",
+        "looper:operator"
       ],
-      "updated_at": "2026-11-03T06:02:02Z"
+      "updated_at": "2026-11-03T17:52:37Z",
+      "unblock_when": "T037 (focused-gameplay-hud) completes the approved HUD composition at the landed 27 px geometry; remove looper:deferred and set todo when this condition is met."
     },
     {
       "id": "T016",
@@ -509,8 +531,8 @@
       "id": "T022",
       "title": "README status section still describes the M0 skeleton",
       "priority": 3,
-      "status": "done",
-      "details": "README.md still says \"Status: M0 project skeleton\" and \"Current state (M0)\" with a placeholder main.cpp, although T003-T005 have delivered the shape tables, SRS rotation, and the board engine of M1. Update the status line and the current-state bullet list to reflect M1 progress when the next milestone task touches documentation, so the front page matches the repository. Purely documentation; no code impact.\nEvidence: README.md lines 10-12 and 66-73 describe only the M0 skeleton, while include/stackfall/pieces.hpp, board.hpp and their passing suites already exist.\n\nReview repair: README front page still describes the M0 skeleton after four M1 components landed\nREADME.md must state the actual milestone status and current-state list so the front page matches the repository. The outcome is already tracked as task T022; this finding attaches updated evidence only and must not create a second task.\nEvidence: README.md lines 10-12 still read \"Status: M0 project skeleton\" and lines 66-73 list only the M0 skeleton, while include/stackfall/pieces.hpp, board.hpp, randomizer.hpp, src/pieces.cpp, src/board.cpp, src/randomizer.cpp and their suites (323387 checks passing in Debug and Release at da23a3d) deliver the shape tables, SRS kicks, board engine, and randomizer of M1.\n\nReview repair: README status section still describes the M0 skeleton\nREADME.md lines 66-73 still describe src/main.cpp as the M0 placeholder that only initializes and shuts down SDL2, and lines 10-12 still say \"Status: M0 project skeleton\". T002 replaced the placeholder with the real SDL2 window, controller detection, and fixed 60 Hz loop, and T003-T006 already delivered the shape tables, SRS kicks, board engine, and randomizer, so the front page lags the repository further. The outcome is already tracked as task T022; this finding attaches updated evidence only and must not create a second task.\nEvidence: After T002, README.md line 71 still reads \"src/main.cpp is a placeholder that initializes and shuts down SDL2. Task T002 adds the desktop window, controller detection, and the fixed 60 Hz loop\", while src/main.cpp in the T002 worktree now implements the 960x544 window, logged renderer fallback chain, ControllerSet discovery with keyboard-fallback logging, integer fixed-step 60 Hz accumulator with 250 ms clamp and stall logs, and clean EXIT shutdown, verified headless via SDL_VIDEODRIVER=dummy (--frames runs exit 0 with \"Clean shutdown\"; SIGSTOP/SIGCONT produced \"Frame stall of 1002 ms clamped to 250 ms\").\n\nReview repair: README status header still says M1 in progress while M1 is complete\nThe README front page states the actual milestone status, so the header and the current-state list agree with the repository after every milestone task lands.\nEvidence: README.md:10-16 reads 'Status: M1 in progress' and lists only the shape tables, SRS rotation, board engine, and PCG32 randomizer (scope of T003-T006). README.md:89-110 of the same file declares 'Milestone M1, the rules core, is complete. Six components are done', lists the T007 tick engine (src/game.cpp, src/scoring.cpp) and the T008 regression runner (tests/test_regression.cpp, --seed CLI), and ends with 'Milestone M2, the playable desktop build, is next'. The M1 gate is met at 9ce8e60: ctest passes in Debug and Release with 335,826 checks and 0 failures, and stackfall_tests --seed output is byte-identical across runs and build types. The outcome is already tracked as task T022 (key looper:finding:readme-milestone-status-stale, status done); this finding attaches updated evidence only and must not create a second task.\n\nReview repair: docs/SPEC.md status header still says M1 complete while M2/M3 work is integrated\nThe specification's own status line states the actual integrated milestone state (M3 in progress with T009-T013 landed), matching README.md, so the two front pages agree.\nEvidence: docs/SPEC.md:6 reads 'Status: M1 complete; the full rules core passes headless tests in Debug and Release' at 98e786b, while README.md:10 reads 'Status: M3 in progress' and T009-T013 (input adapter, renderer, screens, persistence, audio) are integrated per the same commit. The outcome is already tracked as task T022 (done, key looper:finding:readme-milestone-status-stale); this finding attaches updated evidence only and must not create a second task.",
+      "status": "todo",
+      "details": "README.md still says \"Status: M0 project skeleton\" and \"Current state (M0)\" with a placeholder main.cpp, although T003-T005 have delivered the shape tables, SRS rotation, and the board engine of M1. Update the status line and the current-state bullet list to reflect M1 progress when the next milestone task touches documentation, so the front page matches the repository. Purely documentation; no code impact.\nEvidence: README.md lines 10-12 and 66-73 describe only the M0 skeleton, while include/stackfall/pieces.hpp, board.hpp and their passing suites already exist.\n\nReview repair: README front page still describes the M0 skeleton after four M1 components landed\nREADME.md must state the actual milestone status and current-state list so the front page matches the repository. The outcome is already tracked as task T022; this finding attaches updated evidence only and must not create a second task.\nEvidence: README.md lines 10-12 still read \"Status: M0 project skeleton\" and lines 66-73 list only the M0 skeleton, while include/stackfall/pieces.hpp, board.hpp, randomizer.hpp, src/pieces.cpp, src/board.cpp, src/randomizer.cpp and their suites (323387 checks passing in Debug and Release at da23a3d) deliver the shape tables, SRS kicks, board engine, and randomizer of M1.\n\nReview repair: README status section still describes the M0 skeleton\nREADME.md lines 66-73 still describe src/main.cpp as the M0 placeholder that only initializes and shuts down SDL2, and lines 10-12 still say \"Status: M0 project skeleton\". T002 replaced the placeholder with the real SDL2 window, controller detection, and fixed 60 Hz loop, and T003-T006 already delivered the shape tables, SRS kicks, board engine, and randomizer, so the front page lags the repository further. The outcome is already tracked as task T022; this finding attaches updated evidence only and must not create a second task.\nEvidence: After T002, README.md line 71 still reads \"src/main.cpp is a placeholder that initializes and shuts down SDL2. Task T002 adds the desktop window, controller detection, and the fixed 60 Hz loop\", while src/main.cpp in the T002 worktree now implements the 960x544 window, logged renderer fallback chain, ControllerSet discovery with keyboard-fallback logging, integer fixed-step 60 Hz accumulator with 250 ms clamp and stall logs, and clean EXIT shutdown, verified headless via SDL_VIDEODRIVER=dummy (--frames runs exit 0 with \"Clean shutdown\"; SIGSTOP/SIGCONT produced \"Frame stall of 1002 ms clamped to 250 ms\").\n\nReview repair: README status header still says M1 in progress while M1 is complete\nThe README front page states the actual milestone status, so the header and the current-state list agree with the repository after every milestone task lands.\nEvidence: README.md:10-16 reads 'Status: M1 in progress' and lists only the shape tables, SRS rotation, board engine, and PCG32 randomizer (scope of T003-T006). README.md:89-110 of the same file declares 'Milestone M1, the rules core, is complete. Six components are done', lists the T007 tick engine (src/game.cpp, src/scoring.cpp) and the T008 regression runner (tests/test_regression.cpp, --seed CLI), and ends with 'Milestone M2, the playable desktop build, is next'. The M1 gate is met at 9ce8e60: ctest passes in Debug and Release with 335,826 checks and 0 failures, and stackfall_tests --seed output is byte-identical across runs and build types. The outcome is already tracked as task T022 (key looper:finding:readme-milestone-status-stale, status done); this finding attaches updated evidence only and must not create a second task.\n\nReview repair: docs/SPEC.md status header still says M1 complete while M2/M3 work is integrated\nThe specification's own status line states the actual integrated milestone state (M3 in progress with T009-T013 landed), matching README.md, so the two front pages agree.\nEvidence: docs/SPEC.md:6 reads 'Status: M1 complete; the full rules core passes headless tests in Debug and Release' at 98e786b, while README.md:10 reads 'Status: M3 in progress' and T009-T013 (input adapter, renderer, screens, persistence, audio) are integrated per the same commit. The outcome is already tracked as task T022 (done, key looper:finding:readme-milestone-status-stale); this finding attaches updated evidence only and must not create a second task.\n\nReview repair: README front page lags the repository again after the verification tasks landed\nAcceptance criteria: the README status paragraph states the actual integrated state, per T022's own criterion that the front page matches the repository. After T014 and T023 through T028 are integrated, the sentence 'The agent verification of M2 and M3, the platform hardening, packaging, and device validation remain' is wrong on the first two items: the platform hardening and the M2/M3 agent verification (harness, play review, design-review fixes, stability pass, performance loop) are done; what remains is the T015 final gate at the approved layout, then packaging and device validation.\nEvidence: README.md lines 10-27 at 0ef908d. Completed and verified in this review: ctest 5/5 in Debug and Release; tests/harness/run.sh 163/163 and tests/harness/t024.sh 287/287 passing; T014 platform hardening present (renderer fallback chain, Architecture log line, fallback frame limiter observed in the log of a dummy-driver run); T023/T024/T025 sections and the T030-T034 fix records in notes/agent-testing.md; T027/T028 in notes/design-review.md; T026 in notes/performance.md. Outcome already tracked as done under key readme-milestone-status-stale; this finding attaches updated evidence only.",
       "files": [
         "README.md",
         "docs/SPEC.md"
@@ -518,8 +540,7 @@
       "tags": [
         "looper:finding:readme-milestone-status-stale"
       ],
-      "updated_at": "2026-11-03T03:40:08Z",
-      "unblock_when": "\"\""
+      "updated_at": "2026-11-03T03:40:08Z"
     },
     {
       "id": "T023",
@@ -645,26 +666,32 @@
       "id": "T026",
       "title": "Profile and optimize performance in a bounded loop",
       "priority": 2,
-      "status": "doing",
+      "status": "done",
       "details": "Round M3. Execute docs/PERFORMANCE.md after T025 and before the T015 desktop gate. Build reproducible Release benchmarks from fixed seeds and real SDL scenarios. Record at least three baseline samples and profile measured bottlenecks. Use claude -p as the nested runner with the existing configuration. The owner confirms that claude uses GLM 5.3. Verify local executable and command syntax without overriding the model, provider, or credentials. If the optional runner is unavailable, the executing agent performs the same loop without a human prerequisite. For each candidate, supply the requirements and measured hotspot to the nested agent, request one small patch in an isolated working copy, inspect the patch, independently run Debug/Release tests, pinned hashes, affected graphical scenarios, and at least three matching benchmark samples. Preserve rules, visuals, audio, controls, saves, pacing, and unrelated work. Retain only changes that improve measurements beyond run variance without material regressions. Prohibit recursive delegation, backlog edits, publication, and unrelated changes. Bound each nested call to ten minutes, terminate child processes on timeout, and save transcripts and exit status. Stop after five candidates, two consecutive rejected changes, or 90 minutes total; stop earlier if the measured frame budget is met and no actionable waste remains. Rerun the final regression suite and affected stability checks. Acceptance: notes/performance.md records source identities, runner details, commands, host/renderer/build settings, profiler evidence, before/after CPU and memory use, work per frame and frame-time percentiles, accepted/rejected changes, and unresolved limits. A measured no-change result can pass when the desktop target is met and profiling finds no actionable bottleneck. A time limit alone cannot pass an unmet target. Hardware performance and human testing stay deferred to final acceptance.",
       "depends_on": [
         "T025",
         "T008"
       ],
       "files": [
+        "CMakeLists.txt",
         "docs/PERFORMANCE.md",
         "notes/performance.md",
-        "CMakeLists.txt",
         "src/",
-        "tests/"
+        "src/renderer_sdl.cpp",
+        "tests/",
+        "tests/harness/t026.sh",
+        "tests/harness/t026_candidate.sh",
+        "tests/harness/t026_gen.py",
+        "tests/harness/t026_summarize.py"
       ],
       "tags": [
         "M3",
         "performance",
         "agent-testing"
       ],
-      "updated_at": "2026-11-02T20:18:15Z",
-      "created_at": "2026-11-02T20:17:20Z"
+      "updated_at": "2026-11-03T16:16:35Z",
+      "created_at": "2026-11-02T20:17:20Z",
+      "unblock_when": "\"\""
     },
     {
       "id": "T027",
@@ -896,6 +923,47 @@
         "looper:operator"
       ],
       "unblock_when": "final device acceptance round; remove looper:deferred and set todo when this condition is met."
+    },
+    {
+      "id": "T037",
+      "title": "Focus the gameplay HUD around the board: statistics left, Next right, no permanent gameplay legend",
+      "priority": 2,
+      "status": "blocked",
+      "details": "Round M3 (desktop layout pass gating T015). Stable finding key focused-gameplay-hud. Planning and scope: the board geometry itself (27x27 cells, 270x540 board centered at (345,2), one-pixel border x=344..615 and y=1..542, 10x20 gameplay dimensions, 960x544 canvas) is owned by the separately queued board-cells-27px plan (source /notes/stackfall-27px-board-plan-2026-11-03.md); it has no task in the accepted backlog at 0ef908d, where the implemented geometry is still 24x24 cells at (360,32) (include/stackfall/renderer_sdl.hpp:78-82; docs/SPEC.md section 6.1). Do not duplicate that geometry work. If the task created from the board-cells-27px plan has not started when this lands, extend that task's contract with this approved composition instead of creating separate layout work; create this dependent task only if that contract is already in flight or complete. Never change the contract of an in-flight attempt. The scheduling hints 'before T026' and 'preserve T025's active work' are void at this revision: T025 and T026 are complete. Approved composition and acceptance criteria: (1) Regroup the HUD: Hold, score, lines, and level on the left; all five Next previews on the right; both groups anchored close to the board edges starting with about 24 pixels between board frame and each group, adjusted for readable content; the suggested 128-pixel columns are a starting point, not a clipping rule; leave the outer screen regions quiet. (2) Remove the permanent control legend from ordinary gameplay (src/renderer_sdl.cpp:480-496, drawn from drawGameplayPanels at src/renderer_sdl.cpp:308). This supersedes only the gameplay-hint portion of completed T030 as follow-up work; never reopen or rewrite T030. Keep complete controls on the controls screen (T011) and keep the title, pause, and game-over footer hints readable at their current scale. (3) Add a clear route from pause to the controls screen and back that resumes the same round without advancing its counters or losing state (current overlay offers only Resume, Restart, and Quit to Title: src/renderer_sdl.cpp:590-597); if controls access changes, verify paused-state preservation. (4) Keep the HUD continuously visible and stable with a clear contrast hierarchy: active and settled pieces dominate; Hold, the first Next piece, score values, and board boundaries stay readable; labels, grid, and the remaining previews are quieter; reduce decorative panel outlines; preserve all five identifiable previews, readable glyph sizes, the approved hollow ghost outline of at least 3:1 contrast (T031), and centered letterboxing (T032). (5) Prohibited: fading HUD elements, transient clear or level notices, combo counters, new scoring rules, animated backgrounds, and decorative effects; these were explicitly deferred. (6) Update docs/SPEC.md section 6.1/6.2 and relevant layout, testing, and design-review notes to the approved composition, and replace the old gameplay-legend acceptance rules instead of preserving contradictory screenshot checks: the control-hint-glyph-scale criterion measured on gameplay frames (tools/design-review/check_fixes.py:12-16, 87-110) must be replaced with checks for the new composition. Verification and acceptance: test the longest supported score and statistics values, all Hold and Next shapes, and empty Hold; nothing clips and nothing overlaps the board or the other group. Preserve menus, pause and resume, deterministic rules, controls, scoring, saves, and the separately queued T029 immediate-spawn change (do not block on or rewrite T029; rerun spawn captures if T029 lands first). Run affected Debug and Release ctest, layout checks, and scripted graphical scenarios (tests/harness/run.sh). Capture fresh native 960x544 gameplay plus the existing 640x480 letterbox scenario (tests/harness/scripts/t024-focus-letterbox.script.txt) and affected pause and controls views; inspect every affected image for readable text, spacing, contrast, missing values, and clipping. Record commands, source identity, screenshots, and dispositions in notes/agent-testing.md and notes/design-review.md. Gate instruction for Looper planning: add the final layout task (this task or the merged board-cells-27px task) to T015's depends_on, and complete it before T019 packaging. This change authorizes no physical-device work and no publication; T018, T020, and T021 gates stay unchanged.",
+      "depends_on": [
+        "T024",
+        "T031",
+        "T032"
+      ],
+      "blockers": [
+        "An operator must complete this prerequisite; coding workers cannot execute it."
+      ],
+      "tags": [
+        "looper:finding:focused-gameplay-hud",
+        "looper:operator"
+      ],
+      "unblock_when": "Record evidence that the operator completed the action, then mark this task done. To delegate different work, explicitly change its contract and remove looper:operator."
+    },
+    {
+      "id": "T038",
+      "title": "No task owns the approved 27x27 board geometry change (board-cells-27px)",
+      "priority": 2,
+      "status": "done",
+      "details": "Acceptance criteria: one agent task with stable finding key board-cells-27px owns the approved geometry change per /notes/stackfall-27px-board-plan-2026-11-03.md: 27x27 logical cells, 270x540 board centered at (345,2) with occupied bounds x=345..614 and y=2..541, one-pixel frame at x=344..615 and y=1..542, nothing clipped on the 960x544 canvas; apply to settled cells, active piece, ghost, grid, frame, and overlays; update docs/SPEC.md section 6.1; add boundary coverage for top and bottom rows; run affected Debug and Release tests and scripted visual checks; capture native and letterboxed scenes. Per the plan's no-duplicate rule, either create the task and extend its contract with T037's approved composition, or fold the composition into one merged layout task — but exactly one task must own the geometry, and T015 must depend on the final layout task before T019 packaging.\nEvidence: The plan (/notes/stackfall-27px-board-plan-2026-11-03.md) orders 'Create one agent task for this layout change, using stable finding key board-cells-27px. Reuse an existing equivalent task if one exists.' A grep of the accepted backlog finds the string board-cells-27px only in T015's blocker text (which claims T037 'subsum[es]' the plan) and in T037's contract (which says the opposite: the geometry 'is owned by the separately queued board-cells-27px plan ... it has no task in the accepted backlog at 0ef908d ... Do not duplicate that geometry work') — contradictory ownership, and no task carries the key. Implemented geometry is still kBoardCellSize 24 at origin (360, 32) (include/stackfall/renderer_sdl.hpp:78-82) and docs/SPEC.md section 6.1 still specifies 24x24 cells, x=360..599, y=32..511.",
+      "files": [
+        "docs/SPEC.md",
+        "include/stackfall/renderer_sdl.hpp",
+        "notes/agent-testing.md",
+        "notes/design-review.md",
+        "src/renderer_sdl.cpp",
+        "tests/test_renderer_sdl.cpp",
+        "tools/design-review/build_prompt.py",
+        "tools/design-review/check_fixes.py"
+      ],
+      "tags": [
+        "looper:finding:board-cells-27px"
+      ],
+      "updated_at": "2026-11-03T19:01:41Z"
     }
   ]
 }

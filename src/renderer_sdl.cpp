@@ -44,6 +44,17 @@ constexpr int kLabelScale = 2;
 constexpr int kValueScale = 2;
 constexpr int kHintScale = 2;
 
+// The glyph rectangle batch of one drawText call. Every pixel of one string
+// shares one color, so one SDL_RenderFillRects submit replaces one
+// SDL_RenderFillRect per pixel; SDL fills the rectangles in array order under
+// the same color state, so the drawn output stays byte-identical. The
+// capacity holds the worst case of the longest drawn string (35 glyphs, every
+// pixel of the 5x7 cell on) in one submit. A longer string flushes the full
+// buffer and continues, so any length draws without overflow.
+constexpr int kTextBatchGlyphs = 35;
+constexpr int kTextBatchCapacity =
+    kTextBatchGlyphs * kGlyphColumns * kGlyphRows;
+
 // The control hints of the left panel, in section 5 order: the RG503 control
 // and what it does. The play panel stays gamepad-first on purpose: the full
 // gamepad and keyboard tables of the controls screen would not fit beside the
@@ -223,19 +234,28 @@ void Renderer::drawText(int x, int y, int scale, SDL_Color color,
     return;
   }
   SDL_SetRenderDrawColor(renderer_, color.r, color.g, color.b, color.a);
+  SDL_Rect rects[kTextBatchCapacity];
+  int count = 0;
   int penX = x;
   for (const char* p = text; *p != '\0'; ++p) {
     const Glyph& glyph = glyphFor(*p);
     for (int row = 0; row < kGlyphRows; ++row) {
       for (int column = 0; column < kGlyphColumns; ++column) {
         if (glyphPixel(glyph, column, row)) {
-          const SDL_Rect rect{penX + column * scale, y + row * scale, scale,
-                              scale};
-          SDL_RenderFillRect(renderer_, &rect);
+          if (count == kTextBatchCapacity) {
+            SDL_RenderFillRects(renderer_, rects, count);
+            count = 0;
+          }
+          rects[count] = SDL_Rect{penX + column * scale, y + row * scale,
+                                  scale, scale};
+          ++count;
         }
       }
     }
     penX += kGlyphAdvance * scale;
+  }
+  if (count > 0) {
+    SDL_RenderFillRects(renderer_, rects, count);
   }
 }
 
@@ -327,8 +347,8 @@ void Renderer::drawGridLines() const {
 // The border alone: the well fill happens with the background so the grid
 // lines land on it (specification section 6.2, steps 1 and 2).
 void Renderer::drawBoardFrame() const {
-  drawRectOutline(kFrame, kBoardOriginX - 1, kBoardOriginY - 1,
-                  kBoardPixelWidth + 2, kBoardPixelHeight + 2);
+  const SDL_Rect frame = boardFrame();
+  drawRectOutline(kFrame, frame.x, frame.y, frame.w, frame.h);
 }
 
 void Renderer::drawSettledCells(const Game& game) const {

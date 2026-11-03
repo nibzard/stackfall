@@ -35,12 +35,22 @@ except ImportError:  # pragma: no cover
           file=sys.stderr)
     raise
 
-# Canvas geometry from include/stackfall/renderer_sdl.hpp.
+# Canvas geometry from include/stackfall/renderer_sdl.hpp. The board is 27 px
+# cells from (345, 2) to (614, 541) with its frame at x=344..615 and
+# y=1..542, so every region below is stated in those coordinates.
+BOARD_ORIGIN = (345, 2)
+BOARD_CELL = 27
 LEFT_PANEL_X = 52
 LEFT_PANEL_WIDTH = 272
-HINT_REGION_Y = (150, 290)
+LEFT_PANEL_RIGHT = LEFT_PANEL_X + LEFT_PANEL_WIDTH  # 324
+HINT_REGION_Y = (120, 260)
 WELL = (10, 12, 19)  # kBoardWell
-GHOST_REGION = (432, 464, 528, 512)  # the S ghost of seed 31337 at y=18..19
+# The S ghost of seed 31337 at board columns 3..6 and rows 18..19, in canvas
+# pixels: x = 345 + 3*27 .. 345 + 7*27 and y = 2 + 18*27 .. 2 + 20*27.
+GHOST_REGION = (BOARD_ORIGIN[0] + 3 * BOARD_CELL,
+                BOARD_ORIGIN[1] + 18 * BOARD_CELL,
+                BOARD_ORIGIN[0] + 7 * BOARD_CELL,
+                BOARD_ORIGIN[1] + 20 * BOARD_CELL)
 
 
 def luminance(color):
@@ -66,6 +76,18 @@ def bright_rows(image, box, threshold=90):
                 rows.append(y)
                 break
     return rows
+
+
+def bright_columns(image, box, threshold=90):
+    """Columns in `box` holding a pixel brighter than `threshold` in sum."""
+    x0, y0, x1, y1 = box
+    columns = []
+    for x in range(x0, min(x1, image.width)):
+        for y in range(y0, min(y1, image.height)):
+            if sum(image.getpixel((x, y))) > threshold:
+                columns.append(x)
+                break
+    return columns
 
 
 def run_lengths(values):
@@ -96,9 +118,11 @@ def check_hint_glyphs(image, scale_with_window=True):
            int((LEFT_PANEL_X + LEFT_PANEL_WIDTH) * ratio),
            int(HINT_REGION_Y[1] * ratio))
     rows = bright_rows(image, box, threshold=120)
+    columns = bright_columns(image, box, threshold=120)
     runs = run_lengths(sorted(set(rows)))
     tallest = max(runs) if runs else 0
     logical = round(tallest / ratio) if ratio else tallest
+    right_edge = int(LEFT_PANEL_RIGHT * ratio)
     return {
         "name": "control-hint-glyph-scale",
         "measured": {"hint_glyph_height_px": tallest,
@@ -106,10 +130,12 @@ def check_hint_glyphs(image, scale_with_window=True):
                      "window_ratio": round(ratio, 3),
                      "text_row_runs": runs,
                      "lowest_text_row": rows[-1] if rows else None,
-                     "panel_right_edge": int(588 * ratio)},
+                     "rightmost_text_column": columns[-1] if columns else None,
+                     "panel_right_edge": right_edge},
         "criterion": "hint glyph height >= 14 logical px and the text "
                      "stays inside the left panel",
-        "passed": logical >= 14 and (not rows or rows[-1] < 588 * ratio),
+        "passed": (logical >= 14 and
+                   (not columns or columns[-1] < right_edge)),
     }
 
 

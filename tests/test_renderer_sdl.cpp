@@ -13,6 +13,9 @@
 // Coverage of the task T010 acceptance criteria:
 //   * the board, frame, and optional faint grid appear at the section 6.1
 //     geometry, and the grid toggle really toggles;
+//   * the 27 px field sits at (345, 2) inside its one-pixel frame at
+//     x=344..615 and y=1..542, the top and bottom visible rows carry whole
+//     cells, and nothing clips on the 960x544 canvas (task T038);
 //   * settled cells draw in their stored colors and only where the board has
 //     them;
 //   * the ghost draws below the active piece as a hollow outline in the
@@ -332,11 +335,13 @@ void run_board_and_grid_checks() {
 
   renderer.draw(game);
 
-  // Background outside the panels and above the board.
+  // Background outside the panels and above the board. The board frame sits
+  // one pixel above the field, so the canvas row above it is the first free
+  // row: kBoardOriginY - 2 == 0.
   SC_CHECK(sameColor(pixelAt(canvas, 5, 5), kBackground));
   SC_CHECK(sameColor(pixelAt(canvas, kCanvasWidth - 5, kCanvasHeight - 5),
                      kBackground));
-  SC_CHECK(sameColor(pixelAt(canvas, kBoardOriginX + 40, kBoardOriginY - 5),
+  SC_CHECK(sameColor(pixelAt(canvas, kBoardOriginX + 40, kBoardOriginY - 2),
                      kBackground));
 
   // Board well interior, frame outline just outside it.
@@ -372,6 +377,113 @@ void run_board_and_grid_checks() {
                      kBoardWell));
   renderer.setShowGrid(true);
   SC_CHECK(renderer.showGrid() == true);
+}
+
+// The board-cells-27px geometry of specification section 6.1 (task T038),
+// asserted at the edges of the canvas: 27 px cells, a 270x540 field at
+// (345, 2) with occupied bounds x=345..614 and y=2..541, one frame pixel at
+// x=344..615 and y=1..542, and nothing clipped on the 960x544 canvas. The
+// numbers are restated here on purpose, like the layout contract above, so a
+// constant that drifts from the specification fails before any capture
+// records it.
+void run_board_boundary_checks() {
+  Canvas canvas = makeCanvas(kCanvasWidth, kCanvasHeight);
+  SC_CHECK(canvas.ok);
+  Renderer renderer(canvas.renderer);
+
+  SC_CHECK(kBoardCellSize == 27);
+  SC_CHECK(kBoardOriginX == 345);
+  SC_CHECK(kBoardOriginY == 2);
+  SC_CHECK(kBoardPixelWidth == 270);
+  SC_CHECK(kBoardPixelHeight == 540);
+  SC_CHECK(kBoardOriginX + kBoardPixelWidth - 1 == 614);
+  SC_CHECK(kBoardOriginY + kBoardPixelHeight - 1 == 541);
+  const SDL_Rect frame = boardFrame();
+  SC_CHECK(frame.x == 344 && frame.y == 1);
+  SC_CHECK(frame.w == 272 && frame.h == 542);
+  SC_CHECK(frame.x + frame.w - 1 == 615);
+  SC_CHECK(frame.y + frame.h - 1 == 542);
+  // The field is centered on the canvas and the frame leaves it a free row
+  // or column on every side, so no board pixel can clip.
+  SC_CHECK(frame.x == kCanvasWidth - (frame.x + frame.w));
+  SC_CHECK(kCanvasHeight - (frame.y + frame.h) == 1);
+
+  // An empty field: the well fill covers exactly x=345..614 and y=2..541,
+  // the frame wraps it, and the rows and columns outside stay background.
+  Game game;
+  game.start(20261103);
+  renderer.draw(game);
+  const int column = 400;  // inside the field, on no grid line
+  SC_CHECK(sameColor(pixelAt(canvas, 343, 300), kBackground));
+  SC_CHECK(sameColor(pixelAt(canvas, 344, 300), kFrame));
+  SC_CHECK(sameColor(pixelAt(canvas, 345, 300), kBoardWell));
+  SC_CHECK(sameColor(pixelAt(canvas, 614, 300), kBoardWell));
+  SC_CHECK(sameColor(pixelAt(canvas, 615, 300), kFrame));
+  SC_CHECK(sameColor(pixelAt(canvas, 616, 300), kBackground));
+  SC_CHECK(sameColor(pixelAt(canvas, column, 0), kBackground));
+  SC_CHECK(sameColor(pixelAt(canvas, column, 1), kFrame));
+  SC_CHECK(sameColor(pixelAt(canvas, column, 2), kBoardWell));
+  SC_CHECK(sameColor(pixelAt(canvas, column, 541), kBoardWell));
+  SC_CHECK(sameColor(pixelAt(canvas, column, 542), kFrame));
+  SC_CHECK(sameColor(pixelAt(canvas, column, 543), kBackground));
+
+  // The grid stays inside the field: the first lines at x=372 and y=29, the
+  // last at x=588 and y=515, and none reaches the frame.
+  SC_CHECK(kBoardOriginX + kBoardCellSize == 372);
+  SC_CHECK(kBoardOriginX + 9 * kBoardCellSize == 588);
+  SC_CHECK(kBoardOriginY + kBoardCellSize == 29);
+  SC_CHECK(kBoardOriginY + 19 * kBoardCellSize == 515);
+  SC_CHECK(sameColor(pixelAt(canvas, 372, 300), kGridLine));
+  SC_CHECK(sameColor(pixelAt(canvas, 588, 300), kGridLine));
+  SC_CHECK(sameColor(pixelAt(canvas, column, 29), kGridLine));
+  SC_CHECK(sameColor(pixelAt(canvas, column, 515), kGridLine));
+  SC_CHECK(sameColor(pixelAt(canvas, 344, 29), kFrame));
+
+  // Whole cells on the top and the bottom visible row: settle the four
+  // corners of the field through the test peer, then draw the same round
+  // again.
+  Board& board = stackfall::GameTestPeer::board(game);
+  SC_CHECK(board.settleCell(0, 0, PieceId::I));
+  SC_CHECK(board.settleCell(kBoardWidth - 1, 0, PieceId::O));
+  SC_CHECK(board.settleCell(0, kBoardHeight - 1, PieceId::J));
+  SC_CHECK(board.settleCell(kBoardWidth - 1, kBoardHeight - 1, PieceId::L));
+  renderer.draw(game);
+
+  // The top row: the canvas row above the frame is background, the frame at
+  // y=1, the cell's dark edge at y=2, its fill from y=3.
+  SC_CHECK(cellCornerY(0) == 2);
+  SC_CHECK(sameColor(pixelAt(canvas, cellCenterX(0), 0), kBackground));
+  SC_CHECK(sameColor(pixelAt(canvas, cellCenterX(0), 1), kFrame));
+  SC_CHECK(sameColor(pixelAt(canvas, cellCenterX(0), 2), kCellEdge));
+  SC_CHECK(sameColor(pixelAt(canvas, cellCenterX(0), 3),
+                     cellPalette(PieceId::I).light));
+  SC_CHECK(sameColor(pixelAt(canvas, cellCenterX(0), cellCenterY(0)),
+                     pieceFill(PieceId::I)));
+
+  // The bottom row: the cell's last pixel row is y=541, the frame at y=542,
+  // and the last canvas row below it stays background, so the lowest cell on
+  // the field cannot clip.
+  SC_CHECK(cellCornerY(kBoardHeight - 1) + kBoardCellSize - 1 == 541);
+  SC_CHECK(sameColor(pixelAt(canvas, cellCenterX(0),
+                             cellCenterY(kBoardHeight - 1)),
+                     pieceFill(PieceId::J)));
+  SC_CHECK(sameColor(pixelAt(canvas, cellCenterX(0), 541), kCellEdge));
+  SC_CHECK(sameColor(pixelAt(canvas, cellCenterX(0), 542), kFrame));
+  SC_CHECK(sameColor(pixelAt(canvas, cellCenterX(0), 543), kBackground));
+
+  // The left and the right edge: the cell edge at x=345 and x=614, the frame
+  // outside them, and background again one column past the frame.
+  SC_CHECK(cellCornerX(0) == 345);
+  SC_CHECK(sameColor(pixelAt(canvas, 343, cellCenterY(0)), kBackground));
+  SC_CHECK(sameColor(pixelAt(canvas, 344, cellCenterY(0)), kFrame));
+  SC_CHECK(sameColor(pixelAt(canvas, 345, cellCenterY(0)), kCellEdge));
+  SC_CHECK(cellCornerX(kBoardWidth - 1) + kBoardCellSize - 1 == 614);
+  SC_CHECK(sameColor(pixelAt(canvas, 614, cellCenterY(kBoardHeight - 1)),
+                     kCellEdge));
+  SC_CHECK(sameColor(pixelAt(canvas, 615, cellCenterY(kBoardHeight - 1)),
+                     kFrame));
+  SC_CHECK(sameColor(pixelAt(canvas, 616, cellCenterY(kBoardHeight - 1)),
+                     kBackground));
 }
 
 void run_cells_and_ghost_checks() {
@@ -671,16 +783,19 @@ void run_read_only_and_scaling_checks() {
   }
 
   // The same logical frame scales up 1.5x on a 1440x816 canvas, which keeps
-  // the 960x544 aspect exactly: the well edges move from logical x = 360 and
-  // x = 599 to canvas x = 540 and x = 899.
+  // the 960x544 aspect exactly: the frame edges move from logical x = 344 and
+  // x = 615 to canvas x = 516 and x = 922, and the well fills 517..921
+  // between them (a device pixel starts at floor(logical x * 1.5)).
   Canvas scaled = makeCanvas(1440, 816);
   SC_CHECK(scaled.ok);
   Renderer scaledRenderer(scaled.renderer);
   scaledRenderer.draw(game);
-  SC_CHECK(sameColor(pixelAt(scaled, 539, 500), kBackground));
-  SC_CHECK(sameColor(pixelAt(scaled, 541, 500), kBoardWell));
-  SC_CHECK(sameColor(pixelAt(scaled, 899, 500), kBoardWell));
-  SC_CHECK(sameColor(pixelAt(scaled, 901, 500), kBackground));
+  SC_CHECK(sameColor(pixelAt(scaled, 515, 500), kBackground));
+  SC_CHECK(sameColor(pixelAt(scaled, 516, 500), kFrame));
+  SC_CHECK(sameColor(pixelAt(scaled, 517, 500), kBoardWell));
+  SC_CHECK(sameColor(pixelAt(scaled, 921, 500), kBoardWell));
+  SC_CHECK(sameColor(pixelAt(scaled, 922, 500), kFrame));
+  SC_CHECK(sameColor(pixelAt(scaled, 923, 500), kBackground));
 
   // A taller 960x1088 canvas letterboxes the frame with a 272 pixel offset
   // and no scaling, so a logical pixel keeps its x and shifts its y.
@@ -1064,6 +1179,15 @@ void run_pause_overlay_checks() {
   SC_CHECK(after.g >= loG && after.g <= hiG);
   SC_CHECK(after.b >= loB && after.b <= hiB);
 
+  // The veil covers the whole canvas, so it also reaches the corners of the
+  // enlarged field: the frame's bottom-right pixel at (615, 542) is dimmed,
+  // not the plain frame color the play scene drew (task T038).
+  const SDL_Rect frame = boardFrame();
+  const int frameCornerX = frame.x + frame.w - 1;
+  const int frameCornerY = frame.y + frame.h - 1;
+  SC_CHECK(sameColor(pixelAt(canvas, frameCornerX, frameCornerY), kFrame) ==
+           false);
+
   // The panel is an opaque card: its corner holds the exact panel fill.
   const SDL_Rect panel = pausePanel();
   SC_CHECK(sameColor(pixelAt(canvas, panel.x + 6, panel.y + 6), kPanelFill));
@@ -1197,6 +1321,7 @@ int main() {
   }
 
   run_board_and_grid_checks();
+  run_board_boundary_checks();
   run_cells_and_ghost_checks();
   run_preview_checks();
   run_text_checks();

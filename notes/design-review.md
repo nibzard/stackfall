@@ -473,6 +473,36 @@ appeared, so no follow-up task needs routing. Every required finding of
 the review is resolved, so the round-M2 closure gate closes. The two
 review rounds stand as run: `initial` (T027) and `verify` (T028).
 
+## Geometry change: 27 px board cells (T038, 2026-11-03)
+
+The owner-approved board geometry change (`looper:finding:board-cells-27px`,
+task T038) moved the field from 24 px cells at (360, 32) to 27 px cells at
+(345, 2), so every pixel region this toolchain measures moved with it. No
+reviewed finding reopened: this is an approved layout decision, not a
+defect, and the packet images come from the same `packet.tsv` sessions.
+
+Tooling changes:
+
+- `tools/design-review/check_fixes.py`: `HINT_REGION_Y` is now (120, 260)
+  and `GHOST_REGION` is derived from the board origin and cell
+  (x=426..534, y=488..542, the same S ghost of seed 31337 at columns 3..6
+  and rows 18..19). The hint check also measures the columns of the hint
+  band now, so its "stays inside the left panel" criterion bounds the
+  rightmost text column (309) against the panel edge (324); the earlier
+  row-only comparison against 588 could not fail.
+- `tools/design-review/build_prompt.py`: the approved-scope block states
+  the 27 px geometry, so a reviewer does not report it as a defect.
+
+Fresh packet `t038-board-27px` (seed 31337, twelve images): all three
+required criteria pass - hint glyphs 14 logical px inside the panel, the
+ghost outline at 5.82:1, letterbox bars 59 and 59 px. Measured from the
+packet pixels, the well spans x=345..614 and y=2..541 with the frame
+complete at x=344 and x=615 and y=1 and y=542 in every play frame, and no
+image has content on its outer edge. The T030/T031/T032 dispositions
+above are unchanged; the HUD composition change of T037
+(`focused-gameplay-hud`) still waits and will need its own packet and
+checks when it runs.
+
 ## Open questions
 
 - None new. The hidden I-piece spawn rule stays with T029, physical

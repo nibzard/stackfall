@@ -188,8 +188,8 @@ SDL2 GameController mapping must be loaded from the PortMaster environment (`SDL
 ### 6.1 Canvas and placement
 
 - Logical canvas: 960 × 544. Use `SDL_RenderSetLogicalSize` or equivalent letterboxing to handle a non-native desktop window.
-- Board cell: **24 × 24 logical pixels**. Board is `240 × 480`, from **x=360..599**, **y=32..511**.
-- Board frame: subtle rectangular outline, no texture, no image.
+- Board cell: **27 × 27 logical pixels**. The 10 × 20 field is `270 × 540`, from **x=345..614**, **y=2..541**, centered on the canvas.
+- Board frame: one-pixel rectangular outline around the field at **x=344..615**, **y=1..542**, so nothing clips on the canvas. No texture, no image.
 - Left panel: Hold preview and control hints in approx. x=52..324.
 - Right panel: Next five pieces plus score, lines and level in approx. x=630..910.
 - Full visible grid always fits without scrolling; preview shapes are drawn from the same shape cell coordinates at smaller cell size (e.g. 15 px).

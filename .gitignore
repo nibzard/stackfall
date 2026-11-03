@@ -13,3 +13,6 @@ __pycache__/
 .idea/
 *.swp
 .DS_Store
+
+# Local receipts from AXINBOX uploads.
+.axinbox/drops/
