@@ -24,7 +24,8 @@ endif()
 # fixture.cpp and observe.cpp carry the developer fixture loader and the
 # checkpoint record formatter of the unattended harness (task T023,
 # docs/AGENT_TESTING.md); both are SDL-free so the headless reference replay
-# shares them with the game binary.
+# shares them with the game binary. script.cpp holds the bounded count rule
+# the two mirrored script parsers share (task T025's fuzz repair).
 # ---------------------------------------------------------------------------
 add_library(stackfall_core STATIC
   src/board.cpp
@@ -34,6 +35,7 @@ add_library(stackfall_core STATIC
   src/pieces.cpp
   src/randomizer.cpp
   src/scoring.cpp
+  src/script.cpp
   src/storage.cpp
   src/version.cpp
 )
@@ -132,6 +134,7 @@ add_executable(stackfall_tests
   tests/test_regression.cpp
   tests/test_sanity.cpp
   tests/test_screens.cpp
+  tests/test_script.cpp
   tests/test_storage.cpp
 )
 target_link_libraries(stackfall_tests PRIVATE stackfall_core)

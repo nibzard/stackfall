@@ -1448,3 +1448,186 @@ T024_RUN_ID=t034-fixed-t024 xvfb-run -a -s "-screen 0 960x544x24" \
   tests/harness/t024.sh
 HARNESS_RUN_ID="../escape" tests/harness/run.sh
 ```
+
+## T025: unattended stability and failure checks (2026-11-03)
+
+Round M3, at commit 657ea6d plus this task's edits. One driver runs the
+whole pass phase by phase into `build/agent-checks/2026-11-03-t025-stability/`
+(sources and binaries in `source.sha256`):
+
+```bash
+tests/harness/t025.sh
+```
+
+Phases: `host`, `fuzz`, `hardkill`, `cycles`, `restarts`, `longplay`,
+`pacing`, `failures`, `san`, `regress`. The operator extension - the
+bounded parser fuzz and the hard-kill pass - ran before the acceptance
+phases, as required. Helper scripts: `tests/harness/t025_gen.py` (the
+session generator), `tests/harness/t025_fuzz.py` (the fuzz pass), and
+`tests/harness/frame_stats.py` (frame-time statistics; the game grew the
+developer option `--frame-times FILE`, one microsecond duration per
+frame, to feed it).
+
+Host: 12th Gen Intel Core i9-12900HK, 8 CPUs, 12 GB RAM, Ubuntu 24.04,
+g++ 13.3.0, CMake 3.28.3, SDL 2.30.0, Xvfb with xdotool and openbox.
+Every real-time session ran under `xvfb-run`; the dummy video driver
+served the headless ones. All numbers are host measurements; none of
+them certifies RG503 performance.
+
+### The fuzz finding, fixed and pinned
+
+The fuzz pass found one real defect before any acceptance phase ran.
+`InputScript::parseLine` narrowed a 64-bit `wait`/`stall` count to `int`;
+`stall 6442450944` (2^32 + 2^31) truncated to `INT_MIN`, which
+`SDL_Delay` read as an unsigned ~24.8-day delay. The process hung inside
+the delay, outlived `timeout 10` sending SIGTERM, and needed SIGKILL;
+its block-buffered stdout log stayed empty. The mirrored parser of the
+headless reference carried the same cast. Evidence:
+`fuzz/finding-pre-fix/` (reproducer script, README, the pre-fix hang,
+and the post-fix rejection).
+
+Fix: `stackfall::parseScriptCount` (`include/stackfall/script.hpp`,
+`src/script.cpp`) accepts only 0 through 3600000 and writes the output
+only on success; both parsers route through it with one shared error
+message. `tests/test_script.cpp` pins the valid range, the boundary, the
+crashing inputs (`2147483648`, `4294967296`, `6442450941`,
+`6442450944`, `18446744073709551615`, `3600001`, `03600001`, and more),
+and the malformed shapes. The core suite grew to 338,471 checks, 0
+failures.
+
+### Phase results
+
+- Passed, fuzz (150 s budget): the save-parser mutation loop ran 50.2 s
+  under AddressSanitizer and UndefinedBehaviorSanitizer with every
+  accepted parse equal to the canonical rendering; 236 binary cases
+  through the sanitized game (135 clean exits, 101 rejected scripts, 0
+  findings) in 98.5 s. Report: `fuzz/run/fuzz-report.json`.
+- Passed, hardkill (operator extension): 24 SIGKILLs during save writes
+  (18 triggered on the game-over log line plus a uniform delay through an
+  `LD_PRELOAD` shim that holds fsync and rename 120 ms, 6 random). Every
+  resulting file loaded or was rejected safely: 3 absent, 21 canonical,
+  0 damaged (`hardkill/kills.tsv`); killed writes leave the previous
+  record or nothing, because the save path writes a per-pid temporary
+  file and renames over the target. The leftover
+  `.highscore.dat.tmp.<pid>` files never become the record. A verify run
+  then loaded and extended the final file.
+- Passed, hardkill-two (operator extension): two simultaneous instances
+  on one save directory seeded with `high_score=10`, each with its own
+  `STACKFALL_LOG_FILE`. Both exited 0 with clean shutdowns, no save
+  failure lines, and the record moved 10 to 226 - never shrank.
+- Passed, cycles: 52 restart and menu cycles in one process at real-time
+  pacing (pause-restart, quit-to-title restart, play-again, title
+  restart), seed 20261501, with the virtual controller attached,
+  movement probes before, between, and after, five sound toggles, and
+  RSS sampling of the game process. No stuck input (every probe moved
+  the piece), one controller open and zero removals, no crash, clean
+  shutdown. Frame times over 179.3 s: 10,755 frames, 10,756 ticks
+  (60.00 per second), median 16.76 ms, p95 17.28 ms, p99 17.63 ms, max
+  68.69 ms - one unscheduled host hiccup, logged as "Unusual frame stall
+  of 68 ms" and caught up inside the clamp budget. Game process resident
+  memory 16,476 kB early, 16,516 kB
+  late, 2 threads throughout.
+- Passed, restarts: 50 process restarts (seeds 777001 through 777050),
+  each loading the record the previous run left, saving only when the
+  new game over beat it. Final file canonical, record 248, best game
+  248, weakest 208.
+- Passed, longplay (the ten-minute acceptance session, seed 20261601,
+  Release build, under Xvfb with the opengl renderer): 600.8 s wall,
+  35,971 frames rendered, 35,989 ticks simulated (59.90 per second - the
+  one deficit is the clamped stall below, by design). Frame times:
+  median 16.58 ms, p95 17.41 ms, p99 17.58 ms, max 1,216.89 ms (the
+  injected stall itself). Twelve games across six distinct round seeds,
+  four pause and resume cycles, five sound toggles, 17 game-over
+  records, 52 checkpoint screenshots, clean shutdown. Both injected
+  stalls landed in active rounds: 1,216 ms measured, clamped to 250 ms
+  with catch-up skipped, and 137 ms logged as an unusual stall and
+  caught up inside the budget. CPU 41% of one core, peak resident
+  126,460 kB; the sampler shows the steady state flat (middle third
+  123,664 kB, last third 125,544 kB, 19 threads - Mesa's llvmpipe pool
+  under Xvfb).
+- Passed, pacing: 7,200-frame runs (120 s each, seed 31) per renderer
+  mode, with the logged renderer flags pinning which is which:
+
+  | Run | Renderer (as logged) | Vsync | Elapsed | Ticks/s | Median | p95 | p99 | Max | CPU | Peak RSS |
+  | --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+  | x11 opengl | opengl (accelerated, vsync) | on | 120.0 s | 60.00 | 16.52 ms | 17.50 ms | 17.63 ms | 17.88 ms | 16% | 120,420 kB |
+  | x11 opengl | opengl (accelerated) | off | 120.0 s | 60.00 | 16.55 ms | 17.50 ms | 17.64 ms | 17.79 ms | 16% | 120,748 kB |
+  | x11 software | software (not accelerated, vsync flag SDL only pretends to honor) | on | 120.0 s | 60.00 | 16.83 ms | 17.19 ms | 17.50 ms | 17.78 ms | 23% | 125,128 kB |
+  | dummy | software (same pretense) | on | 120.0 s | 60.00 | 16.51 ms | 17.52 ms | 17.63 ms | 17.77 ms | 1% | 12,160 kB |
+
+  The vsync-off row is the same opengl renderer with `SDL_RENDER_VSYNC=0`
+  stripping the flag, so the comparison isolates the flag. Under Xvfb
+  presentation never blocks - the on and off rows are statistically the
+  same - and in every mode the elapsed-time fallback limiter alone holds
+  the 60 Hz simulation (7,199 due ticks for 7,200 frames each time).
+  T014's finding carries over with percentiles now.
+- Passed, failures (17 checks): missing audio (every cue reported
+  without a device, clean exit), forced renderer failure (exit 1 with
+  the driver list and an actionable error), the software renderer, focus
+  loss through `t024-x11.sh` (minimize and restore; held buttons
+  cleared), controller removal mid-play, the long stall (1,516 ms
+  measured, clamped to 250 ms, the session continues), an unwritable
+  save directory (chmod 500), missing, empty, partial, truncated,
+  garbage, doubled, and CRLF save files (each rejected as invalid or not
+  found), no save directory at all, and a plain startup with no
+  developer options.
+- Passed, san: the full ctest suite green under
+  `-fsanitize=address,undefined`, plus one scripted scene cycle through
+  the sanitized SDL application with `detect_leaks=1`, clean exit and
+  clean shutdown, no sanitizer report.
+- Passed, regress: `tests/harness/run.sh` and `tests/harness/t024.sh`
+  green again after this task's edits.
+- Passed: `ctest` 5 of 5 in Debug (`build/`) and Release (`build-rel`).
+
+### Harness defects the run itself exposed
+
+The pass failed twice before it passed, and both failures were harness
+defects worth recording:
+
+- The longplay RSS sampler captured the `timeout` wrapper's pid (a
+  `pgrep -f` pattern matched the wrapper command line), so the first
+  run's "flat 2 MB" recorded the wrapper, not the game. The cycles
+  sampler had the same flaw through `$!` (the `/usr/bin/time` pid).
+  Both now wait for a process literally named `stackfall` and stop when
+  `/proc/<pid>/comm` stops matching, so a recycled pid cannot extend a
+  sample into the next phase - a recycled sampler target once recorded a
+  pacing run inside longplay's `rss.tsv`.
+- A single-phase rerun with `T025_KEEP_DIR=1` inherited the earlier
+  pass's artifacts, and the checker judged a stale `rss.tsv` whose
+  sampler had never started. Every phase now starts from an empty
+  directory of its own (T034's rule, applied per phase).
+- The generator placed each game's unattended watch (about 2,289 ticks)
+  after the navigation that started the next round, so gravity ended
+  most rounds before their scripted input ran; the 1.2 s stall of game
+  3 landed on a game-over scene, and `play_segment`'s own hard drops
+  can stack the center columns into the spawn area even earlier. The
+  stalls now run at the top of each round on the fresh board, and the
+  checker asserts both after-stall checkpoints recorded an active
+  round.
+
+### Findings and open questions
+
+- Real blocking vsync is unavailable on this host: Xvfb has no vblank,
+  so "vsync on" means the renderer reports the flag while presentation
+  returns at once, and the elapsed-time limiter does the pacing in
+  every mode. The percentile table with the flag stripped covers the
+  disabled case on the same renderer. The device gate (T018) must
+  repeat the measurement on the RG503 panel; that check stays with
+  `looper:finding:t025-vsync-percentile-device-pacing`.
+- The game process under Xvfb and the opengl renderer settles at about
+  123 MB resident with 19 threads - Mesa's llvmpipe software GL, not
+  game state: the same binary under the dummy video driver and the
+  software renderer runs near 12 to 16 MB, and the ten-minute session
+  grows only 1.9 MB between its middle and last thirds. The device
+  numbers will differ again.
+- Two instances on one save directory need per-instance
+  `STACKFALL_LOG_FILE`; without it they would share one default log.txt
+  path. The launcher always sets it on the device (section 10.3).
+- Killed saves leave `.highscore.dat.tmp.<pid>` files behind. They are
+  harmless (the loader ignores them) but they accumulate; a future
+  launcher cleanup could remove them at startup.
+- Screenshot review stayed pixel-level in this session: the image
+  upload service was down (see T024's notes), so the check verified
+  960x544 dimensions, per-screen color structure, and board-region
+  content by PIL census; T024's visual review already covered these
+  screens with open inspection.

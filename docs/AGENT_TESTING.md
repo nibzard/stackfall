@@ -102,6 +102,8 @@ evidence.
 --fixture-dir DIR     resolve `fixture` script commands here
 --virtual-controller  attach the developer virtual gamepad
 --tick-per-frame      one simulation tick per frame, pacing off
+--frame-times FILE    record one microsecond frame duration per frame of a
+                      real-time paced run (the T025 measurement)
 ```
 
 `--tick-per-frame` is what makes a scripted session exactly comparable: each
@@ -199,6 +201,35 @@ Run this task after persistence, audio, and platform error handling exist.
 
 Document host and renderer details. A virtual display can check pacing and
 integration, but it cannot certify RG503 frame rates or battery use.
+
+### Running the T025 checks
+
+One command runs the whole stability pass, phase by phase, into
+`build/agent-checks/<run-id>/`:
+
+```bash
+tests/harness/t025.sh
+```
+
+Each phase leaves a `<phase>.status` file plus its evidence: `fuzz`
+(bounded mutation fuzz of the save and script parsers through the
+sanitizer build), `hardkill` (SIGKILL during save writes through a delay
+shim, every resulting file classified and reloaded, then two instances on
+one save directory), `cycles` (52 restart and menu cycles at real-time
+pacing with movement probes and resource sampling), `restarts` (50 process
+restarts carrying one record forward), `longplay` (the ten-minute Release
+session under Xvfb with frame times, CPU, and memory), `pacing`
+(frame-time percentiles for opengl with the vsync flag, opengl with
+`SDL_RENDER_VSYNC=0` stripping it, the software renderer, and the dummy
+fallback; the logged renderer flags pin which is which),
+`failures` (the forced-failure matrix), `san` (the suites under
+AddressSanitizer and UndefinedBehaviorSanitizer), and `regress` (the T023
+and T024 drivers again). Pick phases with `T025_PHASES`, rerun one phase
+into an existing evidence set with `T025_KEEP_DIR=1`, and read the script's
+header for every knob. The session scripts come from
+`tests/harness/t025_gen.py`, the frame-time statistics from
+`tests/harness/frame_stats.py`, and the fuzz pass from
+`tests/harness/t025_fuzz.py`.
 
 ## Final handoff
 

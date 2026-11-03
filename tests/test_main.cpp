@@ -37,6 +37,9 @@ void run_storage_tests();
 // unattended harness (task T023, docs/AGENT_TESTING.md): core code with no
 // SDL, so the strict parse rules and the record format stay pinned here.
 void run_fixture_tests();
+// The bounded script-count rule shared by the two mirrored script parsers
+// (task T025's fuzz repair): core code with no SDL.
+void run_script_tests();
 
 namespace {
 
@@ -118,6 +121,7 @@ int main(int argc, char** argv) {
   run_screens_tests();
   run_storage_tests();
   run_fixture_tests();
+  run_script_tests();
 
   stackfall_test::print_summary();
   return stackfall_test::g_failures == 0 ? EXIT_SUCCESS : EXIT_FAILURE;
