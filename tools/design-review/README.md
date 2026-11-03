@@ -54,6 +54,11 @@ DR_PRIOR_FINDINGS=build/agent-checks/design-review/<run-id>/packet/review-initia
 tools/design-review/review.sh
 ```
 
+The packets are untracked build output, so `prior-findings.json` in this
+directory keeps a durable copy of the required findings and their
+acceptance criteria. Pass it through `DR_PRIOR_FINDINGS` when the
+initial packet is not on disk.
+
 `DR_SKIP_CODEX=1` revalidates existing call outputs without calling the
 reviewer. `DR_PACKET_DIR` selects a packet directory explicitly.
 

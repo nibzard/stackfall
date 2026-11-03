@@ -1,0 +1,61 @@
+{
+  "round": "initial",
+  "packet": "build/agent-checks/design-review/initial/packet",
+  "note": "The three required findings of the initial review round (T027), held here as a durable copy because the packet itself is untracked build output. The verification round (T028) passes this file to build_prompt.py through DR_PRIOR_FINDINGS so the reviewer judges fresh captures against the original acceptance criteria. Source: notes/design-review.md 'Findings and dispositions' and review-initial/merged.json.",
+  "required": [
+    {
+      "key": "control-hint-glyph-scale",
+      "title": "Control and menu hint text is unreadably small",
+      "priority": 2,
+      "reviewer_keys": [
+        "small-control-and-menu-hints",
+        "control-hints-too-small"
+      ],
+      "image_ids": ["gameplay-early", "letterbox-640x480", "title"],
+      "region": "left panel control hints (x=52..324) and the title, pause, and game-over footer hint lines",
+      "observed_problem": "The gameplay control hints and the menu footer hints draw at glyph scale 1, so their text is 7 logical px tall while panel labels run at 14 px and menu items at 21 px. In the letterboxed 640x480 frame the same rows measure 4 to 5 device pixels.",
+      "player_effect": "The player cannot read the control hints while learning the game, especially in a smaller desktop window.",
+      "acceptance_criteria": "Hint glyphs at least 14 logical px high (scale 2), reflowed inside the approved left panel x=52..324, with no hint text past the panel edge or the board frame. tools/design-review/check_fixes.py passes control-hint-glyph-scale on a fresh packet.",
+      "affected_files": ["src/renderer_sdl.cpp", "include/stackfall/renderer_sdl.hpp"],
+      "fix_task": "T030"
+    },
+    {
+      "key": "ghost-outline-contrast",
+      "title": "Ghost outline contrast against the well is below 3:1",
+      "priority": 3,
+      "reviewer_keys": ["ghost-outline-low-contrast"],
+      "image_ids": ["gameplay-early", "tall-stack"],
+      "region": "ghost outline of the active piece over the board well",
+      "observed_problem": "The ghost is a one-pixel outline in a color blended 60 percent toward the well, so the landing preview is the weakest shape on the board: outline (35, 91, 53) against the well (10, 12, 19) measures a 2.44:1 luminance contrast while the active piece fill reaches about 9.8:1.",
+      "player_effect": "The landing position is hard to read at a glance, which slows aiming.",
+      "acceptance_criteria": "At least 3:1 luminance contrast against the well with the outline still hollow and distinct from settled and active cells, inside the approved 'same piece outline or dim fill'. tools/design-review/check_fixes.py passes ghost-outline-contrast on a fresh packet.",
+      "affected_files": ["src/renderer_sdl.cpp", "include/stackfall/renderer_sdl.hpp"],
+      "fix_task": "T031"
+    },
+    {
+      "key": "letterbox-scene-centered",
+      "title": "Letterboxed scene anchors at the top of a resized window",
+      "priority": 3,
+      "reviewer_keys": ["letterbox-scene-not-centered"],
+      "image_ids": ["letterbox-640x480"],
+      "region": "the whole 640x480 letterboxed window",
+      "observed_problem": "In the 640x480 window the scene scales by two thirds but anchors at the top of the window: 0 px of bar above and 118 px below. A 720x480 probe showed 0 px above and 72 px below. SDL_RenderSetLogicalSize runs once at startup, so a later resize never recenters the viewport.",
+      "player_effect": "A resized desktop window shows the game stuck to the top edge with dead space below, instead of a centered picture.",
+      "acceptance_criteria": "Both letterbox bars exist and differ by at most 2 px; native 960x544 output is unchanged. tools/design-review/check_fixes.py passes letterbox-scene-centered on a fresh packet.",
+      "affected_files": ["src/main.cpp", "src/renderer_sdl.cpp", "include/stackfall/renderer_sdl.hpp"],
+      "fix_task": "T032"
+    }
+  ],
+  "not_required": [
+    {
+      "key": "hold-lock-status-implicit",
+      "disposition": "optional cosmetic, deferred",
+      "reason": "The dim signal works (stashed piece at 0.77 of preview brightness, verified in T024) and a LOCKED label would add words the panel does not need. Deferred with the reviewer's own optional_cosmetic classification; it does not gate T028."
+    },
+    {
+      "key": "t024-i-spawn-hidden-delay-design-question",
+      "disposition": "product requirement question, deferred to T029",
+      "reason": "Owned by T029 with the operator; the review prompt already tells the reviewer not to report it."
+    }
+  ]
+}
