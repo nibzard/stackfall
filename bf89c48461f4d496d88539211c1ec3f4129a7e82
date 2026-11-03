@@ -1,0 +1,1 @@
+Recover T038 after two local AXINBOX receipts blocked publication. Preserve both receipts in /home/agent/backups/stackfall-axinbox-20261103T1900Z. Debug and Release each pass all five tests after rebuilding. Fixed-seed outputs match. The dummy SDL run renders 360 frames, simulates 359 ticks, and exits cleanly.
