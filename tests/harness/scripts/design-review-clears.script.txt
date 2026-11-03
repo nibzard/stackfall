@@ -1,0 +1,36 @@
+# Design-review capture session: the line-clear sequence (seed 31337,
+# keyboard, --tick-per-frame). The labeled fixture four-line-ready is the
+# only way to reach a four-line clear deterministically, so this session
+# is a fixture session and the packet manifest says so. The fixture loads
+# a board whose rows y=16..19 each miss only column 5 and forces an I
+# piece into play.
+#
+# Reviewed frames:
+#   dr-clear-before  the vertical I in column 5 above the four gapped
+#                    rows, its ghost already filling the gap
+#   dr-clear-after   the frame after the hard drop: four rows gone,
+#                    score 836 (800 x level 1 plus 18 drop cells),
+#                    lines 4, the next piece spawning
+check dr-clears-title
+wait 1
+key enter down
+wait 2
+key enter up
+wait 2
+check dr-clears-playing
+wait 1
+fixture four-line-ready
+wait 2
+key x down
+wait 2
+key x up
+wait 2
+check dr-clear-before
+wait 1
+key space down
+wait 2
+key space up
+wait 4
+check dr-clear-after
+wait 2
+quit

@@ -1,0 +1,588 @@
+# T024 virtual-controller session, seed 20261104. Normal game from an
+# empty board; no fixture touches it. The first bag is O I S L Z T J,
+# so the pad drives every shape through spawn frames, taps, both
+# rotations, the wall and stack kicks, ghost, soft and hard drop, and
+# the hold swap with its once-per-lock restriction. The session also
+# pauses mid-movement, restarts with a direction held, and detaches the
+# controller while Left is held; the keyboard then finishes the round.
+check title-first
+wait 1
+pad down down
+wait 2
+pad down up
+wait 2
+check title-at-controls
+wait 1
+pad a down
+wait 2
+pad a up
+wait 2
+check controls-open
+wait 1
+pad b down
+wait 2
+pad b up
+wait 2
+check controls-back
+wait 1
+pad up down
+wait 2
+pad up up
+wait 2
+check title-at-start
+wait 1
+pad a down
+check round-first-frame
+wait 1
+wait 2
+pad a up
+wait 2
+pad a down
+wait 2
+pad a up
+wait 2
+check o-rotated-cw
+wait 1
+pad b down
+wait 2
+pad b up
+wait 2
+check o-rotated-back
+wait 1
+pad right down
+wait 2
+pad right up
+wait 2
+check o-moved-right
+wait 1
+pad x down
+check i-spawn-frame
+wait 1
+wait 2
+pad x up
+wait 2
+pad a down
+wait 2
+pad a up
+wait 2
+check i-rotated-cw
+wait 1
+pad right down
+wait 2
+pad right up
+wait 2
+pad right down
+wait 2
+pad right up
+wait 2
+pad right down
+wait 2
+pad right up
+wait 2
+pad right down
+wait 2
+pad right up
+wait 2
+check i-at-right-wall
+wait 1
+pad a down
+wait 2
+pad a up
+wait 2
+check i-wall-kick
+wait 1
+pad x down
+check s-spawn-frame
+wait 1
+wait 2
+pad x up
+wait 2
+pad a down
+wait 2
+pad a up
+wait 2
+check s-rotated-cw
+wait 1
+pad b down
+wait 2
+pad b up
+wait 2
+check s-rotated-ccw-back
+wait 1
+pad b down
+wait 2
+pad b up
+wait 2
+check s-rotated-l-state
+wait 1
+pad a down
+wait 2
+pad a up
+wait 2
+check s-back-to-spawn-state
+wait 1
+pad left down
+wait 2
+pad left up
+wait 2
+pad left down
+wait 2
+pad left up
+wait 2
+check s-moved-left
+wait 1
+pad down down
+wait 6
+pad down up
+wait 2
+check s-soft-dropped
+wait 1
+pad x down
+check l-spawn-frame
+wait 1
+wait 2
+pad x up
+wait 2
+pad right down
+wait 2
+pad right up
+wait 2
+pad right down
+wait 2
+pad right up
+wait 2
+pad right down
+wait 2
+pad right up
+wait 2
+pad right down
+wait 2
+pad right up
+wait 2
+check l-at-right-wall
+wait 1
+pad down down
+wait 20
+pad down up
+wait 1
+check l-grounded
+wait 1
+pad a down
+wait 2
+pad a up
+wait 2
+check l-stack-kick
+wait 1
+pad x down
+check z-spawn-frame
+wait 1
+wait 2
+pad x up
+wait 2
+pad a down
+wait 2
+pad a up
+wait 2
+check z-rotated-at-wall
+wait 1
+pad b down
+wait 2
+pad b up
+wait 2
+check z-back-to-spawn-state
+wait 1
+pad left down
+wait 2
+pad left up
+wait 2
+pad left down
+wait 2
+pad left up
+wait 2
+check z-centered
+wait 1
+pad x down
+check t-spawn-frame
+wait 1
+wait 2
+pad x up
+wait 2
+pad y down
+check hold-swap-first-frame
+wait 1
+wait 2
+pad y up
+wait 2
+check hold-used
+wait 1
+pad y down
+wait 2
+pad y up
+wait 2
+check hold-locked-noop
+wait 1
+pad x down
+check after-hold-piece-lock
+wait 1
+wait 2
+pad x up
+wait 2
+check hold-free-after-lock
+wait 1
+pad y down
+check hold-return-first-frame
+wait 1
+wait 2
+pad y up
+wait 2
+pad x down
+check after-return-lock
+wait 1
+wait 2
+pad x up
+wait 2
+pad right down
+wait 12
+check das-moving
+wait 1
+pad start down
+wait 2
+pad start up
+wait 2
+check paused-while-moving
+wait 1
+wait 10
+check paused-frozen
+wait 1
+pad start down
+wait 2
+pad start up
+wait 2
+check resumed
+wait 1
+wait 4
+check das-continued
+wait 1
+pad right up
+wait 4
+check movement-stopped
+wait 1
+pad left down
+wait 12
+check das-moving-again
+wait 1
+pad start down
+wait 2
+pad start up
+wait 2
+check paused-for-restart
+wait 1
+pad down down
+wait 2
+pad down up
+wait 2
+check paused-at-restart
+wait 1
+pad a down
+check restart-first-frame
+wait 1
+wait 2
+pad a up
+wait 2
+check restart-held-moves
+wait 1
+pad left up
+wait 12
+check restart-release-stops
+wait 1
+pad left down
+wait 12
+check pad-held-left
+wait 1
+detach
+wait 3
+check after-detach
+wait 1
+wait 10
+check after-detach-still
+wait 1
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+wait 5
+check gameover-first
+wait 1
+key enter down
+wait 2
+key enter up
+wait 2
+check play-again
+wait 1
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+wait 5
+check gameover-second
+wait 1
+key down down
+wait 2
+key down up
+wait 2
+check gameover-at-title
+wait 1
+key enter down
+wait 2
+key enter up
+wait 2
+check title-return
+wait 1
+key down down
+wait 2
+key down up
+wait 2
+key down down
+wait 2
+key down up
+wait 2
+check title-at-quit
+wait 1
+wait 1
+check quit-confirmed
+key enter down
+wait 2
+key enter up
+wait 2

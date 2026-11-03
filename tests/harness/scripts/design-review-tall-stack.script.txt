@@ -1,0 +1,22 @@
+# Design-review capture session: a tall stack in play (seed 31337,
+# keyboard, --tick-per-frame). The labeled fixture tall-stack-ready holds
+# an uneven skyline between rows 6 and 10 with a forced T piece, which no
+# scripted normal game reaches quickly, so this is a fixture session and
+# the packet manifest says so.
+#
+# Reviewed frame:
+#   dr-tall-stack  the tall stack with the T in flight above it and its
+#                  ghost outline resting on the stack top
+check dr-tall-title
+wait 1
+key enter down
+wait 2
+key enter up
+wait 2
+check dr-tall-playing
+wait 1
+fixture tall-stack-ready
+wait 2
+check dr-tall-stack
+wait 2
+quit

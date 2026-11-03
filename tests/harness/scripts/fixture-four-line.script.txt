@@ -1,0 +1,73 @@
+# Fixture session: the four-line clear (seed 20261103).
+# The fixture four-line-ready replaces the settled board mid-round; the
+# vertical I that completes column 5 is forced by the fixture's active
+# field, so the clear itself is deterministic. The SPEC arithmetic is
+# 800 x level 1 for the clear plus 2 points per hard-drop cell.
+check title-first
+wait 1
+key enter down
+wait 2
+key enter up
+wait 2
+check playing-start
+wait 1
+fixture four-line-ready
+wait 2
+check fixture-loaded
+wait 1
+key x down
+wait 2
+key x up
+wait 2
+check rotated
+wait 1
+check before-drop
+wait 1
+key space down
+wait 2
+key space up
+wait 2
+wait 4
+check four-cleared
+wait 2
+# the next piece falls on the emptied board; nothing of the fixture stays
+wait 30
+check after-clear-fall
+wait 2
+key esc down
+wait 2
+key esc up
+wait 2
+check paused
+wait 2
+key down down
+wait 2
+key down up
+wait 2
+key down down
+wait 2
+key down up
+wait 2
+check paused-at-quit-title
+wait 2
+key enter down
+wait 2
+key enter up
+wait 2
+check back-at-title
+wait 2
+key down down
+wait 2
+key down up
+wait 2
+key down down
+wait 2
+key down up
+wait 2
+check title-at-quit
+wait 1
+check quit-confirmed
+key enter down
+wait 2
+key enter up
+wait 2

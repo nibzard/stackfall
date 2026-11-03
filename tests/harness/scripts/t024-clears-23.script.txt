@@ -1,0 +1,90 @@
+# T024 fixture session: the double and triple clears of the section 4.6
+# table (seed 31337; the fixtures force the piece, so the seed only picks
+# the pieces around the drops). Two labeled fixtures replace the settled
+# board mid-round; the vertical I that completes column 5 is forced by each
+# fixture's active field, so both clear counts are deterministic. The SPEC
+# arithmetic is 300 x level and 500 x level for the clears plus 2 points
+# per hard-drop cell.
+check title-first
+wait 1
+key enter down
+wait 2
+key enter up
+wait 2
+check playing-start
+wait 1
+fixture double-line-ready
+wait 2
+check double-loaded
+wait 1
+key x down
+wait 2
+key x up
+wait 2
+check double-rotated
+wait 1
+check double-before-drop
+wait 1
+key space down
+wait 2
+key space up
+wait 2
+wait 4
+check double-cleared
+wait 2
+fixture triple-line-ready
+wait 2
+check triple-loaded
+wait 1
+key x down
+wait 2
+key x up
+wait 2
+check triple-rotated
+wait 1
+check triple-before-drop
+wait 1
+key space down
+wait 2
+key space up
+wait 2
+wait 4
+check triple-cleared
+wait 2
+key esc down
+wait 2
+key esc up
+wait 2
+check paused
+wait 2
+key down down
+wait 2
+key down up
+wait 2
+key down down
+wait 2
+key down up
+wait 2
+check paused-at-quit-title
+wait 2
+key enter down
+wait 2
+key enter up
+wait 2
+check back-at-title
+wait 2
+key down down
+wait 2
+key down up
+wait 2
+key down down
+wait 2
+key down up
+wait 2
+check title-at-quit
+wait 1
+check quit-confirmed
+key enter down
+wait 2
+key enter up
+wait 2

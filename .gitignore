@@ -1,0 +1,15 @@
+# Generated build output. Covers every CMake build directory, including
+# build/ (Debug) and build-rel/ (Release performance runs).
+build*/
+
+# Runtime session log of a game started inside the repository
+log.txt
+
+# Python bytecode from the harness checkers that import check_harness
+__pycache__/
+
+# Editor and OS files
+.vscode/
+.idea/
+*.swp
+.DS_Store

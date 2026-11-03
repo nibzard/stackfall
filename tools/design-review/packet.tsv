@@ -1,0 +1,33 @@
+# Design-review packet definition (docs/DESIGN_REVIEW.md, T027).
+# Pipe-separated rows; blank lines and #-comments are ignored.
+#
+# session|name|seed|video|window|script|fixtures|label
+#   One capture session of the real application. `script` is relative to
+#   the repository root. `fixtures` lists the labeled board fixtures the
+#   session loads, or - for a normal game from an empty board.
+#
+# image|session|checkpoint|id|scene|covers|expected
+#   One reviewed image. `checkpoint` is the script `check` name whose BMP
+#   the packet converts to PNG under `images/<id>.png`. `scene` is the
+#   observation scene the record must show. `covers` names the required
+#   review coverage the frame carries; `expected` states what the frame
+#   must show, pinned from docs/SPEC.md.
+#
+# The image count stays within the round bound of twelve images, and the
+# review driver batches them six per call.
+session|scenes|31337|dummy|960x544|tests/harness/scripts/design-review-scenes.script.txt|-|normal game from an empty board; keyboard input; one tick per frame
+session|clears|31337|dummy|960x544|tests/harness/scripts/design-review-clears.script.txt|four-line-ready|labeled fixture session; the four-line clear no blind script reaches
+session|tall-stack|31337|dummy|960x544|tests/harness/scripts/design-review-tall-stack.script.txt|tall-stack-ready|labeled fixture session; a tall uneven stack with a forced T piece
+session|letterbox|31337|x11|640x480|tests/harness/scripts/design-review-letterbox.script.txt|-|real-time session under Xvfb and openbox; the driver resizes the window to 640x480
+image|scenes|dr-title|title|title|title menu|STACKFALL logo, START GAME selected, CONTROLS and QUIT items, the high-score line, and the hint line
+image|scenes|dr-controls|controls|controls|controls screen|the two mapping columns (gamepad, keyboard) with one action per row, the heading, and the back hint
+image|scenes|dr-gameplay-early|gameplay-early|playing|early gameplay, ghost, hold available, five previews|the S piece fully visible near the top, its ghost outline at the floor, an empty HOLD box, five NEXT pieces in queue order Z O L I J, score, lines, and level at zero, and the control hints on the left
+image|scenes|dr-hold-locked|hold-locked|playing|hold unavailable|the HOLD box shows the stashed Z at reduced brightness, the O piece in play, and L I J T O in NEXT
+image|scenes|dr-pause|pause|paused|pause overlay|a dimmed board behind a centered PAUSED panel, RESUME selected with RESTART and QUIT TO TITLE below, panels still readable
+image|scenes|dr-gameover|gameover|gameover|game over with a new record|the GAME OVER panel with the final score, lines, and level, the new-record mark, PLAY AGAIN selected, and the topped-out board dimmed behind
+image|scenes|dr-restart-spawn|restart-spawn|playing|restart; spawn sequence frame 1|the frame under the PLAY AGAIN press: an empty board, the S at its spawn cell with only its lower row on screen, the ghost at the floor, and the saved high score on the panel
+image|scenes|dr-spawn-visible|spawn-visible|playing|spawn sequence frame 2|the same restarted round 52 ticks later: the S fully visible two rows down, the ghost unchanged at the floor
+image|clears|dr-clear-before|clear-before|playing|line-clear sequence frame 1|four settled rows each missing column 5, the vertical I in column 5 above them, and its ghost already filling the gap
+image|clears|dr-clear-after|clear-after|playing|line-clear sequence frame 2|the four rows gone and the band empty, score 836, lines 4, the next piece spawning
+image|tall-stack|dr-tall-stack|tall-stack|playing|tall stack|the uneven stack filling roughly rows 6..19 with one hole per bottom row, the T piece in flight above it, and its ghost outline resting on the stack top
+image|letterbox|dr-letterboxed-640x480|letterbox-640x480|playing|smaller letterboxed window|the whole 960x544 scene scaled by two thirds to 640x363, centered in the 640x480 window so the letterbox bars split evenly above and below, with the board, both panels, and the text still readable

@@ -1,0 +1,714 @@
+# Full scene cycle on the developer virtual controller, seed 20261103:
+# title, controls, play with pad buttons, hold, pause, resume, restart,
+# a mid-game pad detach (controller removal) with a direction held, then
+# the keyboard finishes the round: proof the fallback stays playable.
+# Normal game from an empty board; no fixtures.
+check title-first
+wait 1
+pad down down
+wait 2
+pad down up
+wait 2
+check title-at-controls
+wait 1
+pad a down
+wait 2
+pad a up
+wait 2
+check controls-screen
+wait 1
+pad b down
+wait 2
+pad b up
+wait 2
+check title-back
+wait 1
+pad up down
+wait 2
+pad up up
+wait 2
+check title-at-start
+wait 1
+pad a down
+wait 2
+pad a up
+wait 2
+check playing-start
+wait 1
+pad left down
+wait 2
+pad left up
+wait 2
+check moved-left
+wait 1
+pad a down
+wait 2
+pad a up
+wait 2
+check rotated-cw
+wait 1
+pad b down
+wait 2
+pad b up
+wait 2
+check rotated-ccw
+wait 1
+pad y down
+wait 2
+pad y up
+wait 2
+check after-hold
+wait 1
+pad y down
+wait 2
+pad y up
+wait 2
+check hold-locked
+wait 1
+pad x down
+wait 2
+pad x up
+wait 2
+wait 2
+check first-lock
+wait 2
+pad start down
+wait 2
+pad start up
+wait 2
+check paused
+wait 10
+check paused-still
+wait 2
+pad start down
+wait 2
+pad start up
+wait 2
+check resumed
+wait 2
+pad start down
+wait 2
+pad start up
+wait 2
+check paused-again
+wait 2
+pad down down
+wait 2
+pad down up
+wait 2
+check paused-at-restart
+wait 2
+pad a down
+wait 2
+pad a up
+wait 2
+check restarted
+wait 2
+# controller removal while Left is held: the pad's source disappears, so
+# the held level cannot stick and the piece stops at the wall
+pad left down
+wait 3
+check pad-held-left
+wait 1
+detach
+wait 3
+check after-detach
+wait 2
+# the keyboard finishes the round
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+wait 5
+check gameover-first
+wait 2
+key enter down
+wait 2
+key enter up
+wait 2
+check play-again
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+wait 5
+check gameover-second
+wait 2
+key down down
+wait 2
+key down up
+wait 2
+key enter down
+wait 2
+key enter up
+wait 2
+check title-return
+wait 2
+key down down
+wait 2
+key down up
+wait 2
+key down down
+wait 2
+key down up
+wait 2
+check title-at-quit
+wait 1
+check quit-confirmed
+key enter down
+wait 2
+key enter up
+wait 2

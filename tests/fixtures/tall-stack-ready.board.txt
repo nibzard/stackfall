@@ -1,0 +1,34 @@
+# stackfall board fixture v1
+# A tall, uneven stack with scattered single holes, the board state a
+# struggling player sees late in a round: heights between rows 6 and 10,
+# no complete row, and free spawn cells. The forced T piece spawns above
+# the stack, so the review frame shows the piece in flight, its ghost on
+# the stack top, and the tall stack itself in one image.
+name: tall-stack-ready
+description: uneven skyline between rows 6 and 10 with one hole per bottom row; spawn cells free
+provenance: hand-built for the T027 design review to capture a tall stack deterministically; independent of any piece sequence
+# 22 rows from the hidden row y=-2 down to y=19; '.' is empty and a
+# letter I,O,T,S,Z,J,L settles that cell in its piece color.
+..........
+..........
+..........
+..........
+..........
+..........
+..........
+..........
+.......L..
+.O.....IO.
+OTS.J.IOT.
+TSZJL.OTSZ
+.ZJLIOTSZJ
+ZJLI.TSZJL
+JLIOTSZ.LI
+LI.TSZJLIO
+IOTSZJLIO.
+OTSZJ.IOTS
+T.ZJLIOTSZ
+SZJLIOTS.J
+ZJL.OTSZJL
+JLIOTS.JLI
+active: T

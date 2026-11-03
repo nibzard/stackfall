@@ -1,0 +1,31 @@
+# Fixture session: block-out game over (seed 20261103).
+# The fixture blockout-ready fills both hidden rows, so the forced
+# respawn cannot occupy its spawn cells: the block-out rule of
+# specification section 4.3 fires the moment the fixture lands.
+check title-first
+wait 1
+key enter down
+wait 2
+key enter up
+wait 2
+check playing-start
+wait 1
+fixture blockout-ready
+wait 2
+check blockout-applied
+wait 10
+check blockout-still
+wait 2
+key down down
+wait 2
+key down up
+wait 2
+check gameover-at-title
+wait 2
+key enter down
+wait 2
+key enter up
+wait 2
+check back-at-title
+wait 2
+quit

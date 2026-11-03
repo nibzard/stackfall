@@ -1,0 +1,32 @@
+# Fixture session: lock-out game over (seed 20261103).
+# The fixture lockout-ready fills columns 3..6 to the top, so the forced
+# I is grounded in the hidden rows and its lock commits hidden cells:
+# the lock-out rule of specification section 4.5.
+check title-first
+wait 1
+key enter down
+wait 2
+key enter up
+wait 2
+check playing-start
+wait 1
+fixture lockout-ready
+wait 2
+check fixture-loaded
+wait 1
+check before-drop
+wait 1
+key space down
+wait 2
+key space up
+wait 2
+wait 4
+check lockout-over
+wait 2
+key enter down
+wait 2
+key enter up
+wait 2
+check play-again
+wait 2
+quit

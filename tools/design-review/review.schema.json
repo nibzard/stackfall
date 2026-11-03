@@ -1,0 +1,107 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "inspected_images",
+    "positive_observations",
+    "findings",
+    "limitations"
+  ],
+  "properties": {
+    "inspected_images": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Image id of every attached image the reviewer opened and inspected."
+    },
+    "positive_observations": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "What already works, each tied to the image id it was seen on."
+    },
+    "findings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "key",
+          "title",
+          "priority",
+          "image_ids",
+          "region",
+          "observed_problem",
+          "player_effect",
+          "confidence",
+          "evidence_type",
+          "proposed_improvement",
+          "scope",
+          "reproduction_steps",
+          "acceptance_criteria",
+          "affected_files"
+        ],
+        "properties": {
+          "key": {
+            "type": "string",
+            "description": "Stable kebab-case key for this root cause, for example hold-locked-state-unclear."
+          },
+          "title": { "type": "string", "description": "One concise sentence." },
+          "priority": {
+            "type": "integer",
+            "description": "1 blocks play or clarity, 2 significant confusion, 3 polish, 4 minor, 5 nit."
+          },
+          "image_ids": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "Exact packet image ids that show the problem."
+          },
+          "region": {
+            "type": "string",
+            "description": "Affected screen region in canvas coordinates or panel name."
+          },
+          "observed_problem": {
+            "type": "string",
+            "description": "What the image shows, separate from why it matters."
+          },
+          "player_effect": {
+            "type": "string",
+            "description": "The effect on the player."
+          },
+          "confidence": {
+            "type": "string",
+            "description": "high, medium, or low."
+          },
+          "evidence_type": {
+            "type": "string",
+            "description": "direct for what the pixels show, inferred for judgment built on it."
+          },
+          "proposed_improvement": {
+            "type": "string",
+            "description": "A concrete change inside the approved scope."
+          },
+          "scope": {
+            "type": "string",
+            "description": "approved_fix, optional_cosmetic, or product_requirement_change."
+          },
+          "reproduction_steps": {
+            "type": "string",
+            "description": "How to reach the frame again, from the manifest session and steps."
+          },
+          "acceptance_criteria": {
+            "type": "string",
+            "description": "What a fixed frame shows, observably."
+          },
+          "affected_files": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "Repository paths the change would touch, or an empty list."
+          }
+        }
+      }
+    },
+    "limitations": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "What this review cannot establish from static images."
+    }
+  }
+}

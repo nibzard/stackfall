@@ -1,0 +1,302 @@
+#pragma once
+
+// The deterministic game state machine of the STACKFALL rules core
+// (specification sections 4.5, 4.7, and 5). A Game owns the board, the active
+// piece, the hold slot, the piece source, and every gameplay counter, and
+// advances all of them inside tick() on the calling thread. Nothing here
+// includes SDL or reads a clock, so one seed plus one tick-indexed
+// InputFrame stream fixes the entire round (specification section 7).
+//
+// One tick applies the input processing order of section 5: the pause command
+// first; then hold, which ends every other gameplay action of that tick; then
+// rotation; then a horizontal move or a DAS/ARR repeat; then hard drop, which
+// ends the piece actions of the tick; otherwise soft drop or natural gravity;
+// and finally the ground and lock bookkeeping.
+//
+// The same class owns the section 4.7 screens: openTitle() starts a session,
+// tick(TickInput) routes each tick to the screen in charge, and the title,
+// pause, and game-over menus move their cursors through the menu edges. The
+// screens keep the round itself untouched, so the pinned replay hashes of the
+// regression suite (which drive tick(InputFrame) from start()) hold.
+//
+// The piece source is the only randomness in the round and it runs on the
+// gameplay PCG32 stream (kGameplayStream), so cosmetic or audio randomness in
+// the platform layer can never shift a piece sequence (specification section 7).
+
+#include <array>
+#include <cstdint>
+
+#include "stackfall/board.hpp"
+#include "stackfall/fixture.hpp"
+#include "stackfall/input.hpp"
+#include "stackfall/pieces.hpp"
+#include "stackfall/randomizer.hpp"
+#include "stackfall/scoring.hpp"
+#include "stackfall/types.hpp"
+
+namespace stackfall {
+
+// Tests reach the private counters of a Game through this peer, which the test
+// suite defines. Production code has no route to it, so the public interface
+// stays read-only for the renderer (specification sections 5 and 7).
+struct GameTestPeer;
+
+// The screens of the state machine of section 4.7. A session opens at Title,
+// runs rounds through Playing and Paused, ends them at GameOver, and shows the
+// controller mappings at Controls. The numeric values are pinned by the
+// regression hash, which folds the scene, so Controls joins at the end instead
+// of its flow order.
+enum class Scene : std::uint8_t {
+  Boot = 0,  // constructed, not started yet
+  Title,     // Start Game / Controls / Quit over the saved high score
+  Playing,   // simulation runs
+  Paused,    // simulation frozen, no counter moves
+  GameOver,  // round ended by block-out or lock-out
+  Controls,  // the mappings screen, reached from and returning to Title
+};
+
+// Tick-flow constants of section 4.5, all counted in 60 Hz simulation ticks.
+inline constexpr int kDasTicks = 10;        // charge before horizontal repeats
+inline constexpr int kArrTicks = 2;         // ticks between repeated steps
+inline constexpr int kLockDelayTicks = 30;  // grounded ticks before a lock
+inline constexpr int kLockDelayResets = 15; // lock timer resets per piece
+
+// Menu sizes of the section 4.7 screens, so the screens and their tests name
+// one count instead of a bare literal.
+inline constexpr int kTitleItemCount = 3;  // Start Game, Controls, Quit
+inline constexpr int kPauseItemCount = 3;  // Resume, Restart, Quit to Title
+inline constexpr int kOverItemCount = 2;   // Play Again, Title
+
+class Game {
+ public:
+  // Builds an un-started game: Scene::Boot, an empty board, and no piece.
+  Game();
+
+  // Opens the title screen of section 4.7 with `seed` as the seed of the
+  // first round: no round exists, the title menu starts at Start Game, and
+  // the quit request clears. The platform layer calls this once per session
+  // instead of start(), so a player picks Start Game (or Quit) themselves.
+  void openTitle(std::uint64_t seed);
+
+  // Resets every field and starts a fresh round from `seed`: the board
+  // empties, the piece source restarts, the score, line, and level counters
+  // return to their opening values, and the first piece spawns. Starting over
+  // with the same seed reproduces the same round, so restart is the same call
+  // (specification sections 4.3 and 4.7).
+  void start(std::uint64_t seed);
+
+  // Advances the round by one 60 Hz tick. A tick outside Playing and Paused,
+  // and every tick while paused, changes nothing: pause freezes all counters
+  // exactly (specification section 4.5).
+  void tick(const InputFrame& input);
+
+  // Advances the session by one 60 Hz tick through both halves of the input:
+  // the screen in charge picks its half (stackfall/input.hpp). Title,
+  // Controls, and GameOver read the menu edges alone; Paused reads the menu
+  // edges plus the pause key; Playing hands its frame to tick(InputFrame).
+  // The same TickInput stream from the same openTitle seed walks the same
+  // screens and rounds on every build (specification section 7).
+  void tick(const TickInput& input);
+
+  // True after the player confirmed Quit on the title menu. The platform
+  // layer polls this and leaves through its ordinary EXIT path
+  // (specification section 4.7).
+  bool quitRequested() const;
+
+  // Developer fixture hook of docs/AGENT_TESTING.md, T023. Replaces the
+  // settled board of the running round with `fixture.board`, resets the
+  // per-piece counters, and respawns the active piece at its spawn state -
+  // `fixture.active` when the fixture names one, otherwise the piece already
+  // in play. A spawn the new board blocks ends the round through the ordinary
+  // block-out path, which is exactly what a top-out fixture asks for. Score,
+  // lines, level, hold, queue, and seed stay as they were, so the observation
+  // stream carries the fixture's provenance next to the round it interrupted.
+  //
+  // Returns false and changes nothing outside Scene::Playing or for an
+  // inconsistent board. No normal startup path calls this: only the
+  // `--input-script` fixture command of the unattended harness does, and
+  // every session that uses it labels the fixture in its evidence.
+  bool applyBoardFixture(const BoardFixture& fixture);
+
+  // -------------------------------------------------------------------------
+  // Read-only state for the renderer and the tests (specification section 5).
+  // -------------------------------------------------------------------------
+
+  const Board& board() const;
+  const Piece& activePiece() const;
+  bool hasActivePiece() const;
+
+  // The active piece moved to its landing row, for the ghost preview. Meaningful
+  // only while a piece is in play; the ghost equals the piece itself when it is
+  // grounded.
+  Piece ghostPiece() const;
+
+  const std::array<PieceId, kPreviewCount>& queue() const;
+
+  bool hasHoldPiece() const;
+  PieceId holdPieceId() const;
+
+  // True while the one hold of the current piece is spent; a lock re-enables
+  // hold (specification section 4.3).
+  bool holdLocked() const;
+
+  std::uint64_t score() const;
+  std::uint64_t lines() const;  // total cleared lines of the round
+  int level() const;
+  Scene scene() const;
+
+  // The highlighted item of each menu, 0-based: title Start Game / Controls /
+  // Quit, pause Resume / Restart / Quit to Title, game over Play Again /
+  // Title (specification section 4.7). Menu state only; a round never reads
+  // it and the state hash never folds it.
+  int titleSelection() const;
+  int pauseSelection() const;
+  int overSelection() const;
+
+  // The session high score shown on the title screen. The platform layer
+  // loads it at startup and saves it when a round improves it; until the
+  // persistence of milestone M3 it stays 0 within one process.
+  std::uint64_t highScore() const;
+  void setHighScore(std::uint64_t score);
+
+  // True while the ended round beat the session high score; set once, when
+  // the round enters GameOver (specification section 4.7).
+  bool newRecord() const;
+
+  // Simulation ticks the round ran while playing; pause adds none.
+  std::uint64_t tickCount() const;
+
+  // The seed this round started from.
+  std::uint64_t seed() const;
+
+ private:
+  friend struct GameTestPeer;
+
+  // -------------------------------------------------------------------------
+  // One stage of the tick order of section 5.
+  // -------------------------------------------------------------------------
+
+  // Swaps the active piece with the hold slot and spawns the returned piece in
+  // its spawn state; a blocked swap ends the round (block-out).
+  void handleHold();
+
+  // Rotates clockwise or counter-clockwise through the SRS candidates of
+  // pieces.hpp; a rejected rotation leaves the piece unchanged.
+  bool tryRotate(bool clockwise);
+
+  // Moves the active piece one column when every occupied cell stays valid.
+  bool tryMove(int dx);
+
+  // Reads the held direction, moves immediately on a fresh press, and repeats
+  // the move every kArrTicks once kDasTicks have passed (section 4.5).
+  void handleHorizontalShift(const InputFrame& input);
+
+  // Attempts one downward cell: by soft drop while down is held, otherwise by
+  // natural gravity when the level timer runs out.
+  bool tryFall();
+
+  // Moves the active piece to its landing row, scores the travel, and locks it
+  // in the same tick (specification section 4.5).
+  void handleHardDrop();
+
+  // Accrues grounded ticks and locks the piece when the lock delay expires.
+  void handleGroundAndLock();
+
+  // Commits the active piece, clears full rows, scores and re-levels, and
+  // spawns the next piece; hidden-row cells end the round first (lock-out).
+  void lockActivePiece();
+
+  // Puts `id` on the board in its spawn state with fresh per-piece counters;
+  // occupied spawn cells end the round (block-out).
+  void spawnPiece(PieceId id);
+
+  // Draws the next piece from the queue and spawns it.
+  void spawnNextPiece();
+
+  // Applies the lock-delay rule of section 4.5 after a successful move or
+  // rotation: an action that leaves the piece airborne clears the grounded
+  // streak, an action made while grounded resets the streak and spends one of
+  // the resets, and a failed action never reaches this code.
+  void applyLockDelayReset(bool wasGroundedBefore);
+
+  // True when the active piece cannot move one row down.
+  bool grounded() const;
+
+  // -------------------------------------------------------------------------
+  // The screens of section 4.7. Each helper consumes the menu edges of one
+  // screen and changes nothing but that screen's cursor and the scene.
+  // -------------------------------------------------------------------------
+
+  // TITLE: Start Game opens a round, Controls shows the mappings, Quit asks
+  // the platform layer to exit.
+  void tickTitle(const MenuFrame& menu);
+
+  // CONTROLS: confirm and back both return to the title.
+  void tickControls(const MenuFrame& menu);
+
+  // PAUSED: back resumes, the D-pad moves the cursor, A runs the highlighted
+  // item, and the pause key alone still resumes. Every gameplay counter stays
+  // frozen (section 4.5).
+  void tickPaused(const TickInput& input);
+
+  // GAME_OVER: Play Again opens a fresh round, Title returns to the title.
+  void tickGameOver(const MenuFrame& menu);
+
+  // Moves `cursor` by the menu edges, wrapping at both ends of `itemCount`
+  // items.
+  static void moveCursor(int& cursor, int itemCount, const MenuFrame& menu);
+
+  // Opens a fresh round from the session seed and advances that seed, so
+  // Start Game, Restart, and Play Again each deal a different deterministic
+  // round (specification sections 4.3 and 4.7).
+  void beginRound();
+
+  // Drops the current round and returns to the title without touching the
+  // session seed, so the round a player abandoned never replays
+  // (specification section 4.7).
+  void abandonToTitle();
+
+  // Ends the round at GameOver: the game-over menu starts at Play Again, and
+  // a better score raises the session high score and lights the record note.
+  void endRound();
+
+  // Returns every round field to its opening value around `seed`.
+  void resetRound(std::uint64_t seed);
+
+  Board board_;
+  Randomizer randomizer_;
+  Piece active_;
+  bool hasActive_ = false;
+
+  PieceId holdId_ = PieceId::I;
+  bool hasHold_ = false;
+  bool holdLocked_ = false;
+
+  std::uint64_t score_ = 0;
+  std::uint64_t lines_ = 0;
+  int level_ = kMinLevel;
+  Scene scene_ = Scene::Boot;
+
+  std::uint64_t tickCount_ = 0;
+  std::uint64_t seed_ = 0;
+
+  // Session state of the section 4.7 screens. The cursors and the record flag
+  // are screen state, not round state: the regression hash folds the round
+  // alone, and a round started through start() leaves them untouched.
+  std::uint64_t nextSeed_ = 0;    // the seed the next fresh round begins from
+  std::uint64_t highScore_ = 0;   // session best, until milestone M3 persists it
+  int titleCursor_ = 0;           // highlighted title item, 0..2
+  int pauseCursor_ = 0;           // highlighted pause item, 0..2
+  int overCursor_ = 0;            // highlighted game-over item, 0..1
+  bool newRecord_ = false;        // the ended round beat highScore_
+  bool quitRequested_ = false;    // Quit confirmed on the title menu
+
+  // Gameplay counters of section 4.5.
+  int gravityTimer_ = 0;   // ticks since the last natural drop attempt
+  int groundedTicks_ = 0;  // consecutive grounded ticks of the active piece
+  int lockResets_ = 0;     // lock timer resets spent by the active piece
+  int shiftDir_ = 0;       // auto-shift direction in charge: -1, 0, or +1
+  int shiftTicks_ = 0;     // ticks charged since the press or the last repeat
+};
+
+}  // namespace stackfall

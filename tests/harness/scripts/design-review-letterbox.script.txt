@@ -1,0 +1,25 @@
+# Design-review capture session: the smaller letterboxed window (seed
+# 31337, keyboard, real-time pacing under a real X server). The round
+# starts first, so the reviewed frame shows play and not the title. The
+# outer driver waits for dr-letterbox-ready, then resizes the window to
+# 640x480 with xdotool, so the 960x544 logical canvas letterboxes inside
+# it. The reviewed frame below is captured after the resize settles.
+#
+# Reviewed frame:
+#   dr-letterboxed-640x480  gameplay in the smaller window: the board,
+#                           both panels, and the HUD at two-thirds size
+#
+# dr-letterbox-ready is capture plumbing only; the packet does not
+# review it.
+wait 2
+key enter down
+wait 2
+key enter up
+# one second of real-time gravity, so the first piece reads as a whole
+# shape and not a sliver at the top edge
+wait 60
+check dr-letterbox-ready
+wait 90
+check dr-letterboxed-640x480
+wait 2
+quit

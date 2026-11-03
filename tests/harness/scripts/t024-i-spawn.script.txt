@@ -1,0 +1,79 @@
+# T024 measurement session: how long a spawned I piece stays invisible
+# (seed 777; first bag J I ...). The I spawns with its only occupied row
+# at y=-1, inside the hidden rows, so nothing of it is on screen until
+# gravity moves it down one cell. Level 1 gravity is 48 ticks per cell,
+# so the rules predict the first visible frame 48 ticks after the spawn
+# tick, 0.8 s at 60 Hz. This session pins that against the application:
+# i-spawn-frame rides the hard-drop frame that spawns the I, then one
+# check per tick around the boundary finds the exact frame it appears.
+check title-first
+wait 1
+key enter down
+wait 2
+key enter up
+wait 2
+check playing-start
+wait 1
+key space down
+check i-spawn-frame
+wait 2
+key space up
+wait 38
+check i-hidden-plus40
+wait 2
+check i-hidden-plus42
+wait 2
+check i-hidden-plus44
+wait 2
+check i-hidden-plus46
+wait 1
+check i-hidden-plus47
+wait 1
+check i-first-visible-plus48
+wait 1
+check i-visible-plus49
+wait 1
+check i-visible-plus50
+wait 2
+key space down
+check after-i-lock
+wait 2
+key space up
+wait 2
+key esc down
+wait 2
+key esc up
+wait 2
+check paused
+wait 2
+key down down
+wait 2
+key down up
+wait 2
+key down down
+wait 2
+key down up
+wait 2
+check paused-at-quit-title
+wait 2
+key enter down
+wait 2
+key enter up
+wait 2
+check back-at-title
+wait 2
+key down down
+wait 2
+key down up
+wait 2
+key down down
+wait 2
+key down up
+wait 2
+check title-at-quit
+wait 1
+check quit-confirmed
+key enter down
+wait 2
+key enter up
+wait 2

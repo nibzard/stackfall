@@ -1,0 +1,82 @@
+# T024 X11 session: focus loss and the letterboxed smaller window
+# (seed 31337). This session runs under a real X server at real-time
+# pacing, so its records are behavioral evidence, not a reference
+# comparison: the outer driver minimizes the window while Left is held,
+# restores it, and resizes it to 640x480 so the 960x544 logical canvas is
+# letterboxed. Focus loss must clear every held button, so the piece
+# stops without a key release and nothing may stick after refocus until
+# a button is pressed again. The piece stays off the walls (one tap left
+# only), so a frozen column really proves movement stopped. Waits around
+# each checkpoint keep real-time flush races away from the transitions.
+check title-first
+wait 60
+key enter down
+wait 2
+key enter up
+wait 60
+check playing
+key left down
+wait 4
+check before-minimize
+wait 40
+check focus-lost-frozen
+wait 40
+key left up
+wait 20
+check after-refocus-no-move
+wait 1
+key right down
+wait 12
+check refocus-repress-moves
+key right up
+wait 50
+check letterboxed
+wait 30
+check letterboxed-still
+wait 1
+key esc down
+wait 4
+key esc up
+wait 25
+check paused-letterboxed
+wait 60
+check paused-letterboxed-still
+wait 1
+key esc down
+wait 4
+key esc up
+wait 8
+check resumed-letterboxed
+wait 10
+key esc down
+wait 4
+key esc up
+wait 8
+key down down
+wait 2
+key down up
+wait 2
+key down down
+wait 2
+key down up
+wait 2
+key enter down
+wait 2
+key enter up
+wait 2
+check back-at-title
+key down down
+wait 2
+key down up
+wait 2
+key down down
+wait 2
+key down up
+wait 2
+check title-at-quit
+wait 1
+check quit-confirmed
+key enter down
+wait 2
+key enter up
+wait 2

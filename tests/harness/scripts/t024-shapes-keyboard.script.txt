@@ -1,0 +1,664 @@
+# T024 keyboard session, seed 31337. Normal game from an empty board;
+# no fixture touches it. The first bag is S Z O L I J T, so one scripted
+# round exercises every shape: spawn frames, taps, both rotations, wall
+# and floor kicks, ghost, soft and hard drop, hold swap and its lock,
+# pause mid-movement, restart with a button held, mute, and the full
+# title -> game over -> play again -> title -> quit cycle.
+# A check directly under a key line rides that input's frame, so its
+# record and screenshot show the first frame after the event.
+check title-first
+wait 1
+key down down
+wait 2
+key down up
+wait 2
+check title-at-controls
+wait 1
+key enter down
+wait 2
+key enter up
+wait 2
+check controls-open
+wait 1
+key esc down
+wait 2
+key esc up
+wait 2
+check controls-back
+wait 1
+key up down
+wait 2
+key up up
+wait 2
+check title-at-start
+wait 1
+key enter down
+check round-first-frame
+wait 1
+wait 2
+key enter up
+wait 2
+key left down
+wait 2
+key left up
+wait 2
+check s-moved-left-once
+wait 1
+key left down
+wait 2
+key left up
+wait 2
+check s-moved-left-twice
+wait 1
+key x down
+wait 2
+key x up
+wait 2
+check s-rotated-cw
+wait 1
+key z down
+wait 2
+key z up
+wait 2
+check s-rotated-ccw-back
+wait 1
+key z down
+wait 2
+key z up
+wait 2
+check s-rotated-l-state
+wait 1
+key x down
+wait 2
+key x up
+wait 2
+check s-back-to-spawn-state
+wait 1
+key down down
+wait 6
+key down up
+wait 2
+check s-soft-dropped
+wait 1
+key space down
+check z-spawn-frame
+wait 1
+wait 2
+key space up
+wait 2
+check s-locked
+wait 1
+key right down
+wait 2
+key right up
+wait 2
+key right down
+wait 2
+key right up
+wait 2
+key right down
+wait 2
+key right up
+wait 2
+key right down
+wait 2
+key right up
+wait 2
+check z-at-right-wall
+wait 1
+key x down
+wait 2
+key x up
+wait 2
+check z-rotated-at-wall
+wait 1
+key z down
+wait 2
+key z up
+wait 2
+check z-back-to-spawn-state
+wait 1
+key left down
+wait 2
+key left up
+wait 2
+key left down
+wait 2
+key left up
+wait 2
+check z-centered
+wait 1
+key space down
+check o-spawn-frame
+wait 1
+wait 2
+key space up
+wait 2
+key x down
+wait 2
+key x up
+wait 2
+check o-rotated-cw
+wait 1
+key z down
+wait 2
+key z up
+wait 2
+check o-rotated-back
+wait 1
+key right down
+wait 2
+key right up
+wait 2
+key right down
+wait 2
+key right up
+wait 2
+key right down
+wait 2
+key right up
+wait 2
+check o-at-right
+wait 1
+key space down
+check l-spawn-frame
+wait 1
+wait 2
+key space up
+wait 2
+key right down
+wait 2
+key right up
+wait 2
+key right down
+wait 2
+key right up
+wait 2
+key right down
+wait 2
+key right up
+wait 2
+key right down
+wait 2
+key right up
+wait 2
+check l-at-right-wall
+wait 1
+key down down
+wait 20
+key down up
+wait 1
+check l-grounded
+wait 1
+key x down
+wait 2
+key x up
+wait 2
+check l-stack-kick
+wait 1
+key space down
+check i-spawn-frame
+wait 1
+wait 2
+key space up
+wait 2
+key x down
+wait 2
+key x up
+wait 2
+check i-rotated-cw
+wait 1
+key right down
+wait 2
+key right up
+wait 2
+key right down
+wait 2
+key right up
+wait 2
+key right down
+wait 2
+key right up
+wait 2
+key right down
+wait 2
+key right up
+wait 2
+check i-at-right-wall
+wait 1
+key x down
+wait 2
+key x up
+wait 2
+check i-wall-kick
+wait 1
+key space down
+check j-spawn-frame
+wait 1
+wait 2
+key space up
+wait 2
+key x down
+wait 2
+key x up
+wait 2
+check j-rotated-cw
+wait 1
+key x down
+wait 2
+key x up
+wait 2
+check j-half-turn
+wait 1
+key x down
+wait 2
+key x up
+wait 2
+check j-l-state
+wait 1
+key z down
+wait 2
+key z up
+wait 2
+check j-ccw-back-to-half
+wait 1
+key left down
+wait 2
+key left up
+wait 2
+key left down
+wait 2
+key left up
+wait 2
+key left down
+wait 2
+key left up
+wait 2
+check j-at-left-wall
+wait 1
+key space down
+check t-spawn-frame
+wait 1
+wait 2
+key space up
+wait 2
+key c down
+check hold-swap-first-frame
+wait 1
+wait 2
+key c up
+wait 2
+check hold-used
+wait 1
+key c down
+wait 2
+key c up
+wait 2
+check hold-locked-noop
+wait 1
+key space down
+check i2-spawn-frame
+wait 1
+wait 2
+key space up
+wait 2
+check hold-free-after-lock
+wait 1
+key c down
+check hold-return-first-frame
+wait 1
+wait 2
+key c up
+wait 2
+key space down
+check after-t-lock
+wait 1
+wait 2
+key space up
+wait 2
+key right down
+wait 12
+check das-moving
+wait 1
+key esc down
+wait 2
+key esc up
+wait 2
+check paused-while-moving
+wait 1
+wait 10
+check paused-frozen
+wait 1
+key esc down
+wait 2
+key esc up
+wait 2
+check resumed
+wait 1
+wait 4
+check das-continued
+wait 1
+key right up
+wait 4
+check movement-stopped
+wait 1
+key left down
+wait 12
+check das-moving-again
+wait 1
+key esc down
+wait 2
+key esc up
+wait 2
+check paused-for-restart
+wait 1
+key down down
+wait 2
+key down up
+wait 2
+check paused-at-restart
+wait 1
+key enter down
+check restart-first-frame
+wait 1
+wait 2
+key enter up
+wait 2
+check restart-held-moves
+wait 1
+key left up
+wait 12
+check restart-release-stops
+wait 1
+key m down
+wait 2
+key m up
+wait 2
+check muted
+wait 1
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+wait 5
+check gameover-first
+wait 1
+key enter down
+wait 2
+key enter up
+wait 2
+check play-again
+wait 1
+key m down
+wait 2
+key m up
+wait 2
+check unmuted
+wait 1
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+wait 5
+check gameover-second
+wait 1
+key down down
+wait 2
+key down up
+wait 2
+check gameover-at-title
+wait 1
+key enter down
+wait 2
+key enter up
+wait 2
+check title-return
+wait 1
+key down down
+wait 2
+key down up
+wait 2
+key down down
+wait 2
+key down up
+wait 2
+check title-at-quit
+wait 1
+wait 1
+check quit-confirmed
+key enter down
+wait 2
+key enter up
+wait 2

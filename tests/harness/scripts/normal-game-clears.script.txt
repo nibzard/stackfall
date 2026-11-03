@@ -1,0 +1,249 @@
+# Normal game from an empty board, keyboard driver, seed 20261103.
+# The first nine placements come from an offline search against the
+# rules core (the same technique as the T013 four-line plan); every
+# landing was rehearsed through stackfall_reference before this file
+# was pinned. No fixture touches this session: the board starts empty
+# and only hard drops, taps, and rotations build the stack.
+key enter down
+wait 2
+key enter up
+wait 3
+# piece 0: T rotation 0 at matrix x=0
+key left down
+wait 2
+key left up
+wait 2
+key left down
+wait 2
+key left up
+wait 2
+key left down
+wait 2
+key left up
+wait 2
+check piece-00
+wait 1
+key space down
+wait 2
+key space up
+wait 4
+check lock-00
+wait 2
+# piece 1: Z rotation 0 at matrix x=3
+check piece-01
+wait 1
+key space down
+wait 2
+key space up
+wait 4
+check lock-01
+wait 2
+# piece 2: L rotation 0 at matrix x=6
+key right down
+wait 2
+key right up
+wait 2
+key right down
+wait 2
+key right up
+wait 2
+key right down
+wait 2
+key right up
+wait 2
+check piece-02
+wait 1
+key space down
+wait 2
+key space up
+wait 4
+check lock-02
+wait 2
+# piece 3: I rotation 1 at matrix x=7
+key x down
+wait 2
+key x up
+wait 2
+key right down
+wait 2
+key right up
+wait 2
+key right down
+wait 2
+key right up
+wait 2
+key right down
+wait 2
+key right up
+wait 2
+key right down
+wait 2
+key right up
+wait 2
+check piece-03
+wait 1
+key space down
+wait 2
+key space up
+wait 4
+check lock-03
+wait 2
+# piece 4: J rotation 0 at matrix x=5
+key right down
+wait 2
+key right up
+wait 2
+key right down
+wait 2
+key right up
+wait 2
+check piece-04
+wait 1
+key space down
+wait 2
+key space up
+wait 4
+check lock-04
+wait 2
+# piece 5: S rotation 0 at matrix x=3
+check piece-05
+wait 1
+key space down
+wait 2
+key space up
+wait 4
+check lock-05
+wait 2
+# piece 6: O rotation 0 at matrix x=5
+key right down
+wait 2
+key right up
+wait 2
+key right down
+wait 2
+key right up
+wait 2
+check piece-06
+wait 1
+key space down
+wait 2
+key space up
+wait 4
+check lock-06
+wait 2
+# piece 7: L rotation 3 at matrix x=7
+key x down
+wait 2
+key x up
+wait 2
+key x down
+wait 2
+key x up
+wait 2
+key x down
+wait 2
+key x up
+wait 2
+key right down
+wait 2
+key right up
+wait 2
+key right down
+wait 2
+key right up
+wait 2
+key right down
+wait 2
+key right up
+wait 2
+key right down
+wait 2
+key right up
+wait 2
+check piece-07
+wait 1
+key space down
+wait 2
+key space up
+wait 4
+check lock-07
+wait 2
+# piece 8: T rotation 0 at matrix x=0
+key left down
+wait 2
+key left up
+wait 2
+key left down
+wait 2
+key left up
+wait 2
+key left down
+wait 2
+key left up
+wait 2
+check piece-08
+wait 1
+key space down
+wait 2
+key space up
+wait 4
+check lock-08
+wait 2
+# hold: swap the active piece away, then prove the second hold is locked
+check before-hold
+wait 1
+key c down
+wait 2
+key c up
+wait 3
+check after-hold
+wait 1
+key c down
+wait 2
+key c up
+wait 3
+check hold-locked
+wait 1
+# counter-clockwise rotation to a half turn (rotation state 2)
+key z down
+wait 2
+key z up
+wait 2
+check rotated-ccw
+wait 1
+# soft drop held: the piece falls faster than gravity and scores per cell
+key down down
+wait 8
+key down up
+wait 2
+check soft-dropped
+wait 1
+# delayed auto-shift: hold left until the repeat system reaches the wall
+key left down
+wait 24
+key left up
+wait 2
+check das-wall
+wait 1
+key space down
+wait 2
+key space up
+wait 4
+check das-wall-lock
+wait 2
+# pause freezes every counter; two records ten frames apart prove it
+key esc down
+wait 2
+key esc up
+wait 2
+check paused
+wait 10
+check paused-still
+wait 2
+key esc down
+wait 2
+key esc up
+wait 2
+check resumed
+wait 2
+quit

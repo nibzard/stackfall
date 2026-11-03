@@ -1,0 +1,276 @@
+# Design-review capture session: the menus, the play HUD in its two hold
+# states, the pause overlay, and the restart spawn sequence (seed 31337,
+# keyboard, --tick-per-frame). The first bag is S Z O L I J T, so the
+# reviewed frames name their pieces exactly. Normal game from an empty
+# board; no fixture touches it.
+#
+# Reviewed frames, in capture order:
+#   dr-title           title menu, START selected, high-score line
+#   dr-controls        the controls page
+#   dr-gameplay-early  the S piece in flight 60 ticks in (fully visible,
+#                      ghost at the floor, empty HOLD slot, five previews)
+#   dr-hold-locked     50 ticks after the hold swap: Z stashed and locked
+#                      (dimmed), O in play at a fully visible row
+#   dr-pause           the pause overlay over a two-piece board with the
+#                      L piece in flight and visible
+#   dr-gameover        the game-over screen over the topped-out board,
+#                      with the saved record on it
+#   dr-restart-spawn   the first frame after PLAY AGAIN: fresh round, the
+#                      S at its spawn cell, only the lower row on screen
+#   dr-spawn-visible   the same round 50 ticks later: the S fully visible
+# dr-first-lock only separates the frames; the packet does not review it.
+check dr-title
+wait 1
+key down down
+wait 2
+key down up
+wait 2
+key enter down
+wait 2
+key enter up
+wait 2
+check dr-controls
+wait 1
+key esc down
+wait 2
+key esc up
+wait 2
+key up down
+wait 2
+key up up
+wait 2
+key enter down
+wait 2
+key enter up
+wait 2
+# one cell of gravity per 48 ticks: after 60 ticks the S sits at y=0, so
+# the whole piece is on screen with the ghost still far below it
+wait 60
+check dr-gameplay-early
+wait 1
+# park the S one column left with a hard drop, then stash the Z that
+# spawns next: the swap frame is the reviewed locked-hold state
+key left down
+wait 2
+key left up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+check dr-first-lock
+wait 2
+key c down
+wait 2
+key c up
+# one gravity cell so the swapped-in O reads as a whole shape; the stash
+# stays locked until the next lock, so the hold panel stays dimmed
+wait 50
+check dr-hold-locked
+wait 1
+# one lock, then a visible L in flight, so the pause overlay sits over a
+# board with a piece actually on screen
+key space down
+wait 2
+key space up
+wait 2
+wait 50
+key esc down
+wait 2
+key esc up
+wait 2
+check dr-pause
+wait 2
+key esc down
+wait 2
+key esc up
+wait 2
+# hard-drop spam tops the round out; extra presses after the game-over
+# screen select nothing, so the count only needs an upper bound
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+# the round has topped out by now; the game-over screen over the topped
+# board is a reviewed frame, and PLAY AGAIN restarts it with the same
+# seed, so the frame under the press is the new round's spawn frame
+wait 2
+check dr-gameover
+wait 2
+key enter down
+check dr-restart-spawn
+wait 2
+key enter up
+# 48 ticks of gravity later the S sits at y=0 and reads as a full piece
+wait 50
+check dr-spawn-visible
+wait 2
+quit

@@ -1,0 +1,792 @@
+{
+  "project": {
+    "name": "stackfall",
+    "root": "."
+  },
+  "schema_version": 1,
+  "source_files": [
+    "1.md",
+    "2.md",
+    "81C99D2E-4C46-4F86-BDA9-D95D758ECE0F.md",
+    "docs/SPEC.md",
+    "docs/AGENT_TESTING.md",
+    "docs/PERFORMANCE.md",
+    "docs/DESIGN_REVIEW.md"
+  ],
+  "goal": "Deliver STACKFALL v1.0: an original, offline, deterministic 2D tetromino block-stacking game for the Anbernic RG503 handheld (ROCKNIX/PortMaster), written in C++17 with an SDL2 platform layer and a pure headless rules core, procedural graphics drawn only from rectangles/lines and a 5x7 glyph table, synthesized sound, persistent high scores, complete automated rule and regression tests, a native AArch64 binary with a PortMaster launcher and package, and release acceptance on the physical device at about 60 FPS.",
+  "tasks": [
+    {
+      "id": "T001",
+      "title": "Create CMake project with core, game, and test targets",
+      "priority": 1,
+      "status": "done",
+      "details": "Round M0. Create the repository layout from the specification: README.md, LICENSE, docs/SPEC.md, include/stackfall/, src/, tests/, portmaster/. CMake with Ninja exposes three targets: stackfall_core (portable static library, no SDL2 linkage), stackfall (links stackfall_core and SDL2), stackfall_tests (links stackfall_core only, so rule tests run headless). Acceptance: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Debug and cmake --build build complete without errors, and ctest --test-dir build --output-on-failure runs the initial test suite with no window.",
+      "files": [
+        ".gitignore",
+        "CMakeLists.txt",
+        "LICENSE",
+        "README.md",
+        "docs/SPEC.md",
+        "include/stackfall/version.hpp",
+        "portmaster/README.md",
+        "src/main.cpp",
+        "src/version.cpp",
+        "tests/test_main.cpp",
+        "tests/test_sanity.cpp",
+        "tests/test_util.hpp"
+      ],
+      "tags": [
+        "M0"
+      ],
+      "updated_at": "2026-11-02T18:25:24Z",
+      "unblock_when": "\"\""
+    },
+    {
+      "id": "T002",
+      "title": "Desktop SDL2 window, controller detection, fixed 60 Hz loop",
+      "priority": 1,
+      "status": "done",
+      "details": "Round M0. Implement src/main.cpp: SDL2 window and renderer on the 960x544 logical canvas, SDL GameController discovery with keyboard fallback, clean EXIT shutdown, and a fixed-step accumulator based on SDL_GetPerformanceCounter/Frequency with dt = 1/60 s. Poll events as often as possible, run the required number of simulation ticks, render once, clamp the elapsed frame delta to 250 ms after resume or suspend, and log unusual stalls. Acceptance (M0 gate): compiles cleanly on desktop; the test executable runs without a window; the blank window opens, logs any detected controller, and exits cleanly.",
+      "depends_on": [
+        "T001"
+      ],
+      "files": [
+        "src/main.cpp"
+      ],
+      "tags": [
+        "M0"
+      ],
+      "updated_at": "2026-11-02T19:56:10Z"
+    },
+    {
+      "id": "T003",
+      "title": "Define types and the seven tetromino shape tables",
+      "priority": 1,
+      "status": "done",
+      "details": "Round M1, kickoff step 1. Add include/stackfall/types.hpp (board constants W=10, H=20, HIDDEN=2; PieceId; Rotation states 0/R/2/L; cell helpers) and pieces definitions for I, O, T, S, Z, J, L with the canonical spawn drawings. Spawn centered at matrix originX=3, so I spans columns 3..6 and O spans 4..5, with the topmost occupied cell at y=-1: I uses originY=-2 (first occupied local row 1), all others use originY=-1. Acceptance: tests prove each of the seven pieces has exactly four occupied cells in each of its four orientations (specification section 11, item 1).",
+      "depends_on": [
+        "T001"
+      ],
+      "files": [
+        "CMakeLists.txt",
+        "include/stackfall/pieces.hpp",
+        "include/stackfall/types.hpp",
+        "src/pieces.cpp",
+        "tests/test_main.cpp",
+        "tests/test_pieces.cpp"
+      ],
+      "tags": [
+        "M1"
+      ],
+      "updated_at": "2026-11-02T18:33:40Z",
+      "unblock_when": "\"\""
+    },
+    {
+      "id": "T004",
+      "title": "Implement SRS rotation with wall-kick tables",
+      "priority": 1,
+      "status": "done",
+      "details": "Round M1, kickoff step 2. Add immutable precomputed orientation masks and canonical ordered kick tables for 0\u003c-\u003eR, R\u003c-\u003e2, 2\u003c-\u003eL, L\u003c-\u003e0. JLSTZ share one table, I has its own, O stays stationary. Negate the reference +y kick values when encoding them, because grid +y points down; keep one convention in code and tests (reference: tetris.wiki/SRS). Try up to five candidate offsets and take the first valid one, or reject the rotation and leave the piece unchanged. Acceptance: tests prove O never moves or kicks; I and JLSTZ orientations match known SRS reference cases; rotation against walls applies a valid kick or fails without moving; rotation above the hidden-row boundary never reads or writes outside y=-2..19 (section 11, items 2, 3, 5, 6).",
+      "depends_on": [
+        "T003"
+      ],
+      "files": [
+        "include/stackfall/pieces.hpp",
+        "src/pieces.cpp",
+        "tests/test_pieces.cpp"
+      ],
+      "tags": [
+        "M1"
+      ],
+      "updated_at": "2026-11-02T18:56:37Z",
+      "unblock_when": "\"\""
+    },
+    {
+      "id": "T005",
+      "title": "Implement bitmask board, collision, lock, line clears",
+      "priority": 1,
+      "status": "done",
+      "details": "Round M1, kickoff step 3. Implement the board: std::array\u003cuint16_t,22\u003e occupancy using bits 0..9 (a full row is 0x03FF) plus a parallel 22x10 cellType array for block colors. Validate moves against the ten columns, y=-2..19, and settled occupancy bits. Commit the four active cells on lock, then remove all full rows simultaneously and shift remaining rows down, moving occupancy and color rows together. Assert the two arrays stay consistent in tests and debug builds. Acceptance: tests prove settled cells block movement, the active piece is not committed before lock, 1/2/3/4-line clears remove the correct rows with colors shifting, and randomized fills keep occupancy and colors consistent over hundreds of cases (section 11, items 7, 8, 17).",
+      "depends_on": [
+        "T003"
+      ],
+      "files": [
+        "CMakeLists.txt",
+        "include/stackfall/board.hpp",
+        "src/board.cpp",
+        "tests/test_board.cpp",
+        "tests/test_main.cpp"
+      ],
+      "tags": [
+        "M1"
+      ],
+      "updated_at": "2026-11-02T19:12:13Z",
+      "unblock_when": "\"\""
+    },
+    {
+      "id": "T006",
+      "title": "Implement PCG32 randomizer and seven-bag queue",
+      "priority": 1,
+      "status": "done",
+      "details": "Round M1, kickoff step 4. Implement an explicitly coded PCG32 generator seeded once per game, a Fisher-Yates shuffle of the seven piece IDs, consumption of the whole bag before the next shuffle, and a queue filled far enough ahead to always show the next five pieces. Use no platform-dependent C++ distribution code in the deterministic core. Acceptance: tests prove every seven-draw bag is a permutation of I/O/T/S/Z/J/L and fixed seeds reproduce fixture sequences exactly (section 11, item 13).",
+      "depends_on": [
+        "T003"
+      ],
+      "files": [
+        "CMakeLists.txt",
+        "include/stackfall/randomizer.hpp",
+        "src/randomizer.cpp",
+        "tests/test_main.cpp",
+        "tests/test_randomizer.cpp"
+      ],
+      "tags": [
+        "M1"
+      ],
+      "updated_at": "2026-11-02T19:29:56Z"
+    },
+    {
+      "id": "T007",
+      "title": "Implement game state machine and deterministic tick",
+      "priority": 1,
+      "status": "done",
+      "details": "Round M1, kickoff step 5. Implement Game::start(seed) and Game::tick(const InputFrame\u0026) on a single thread with no SDL types. Cover: the level 1-20 gravity table (48 ticks per cell down to 1); soft drop of one cell per held tick with +1 point per successful cell; hard drop to the lowest valid y with instant lock and +2 points per cell; 30-tick grounded lock delay with at most 15 resets per active piece (failed inputs never reset it); DAS of 10 ticks and ARR of 2 ticks; movement stops at walls in every orientation; hold once per locked piece with spawn rotation/position reset; block-out on failed spawn and lock-out when locked cells sit in hidden rows; clear scoring 100/300/500/800 multiplied by the pre-clear level; level = min(20, 1 + floor(totalLines/10)); pause freezing all counters; and the input processing order from section 5. Keep gameplay RNG separate from any cosmetic randomness. Acceptance (M1 gate): headless tests pass for gravity timing, pause and restart, lock delay and the reset limit, hard-drop landing in the same tick, drop-point accounting, hold restrictions, top-out determinism, and score/level boundaries including the level 20 cap (section 11, items 4, 9, 10, 11, 12, 14, 15, 16).",
+      "depends_on": [
+        "T004",
+        "T005",
+        "T006"
+      ],
+      "files": [
+        "CMakeLists.txt",
+        "include/stackfall/game.hpp",
+        "include/stackfall/input.hpp",
+        "include/stackfall/scoring.hpp",
+        "src/game.cpp",
+        "src/scoring.cpp",
+        "tests/test_game.cpp",
+        "tests/test_main.cpp"
+      ],
+      "tags": [
+        "M1"
+      ],
+      "updated_at": "2026-11-02T20:52:55Z",
+      "unblock_when": "\"\""
+    },
+    {
+      "id": "T008",
+      "title": "Add state-hash regression runner with pinned values",
+      "priority": 1,
+      "status": "done",
+      "details": "Round M1, kickoff step 6. Implement the regression test: compute a stable game-state hash after a supplied replay of tick-indexed input frames, accept --seed \u003cinteger\u003e on the developer test CLI for reproducibility, and pin hash values compared by ctest. Acceptance: identical seeds and identical tick input streams produce identical hashes and scores on repeated desktop runs (section 7; section 11, item 18 desktop half).",
+      "depends_on": [
+        "T007"
+      ],
+      "files": [
+        "CMakeLists.txt",
+        "README.md",
+        "notes/agent-testing.md",
+        "tests/game_test_peer.hpp",
+        "tests/test_game.cpp",
+        "tests/test_main.cpp",
+        "tests/test_regression.cpp"
+      ],
+      "tags": [
+        "M1"
+      ],
+      "updated_at": "2026-11-02T21:26:21Z",
+      "unblock_when": "\"\""
+    },
+    {
+      "id": "T009",
+      "title": "Build SDL input adapter for controller and keyboard",
+      "priority": 2,
+      "status": "done",
+      "details": "Round M2. Translate SDL GameController events and desktop keyboard input into the core InputFrame, with one mapping table so controller letters change in a single place. Load SDL_GAMECONTROLLERCONFIG from the PortMaster environment when present. Follow the section 5 table: D-pad move and soft drop, A rotate clockwise, B rotate counter-clockwise, X hard drop, Y or left shoulder hold, Start pause; keyboard Left/Right/Down, X/Up and Z rotate, Space hard drop, C/Left Shift hold, Enter/Esc pause. Edge-trigger rotation, hold, hard drop, pause, and menu actions; use the tick-based DAS/ARR repeat for horizontal movement; simultaneous left+right causes no movement, and a newly pressed opposite direction resets DAS/ARR and moves immediately when valid. Process SDL events before simulation. Acceptance: tests or recorded desktop sessions prove a press edge is consumed exactly once even when the loop catches up over several ticks (section 11, item 19), and both keyboard and controller drive the game.\n\nUnattended verification policy: Use automated SDL event injection and a virtual controller for desktop acceptance. Cover pending input across pause, restart, focus loss, and controller removal. Human input and physical controller testing are deferred to final acceptance. T023 provides the reusable driver.",
+      "depends_on": [
+        "T002",
+        "T007"
+      ],
+      "files": [
+        "CMakeLists.txt",
+        "include/stackfall/input.hpp",
+        "include/stackfall/input_sdl.hpp",
+        "notes/agent-testing.md",
+        "src/input_sdl.cpp",
+        "src/main.cpp",
+        "tests/test_input.cpp",
+        "tests/test_input_sdl.cpp",
+        "tests/test_main.cpp"
+      ],
+      "tags": [
+        "M2"
+      ],
+      "updated_at": "2026-11-02T22:05:28Z",
+      "unblock_when": "\"\""
+    },
+    {
+      "id": "T010",
+      "title": "Implement procedural renderer and 5x7 glyph font",
+      "priority": 2,
+      "status": "done",
+      "details": "Round M2. Implement a read-only Renderer::draw(const Game\u0026) that never mutates game state. Use SDL_RenderSetLogicalSize or equivalent letterboxing for a 960x544 logical canvas. Draw 24x24 cells with the board at origin (360, 32) spanning 240x480, the hold panel around x=52..324 on the left, and the five next previews plus score, lines, and level around x=630..910 on the right. Follow the section 6.2 draw order: background, optional faint grid, board frame and settled cells in their stored colors, ghost below the active piece, active piece, hold and next previews (same shape coordinates at about 15 px cells), then score fields and menus. Render all text from a source-defined 5x7 integer bitmask glyph table using filled rectangles; use the seven-color custom palette. No texture or image loading calls anywhere. Acceptance: the desktop build renders board, ghost, hold, next previews, and text with no asset files present.",
+      "depends_on": [
+        "T002",
+        "T007"
+      ],
+      "files": [
+        "CMakeLists.txt",
+        "README.md",
+        "include/stackfall/font.hpp",
+        "include/stackfall/renderer_sdl.hpp",
+        "notes/agent-testing.md",
+        "src/main.cpp",
+        "src/renderer_sdl.cpp",
+        "tests/test_font.cpp",
+        "tests/test_main.cpp",
+        "tests/test_renderer_sdl.cpp"
+      ],
+      "tags": [
+        "M2"
+      ],
+      "updated_at": "2026-11-02T22:53:52Z"
+    },
+    {
+      "id": "T011",
+      "title": "Complete title, controls, pause, and game-over screens",
+      "priority": 2,
+      "status": "done",
+      "details": "Round M2. Implement the section 4.7 state machine: TITLE with Start Game, Controls, Quit, and the saved high score (0 until persistence lands in the M3 task); CONTROLS with the mappings and back; PLAYING; PAUSED overlay with Resume, Restart, and Quit to Title, with every counter frozen exactly; GAME_OVER with final score, total lines, level, new-record indication, Play Again, and Title. Restart begins a fresh seeded game; Quit to Title abandons the round. Menu navigation uses D-pad up/down with A to select and B to go back. Acceptance (M2 gate): a full game plays from title to game over using both keyboard and controller on desktop, with no external graphics.\n\nUnattended verification policy: T024 verifies the first playable gate through the real SDL input path and inspected screenshots. Complete the implementation without waiting for a human desktop session or physical device.",
+      "depends_on": [
+        "T009",
+        "T010"
+      ],
+      "files": [
+        "CMakeLists.txt",
+        "README.md",
+        "include/stackfall/game.hpp",
+        "include/stackfall/input.hpp",
+        "include/stackfall/renderer_sdl.hpp",
+        "notes/agent-testing.md",
+        "src/game.cpp",
+        "src/input_sdl.cpp",
+        "src/main.cpp",
+        "src/renderer_sdl.cpp",
+        "tests/test_input.cpp",
+        "tests/test_input_sdl.cpp",
+        "tests/test_main.cpp",
+        "tests/test_regression.cpp",
+        "tests/test_renderer_sdl.cpp",
+        "tests/test_screens.cpp"
+      ],
+      "tags": [
+        "M2"
+      ],
+      "updated_at": "2026-11-02T23:36:05Z"
+    },
+    {
+      "id": "T012",
+      "title": "Add atomic high-score persistence",
+      "priority": 2,
+      "status": "done",
+      "details": "Round M3. Implement storage: a small versioned UTF-8 ASCII file in the writable conf/ directory (example: version=1 on one line, high_score=12345 on the next), honoring the XDG_DATA_HOME or explicit save-directory environment variable set by the launcher. Write through a temporary file in the same directory, flush, close, then rename into place. Save when a new record is set at game over; on a missing, invalid, or partial file, recover safely to high score 0 without crashing. Acceptance: tests prove good records round-trip after relaunch and corrupt or partial files never crash the game (section 11, item 20).",
+      "depends_on": [
+        "T011"
+      ],
+      "files": [
+        "CMakeLists.txt",
+        "README.md",
+        "include/stackfall/storage.hpp",
+        "notes/agent-testing.md",
+        "src/main.cpp",
+        "src/storage.cpp",
+        "tests/test_main.cpp",
+        "tests/test_storage.cpp"
+      ],
+      "tags": [
+        "M3"
+      ],
+      "updated_at": "2026-11-02T23:58:19Z",
+      "unblock_when": "\"\""
+    },
+    {
+      "id": "T013",
+      "title": "Add synthesized sound effects with mute toggle",
+      "priority": 2,
+      "status": "done",
+      "details": "Round M3. Initialize audio and synthesize short PCM tones from mathematical waveforms for rotation, move and land, clear, four-line clear, and game over. Use no .wav or .ogg assets. A missing audio device must not stop the game from starting. Add an on/off toggle, initialize mute state from a settings file only if that feature is implemented, and keep any cosmetic randomness out of the gameplay RNG. Acceptance: desktop sessions play all five cues, and the game stays fully playable with audio unavailable or muted.\n\nUnattended verification policy: Verify cue generation, event counts, mute, and missing-audio recovery through agent-run scenarios. Retain available audio evidence. Human listening and device latency checks occur only at final acceptance.",
+      "depends_on": [
+        "T011"
+      ],
+      "files": [
+        "CMakeLists.txt",
+        "README.md",
+        "include/stackfall/audio_sdl.hpp",
+        "include/stackfall/storage.hpp",
+        "notes/agent-testing.md",
+        "src/audio_sdl.cpp",
+        "src/main.cpp",
+        "src/storage.cpp",
+        "tests/test_audio_sdl.cpp",
+        "tests/test_storage.cpp"
+      ],
+      "tags": [
+        "M3"
+      ],
+      "updated_at": "2026-11-03T01:23:44Z"
+    },
+    {
+      "id": "T014",
+      "title": "Add error handling, renderer fallback, and logging",
+      "priority": 2,
+      "status": "done",
+      "details": "Round M3. Handle platform failures: try an accelerated or vsync renderer, fall back to a basic SDL renderer, and if all renderer creation fails print an actionable error and terminate cleanly. Stay keyboard-playable when no controller is present, and never crash on keyboard or gamepad disconnect. Log startup version and architecture, SDL init failures, the selected renderer and controller, any save failure, and orderly shutdown to log.txt. Acceptance: forced-failure runs (for example, with audio unavailable or a restricted video driver) show the documented fallback or a clean exit instead of a crash, and the log contains the required entries.\n\nUnattended verification policy: Add a fallback frame limiter when presentation does not block, including software rendering. Verify elapsed time, render count, and simulation ticks with vertical synchronization enabled and disabled. Keep simulation at 60 Hz. Review evidence: the current dummy-driver run rendered 100000 frames in 5.42 seconds at 98% CPU. Host measurements do not establish device performance.\n\nReview repair: T014 partly covered by the T013 repair: renderer-failure exit, architecture log, fallback frame limiter\nThis repair landed three behaviors the combined verifier attributes to T014, in src/main.cpp: (1) an SDL_RENDER_DRIVER naming a driver the installed SDL does not carry is now a hard renderer failure that lists the available drivers, prints one actionable error naming SDL_RENDER_DRIVER and SDL_VIDEODRIVER, and exits 1; (2) the startup log prints an Architecture line from compiler macros; (3) a fallback frame limiter holds frames to 1/60 s when presentation returns early (360 dummy-driver frames: about 6 s, 359 ticks, versus under 1 s before). Verified by the combined script stored at build/agent-checks/2026-11-03-t013-audio/combined-verify-final.log and notes/agent-testing.md. T014's remaining scope is still open: the log.txt sink (stdout is printed, the launcher redirects), save-failure and controller-disconnect logging review, and the vsync-enabled/disabled measurement pass that T025 runs.\nEvidence: build/agent-checks/2026-11-03-t013-audio/combined-verify-final.log (full script passes, including the three T014 checks); notes/agent-testing.md section 'T013 repair: platform-layer failures of the combined check'; commit 5ba653b.\n\nResume correction (2026-11-03): This is agent software work. The operator-only blocker is removed. The saved project verification command now uses builds, tests, deterministic output, and bounded pacing checks without requiring an absolutely clean checkout. Complete and verify the remaining logging work in the integrated candidate; do not mark this task done from prior attempt evidence alone. Prior unintegrated work remains in attempt task-30674d2be2840fef (repair-9b42b7ef53ef0917); inspect and reuse relevant changes when valid. Do not depend on T025 to close T014: T014 implements and checks fallback pacing; T025 owns the extended vsync and stability measurements after T024. Preserve all original platform failure and logging acceptance criteria.",
+      "depends_on": [
+        "T011"
+      ],
+      "files": [
+        ".gitignore",
+        "README.md",
+        "include/stackfall/storage.hpp",
+        "notes/agent-testing.md",
+        "src/main.cpp",
+        "src/storage.cpp",
+        "tests/test_storage.cpp"
+      ],
+      "tags": [
+        "M3",
+        "looper:finding:combined-check-clean-tree-uncommitted-retention",
+        "looper:finding:t014-error-handling-logging"
+      ],
+      "updated_at": "2026-11-03T09:46:57Z",
+      "unblock_when": "\"\""
+    },
+    {
+      "id": "T015",
+      "title": "Verify M3 gate with full desktop regression",
+      "priority": 2,
+      "status": "todo",
+      "details": "Round M3 gate. Run the complete verification pass: ctest in Debug and Release configurations, every section 11 check that does not need the physical device (all 20 items except the ARM64 hash comparison and on-device parts), and repeated full-game desktop sessions covering DAS/ARR tuning, lock-delay edge cases, seven-bag edge cases, and restart behavior. Acceptance (M3 gate): no known rule or state bugs after repeated full-game desktop sessions; deterministic hashes match pinned values; high scores survive restarts; Release build performs smoothly on desktop.\n\nUnattended verification policy: Agents run all desktop sessions. Require the T024 visual report and T025 stability report under docs/AGENT_TESTING.md. Preserve seeds, commands, screenshots, logs, and source identity. No human or physical device test is required to pass this software gate.\n\nPerformance gate: Require T026 and its notes/performance.md evidence. Verify every retained optimization against independent benchmarks and behavior checks. Do not claim desktop performance passes while the report lists an unresolved target failure. No human or physical device test is required.\n\nIndependent design gate: Require T027 screenshot review and T028 verification of required fixes. Findings must route into real, deduplicated Looper tasks with linked evidence. Preserve final-only human and device acceptance.\n\nResume correction (2026-11-03): The depends_on list gates scheduling. T014 evidence is supplied by an agent. No separate operator evidence or manual deferral removal is required for this desktop software gate.",
+      "depends_on": [
+        "T008",
+        "T012",
+        "T013",
+        "T014",
+        "T024",
+        "T025",
+        "T026",
+        "T028"
+      ],
+      "tags": [
+        "M3",
+        "looper:finding:m3-desktop-gate-full-regression"
+      ],
+      "updated_at": "2026-11-03T06:02:02Z"
+    },
+    {
+      "id": "T016",
+      "title": "Build AArch64 binary in PortMaster-aligned environment",
+      "priority": 3,
+      "status": "todo",
+      "details": "Round M4. Set up an Ubuntu 22.04 ARM64 build container or chroot aligned with the PortMaster build-environment guide (https://portmaster.games/build-environments.html), install matching SDL2 development libraries, and build with CMake/Ninja inside that environment. Do not ship an x86 executable and do not assume the host desktop SDL2 binary is compatible. Acceptance: file stackfall.aarch64 reports 'ELF 64-bit ... ARM aarch64'; readelf or ldd documents the runtime dependencies; stackfall_tests runs inside the ARM64 environment and produces the same pinned state hashes as the desktop build (section 11, item 18 ARM64 half).\n\nResume correction (2026-11-03): After T015, the agent sets up the ARM64 environment as part of this task. Do not wait for an operator to provide it. If setup encounters a concrete external restriction, record the exact failed step and prerequisite.",
+      "depends_on": [
+        "T015"
+      ],
+      "tags": [
+        "M4",
+        "looper:finding:aarch64-state-hash-parity",
+        "looper:finding:m4-m5-local-platform-deliverables"
+      ],
+      "updated_at": "2026-11-03T06:02:02Z"
+    },
+    {
+      "id": "T017",
+      "title": "Write PortMaster launcher and install layout",
+      "priority": 3,
+      "status": "todo",
+      "details": "Round M4. Author portmaster/Stackfall.sh from the current official PortMaster template: locate the control folder, source control.txt, apply the CFW modifier when present, call get_controls, use the ports/stackfall game folder, export SDL_GAMECONTROLLERCONFIG and the save paths (XDG_DATA_HOME pointing at the game conf/ directory, or an explicit save-directory variable), create conf/, call pm_platform_helper on the executable, run it, and call pm_finish afterward. Start gptokeyb in exit-hotkey-only mode only if the installed PortMaster version requires it, and do not capture or override the platform-wide exit chord. Match the /roms/ports layout from section 10.3. Acceptance: the script and directory layout are reviewed against the current official template and the specification; on-device execution is validated by the blocked device task.",
+      "depends_on": [
+        "T015"
+      ],
+      "files": [
+        "portmaster/Stackfall.sh"
+      ],
+      "tags": [
+        "M4",
+        "looper:finding:portmaster-launcher-save-dir"
+      ],
+      "updated_at": "2026-11-03T06:02:02Z"
+    },
+    {
+      "id": "T018",
+      "title": "Run RG503 device acceptance checklist",
+      "priority": 4,
+      "status": "blocked",
+      "details": "Round M4 gate (external prerequisite: physical hardware). Install the port under /roms/ports on a real Anbernic RG503 running ROCKNIX and execute every section 12 checklist item: the port appears in Ports with no missing-library error; the game starts using only RG503 buttons, with no keyboard and no network; all seven shapes spawn, rotate, fall, hard-drop, and lock; hold and five previews work and hold cannot be repeated within one piece; the ghost is correct at walls and over tall stacks; 1/2/3/4-line clears and scoring match the test fixtures; pause, resume, and repeated menu transitions never leave a stuck button; game over, restart, quit-to-title, and the PortMaster exit chord work; the score persists across quitting and rebooting and a corrupted save does not crash; the native display is centered with nothing clipped or unreadable; a continuous 10-minute session stays responsive at about 60 FPS with recorded frame times and no sustained slowdown; no crash on controller disconnect, audio init, renderer fallback, or missing save; repeated launch and quit cycles leave a clean exit in stackfall/log.txt. Verify the section 5 controller mapping table on the physical device and update the single mapping location if the Anbernic markings differ from SDL button letters. Record actual frame times and process RAM use (design target under 64 MiB).\n\nUnattended verification policy: Run only at final acceptance, after the complete local archive from T019 and all agent software checks. Include a human assessment of control precision, visible spawn behavior, readability, feedback, and pace. Collect all operator questions in one handoff. Do not request device access during earlier development.",
+      "depends_on": [
+        "T019"
+      ],
+      "blockers": [
+        "An operator must complete this prerequisite; coding workers cannot execute it.",
+        "Deferred: Local PortMaster package exists and the final operator device pass is scheduled",
+        "Deferred: T018 is scheduled",
+        "Deferred: T019 local package exists and the operator schedules the RG503 pass; T020 follows a passing device check and T021 follows owner approval of a publication channel",
+        "Requires a physical Anbernic RG503 running ROCKNIX with PortMaster; no device is attached to this environment, and software workers cannot press handheld buttons or observe the device screen."
+      ],
+      "tags": [
+        "M4",
+        "looper:deferred",
+        "looper:finding:rg503-final-device-acceptance-and-publication",
+        "looper:finding:rg503-physical-controller-mapping",
+        "looper:finding:t024-physical-acceptance-device-pass",
+        "looper:operator"
+      ],
+      "updated_at": "2026-11-02T20:04:56Z",
+      "unblock_when": "T018 is scheduled; remove looper:deferred and set todo when this condition is met."
+    },
+    {
+      "id": "T019",
+      "title": "Assemble PortMaster release package locally",
+      "priority": 3,
+      "status": "todo",
+      "details": "Round M5 (local preparation only; external publication is tracked separately). Assemble the ready-to-run PortMaster archive per section 10.4: the stackfall.aarch64 executable, the Stackfall.sh launcher, port.json, README.md, gameinfo.xml, the required 4:3 gameplay screenshot.png captured from the desktop build, all applicable licenses, release notes, and reproducible build instructions for the ARM64 environment. Keep the STACKFALL name and original presentation; do not use the Tetris name or trade dress. Acceptance: the archive unpacks into the current PortMaster directory structure with every required item, and the documented steps reproduce the binary from a clean ARM64 environment.\n\nUnattended verification policy: Include the agent verification report and reproducible dogfooding commands in the local handoff. Assemble the package before requesting any human or physical device tests. Keep public publication separate.",
+      "depends_on": [
+        "T016",
+        "T017"
+      ],
+      "files": [
+        "portmaster/port.json",
+        "portmaster/gameinfo.xml",
+        "portmaster/README.md"
+      ],
+      "tags": [
+        "M5"
+      ],
+      "updated_at": "2026-11-02T20:04:56Z"
+    },
+    {
+      "id": "T020",
+      "title": "Validate fresh ROCKNIX install for release",
+      "priority": 4,
+      "status": "blocked",
+      "details": "Round M5 gate (external prerequisite: physical hardware). On a fresh ROCKNIX installation, install the assembled package and confirm the M5 gate: the game launches from the Ports menu, plays an entire session fully offline, saves the high score, and keeps it across a reboot. Review stackfall/log.txt for a clean launch and exit. The release gate must not be waived: v1.0 is complete only when this passes on the device.\n\nUnattended verification policy: This is part of the final operator pass after all unattended development and local packaging. Preserve this blocked release gate; automated desktop evidence cannot replace physical device acceptance.",
+      "depends_on": [
+        "T018",
+        "T019"
+      ],
+      "blockers": [
+        "An operator must complete this prerequisite; coding workers cannot execute it.",
+        "Deferred: T020 is scheduled",
+        "Requires the physical RG503 and ROCKNIX device access described in the device acceptance task, plus the locally assembled package."
+      ],
+      "tags": [
+        "M5",
+        "looper:deferred",
+        "looper:finding:t024-audio-on-physical-device",
+        "looper:operator"
+      ],
+      "updated_at": "2026-11-02T20:04:56Z",
+      "unblock_when": "T020 is scheduled; remove looper:deferred and set todo when this condition is met."
+    },
+    {
+      "id": "T021",
+      "title": "Publish the PortMaster package",
+      "priority": 4,
+      "status": "blocked",
+      "details": "Round M5 (external publication). Submit the validated package to the PortMaster listing, or publish it through the channel the owner chooses, using the release notes and metadata prepared locally. Preparing the package does not require this step; only the actual posting does.",
+      "depends_on": [
+        "T020"
+      ],
+      "blockers": [
+        "Publishing to the PortMaster listing or any public channel requires owner approval and channel credentials or accounts that workers do not hold."
+      ],
+      "tags": [
+        "M5",
+        "looper:deferred",
+        "looper:operator"
+      ],
+      "unblock_when": "The project owner approves public release after the fresh-install gate passes and provides an authorized publication channel."
+    },
+    {
+      "id": "T022",
+      "title": "README status section still describes the M0 skeleton",
+      "priority": 3,
+      "status": "done",
+      "details": "README.md still says \"Status: M0 project skeleton\" and \"Current state (M0)\" with a placeholder main.cpp, although T003-T005 have delivered the shape tables, SRS rotation, and the board engine of M1. Update the status line and the current-state bullet list to reflect M1 progress when the next milestone task touches documentation, so the front page matches the repository. Purely documentation; no code impact.\nEvidence: README.md lines 10-12 and 66-73 describe only the M0 skeleton, while include/stackfall/pieces.hpp, board.hpp and their passing suites already exist.\n\nReview repair: README front page still describes the M0 skeleton after four M1 components landed\nREADME.md must state the actual milestone status and current-state list so the front page matches the repository. The outcome is already tracked as task T022; this finding attaches updated evidence only and must not create a second task.\nEvidence: README.md lines 10-12 still read \"Status: M0 project skeleton\" and lines 66-73 list only the M0 skeleton, while include/stackfall/pieces.hpp, board.hpp, randomizer.hpp, src/pieces.cpp, src/board.cpp, src/randomizer.cpp and their suites (323387 checks passing in Debug and Release at da23a3d) deliver the shape tables, SRS kicks, board engine, and randomizer of M1.\n\nReview repair: README status section still describes the M0 skeleton\nREADME.md lines 66-73 still describe src/main.cpp as the M0 placeholder that only initializes and shuts down SDL2, and lines 10-12 still say \"Status: M0 project skeleton\". T002 replaced the placeholder with the real SDL2 window, controller detection, and fixed 60 Hz loop, and T003-T006 already delivered the shape tables, SRS kicks, board engine, and randomizer, so the front page lags the repository further. The outcome is already tracked as task T022; this finding attaches updated evidence only and must not create a second task.\nEvidence: After T002, README.md line 71 still reads \"src/main.cpp is a placeholder that initializes and shuts down SDL2. Task T002 adds the desktop window, controller detection, and the fixed 60 Hz loop\", while src/main.cpp in the T002 worktree now implements the 960x544 window, logged renderer fallback chain, ControllerSet discovery with keyboard-fallback logging, integer fixed-step 60 Hz accumulator with 250 ms clamp and stall logs, and clean EXIT shutdown, verified headless via SDL_VIDEODRIVER=dummy (--frames runs exit 0 with \"Clean shutdown\"; SIGSTOP/SIGCONT produced \"Frame stall of 1002 ms clamped to 250 ms\").\n\nReview repair: README status header still says M1 in progress while M1 is complete\nThe README front page states the actual milestone status, so the header and the current-state list agree with the repository after every milestone task lands.\nEvidence: README.md:10-16 reads 'Status: M1 in progress' and lists only the shape tables, SRS rotation, board engine, and PCG32 randomizer (scope of T003-T006). README.md:89-110 of the same file declares 'Milestone M1, the rules core, is complete. Six components are done', lists the T007 tick engine (src/game.cpp, src/scoring.cpp) and the T008 regression runner (tests/test_regression.cpp, --seed CLI), and ends with 'Milestone M2, the playable desktop build, is next'. The M1 gate is met at 9ce8e60: ctest passes in Debug and Release with 335,826 checks and 0 failures, and stackfall_tests --seed output is byte-identical across runs and build types. The outcome is already tracked as task T022 (key looper:finding:readme-milestone-status-stale, status done); this finding attaches updated evidence only and must not create a second task.\n\nReview repair: docs/SPEC.md status header still says M1 complete while M2/M3 work is integrated\nThe specification's own status line states the actual integrated milestone state (M3 in progress with T009-T013 landed), matching README.md, so the two front pages agree.\nEvidence: docs/SPEC.md:6 reads 'Status: M1 complete; the full rules core passes headless tests in Debug and Release' at 98e786b, while README.md:10 reads 'Status: M3 in progress' and T009-T013 (input adapter, renderer, screens, persistence, audio) are integrated per the same commit. The outcome is already tracked as task T022 (done, key looper:finding:readme-milestone-status-stale); this finding attaches updated evidence only and must not create a second task.",
+      "files": [
+        "README.md",
+        "docs/SPEC.md"
+      ],
+      "tags": [
+        "looper:finding:readme-milestone-status-stale"
+      ],
+      "updated_at": "2026-11-03T03:40:08Z",
+      "unblock_when": "\"\""
+    },
+    {
+      "id": "T023",
+      "title": "Build an unattended SDL test harness",
+      "priority": 2,
+      "status": "done",
+      "details": "Round M2. Implement docs/AGENT_TESTING.md, T023. Add bounded developer runs, a fixed seed, an explicit save directory, screenshot checkpoints, structured gameplay observations, and reusable keyboard and virtual-controller drivers through the real SDL adapter. Keep rule tests headless. Include normal games from an empty board and labeled deterministic fixtures for difficult states. Acceptance: one documented command runs the scene cycle unattended, asserts independent expected states, saves failure evidence, exits nonzero on failure, and cleans up processes. Test hooks do not change normal startup. No human or physical device is required.",
+      "depends_on": [
+        "T009",
+        "T010",
+        "T011"
+      ],
+      "files": [
+        "CMakeLists.txt",
+        "docs/AGENT_TESTING.md",
+        "include/stackfall/fixture.hpp",
+        "include/stackfall/game.hpp",
+        "include/stackfall/observe.hpp",
+        "include/stackfall/pieces.hpp",
+        "notes/agent-testing.md",
+        "src/fixture.cpp",
+        "src/game.cpp",
+        "src/main.cpp",
+        "src/observe.cpp",
+        "src/pieces.cpp",
+        "tests/",
+        "tests/fixtures/blockout-ready.board.txt",
+        "tests/fixtures/four-line-ready.board.txt",
+        "tests/fixtures/lockout-ready.board.txt",
+        "tests/harness/check_harness.py",
+        "tests/harness/reference_replay.cpp",
+        "tests/harness/run.sh",
+        "tests/harness/scripts/fixture-blockout.script.txt",
+        "tests/harness/scripts/fixture-four-line.script.txt",
+        "tests/harness/scripts/fixture-lockout.script.txt",
+        "tests/harness/scripts/normal-game-clears.script.txt",
+        "tests/harness/scripts/scene-cycle-keyboard.script.txt",
+        "tests/harness/scripts/scene-cycle-pad.script.txt",
+        "tests/test_fixture.cpp",
+        "tests/test_main.cpp"
+      ],
+      "tags": [
+        "M2",
+        "agent-testing",
+        "looper:finding:stackfall-binary-fixed-seed-option",
+        "looper:finding:stackfall-agent-session-harness-unblock"
+      ],
+      "updated_at": "2026-11-03T07:12:01Z",
+      "created_at": "2026-11-02T20:04:56Z"
+    },
+    {
+      "id": "T024",
+      "title": "Play and inspect the desktop game as an agent",
+      "priority": 2,
+      "status": "done",
+      "details": "Round M2 gate. Execute docs/AGENT_TESTING.md, T024, using T023. Exercise the actual SDL application through keyboard and virtual-controller input. Inspect screenshots for every screen, all seven shapes, spawn and hold frames, ghost, previews, clipping, text, and feedback. Assert movement, rotation, hold, drop, line-clear, and transition behavior against structured observations. Inspect input across pause, restart, focus loss, and disconnection. Record the hidden I spawn delay and any proposed rule change as a design question. Fix reproducible defects within approved rules and repeat affected checks. Acceptance: notes/agent-testing.md records date, source identity, commands, seeds, inspected artifact paths, actual results, fixes, and open questions. An exit code or uninspected screenshots alone cannot pass this task. Defer human enjoyment and handheld checks to the final operator pass.\n\nResume correction (2026-11-03): Agent-owned after T023. No human session or physical device is required. Inspect captured screenshots as required by docs/AGENT_TESTING.md. Physical acceptance stays in T018 and T020.",
+      "depends_on": [
+        "T023"
+      ],
+      "files": [
+        ".gitignore",
+        "docs/AGENT_TESTING.md",
+        "notes/agent-testing.md",
+        "tests/",
+        "tests/fixtures/double-line-ready.board.txt",
+        "tests/fixtures/triple-line-ready.board.txt",
+        "tests/harness/check_t024.py",
+        "tests/harness/reference_replay.cpp",
+        "tests/harness/scripts/t024-clears-23.script.txt",
+        "tests/harness/scripts/t024-focus-letterbox.script.txt",
+        "tests/harness/scripts/t024-i-spawn.script.txt",
+        "tests/harness/scripts/t024-shapes-keyboard.script.txt",
+        "tests/harness/scripts/t024-shapes-pad.script.txt",
+        "tests/harness/t024-x11.sh",
+        "tests/harness/t024.sh"
+      ],
+      "tags": [
+        "M2",
+        "agent-testing",
+        "looper:finding:t024-first-playable-gate-human-and-device"
+      ],
+      "updated_at": "2026-11-03T08:28:38Z",
+      "created_at": "2026-11-02T20:04:56Z"
+    },
+    {
+      "id": "T025",
+      "title": "Run unattended stability and failure checks",
+      "priority": 2,
+      "status": "todo",
+      "details": "Round M3. Execute docs/AGENT_TESTING.md, T025. Run a Release desktop session for at least ten minutes of wall time, multiple seeded games, and at least 50 restart/menu cycles. Verify saves across process restarts, missing/corrupt/unwritable saves, missing audio, renderer fallback/failure, focus loss, virtual-controller removal, and a long frame stall. Measure render and simulation counts, elapsed time, CPU, memory, and frame-time percentiles with vertical synchronization enabled and disabled. Verify fallback pacing preserves 60 Hz simulation. Run memory and undefined-behavior sanitizers where supported. Acceptance: retain commands, host/renderer details, logs, seeds, screenshots, measurements, findings, and rerun results in notes/agent-testing.md. Label unavailable checks explicitly; resolve required software gaps before claiming the software gate passes. Do not infer RG503 performance or human enjoyment from virtual-display results.\n\nReview repair: Run T025 extended vsync and stability measurements on the completed T014 logging base\nT025 owns the extended stability and measurement pass that T014 deliberately does not run: the ten-minute Release session, 50 restart/menu cycles, save persistence across restarts, sanitizer runs, and frame-time percentiles with vsync enabled and disabled. This session's run directory build/agent-checks/2026-11-03-t014-logging/ (verify.sh, four pacing runs at 60 FPS / 60 Hz, CPU measurement, forced-failure logs) is reusable as the pacing baseline and method; T025 should extend it with percentiles and the long-run checks rather than re-deriving the harness. Host numbers still do not establish RG503 performance.\nEvidence: build/agent-checks/2026-11-03-t014-logging/verify.sh and its per-run subdirectories; notes/agent-testing.md section 'T014: error handling, renderer fallback, and logging (2026-11-03)'; commit d72dec4",
+      "depends_on": [
+        "T024",
+        "T012",
+        "T013",
+        "T014",
+        "T028"
+      ],
+      "files": [
+        "docs/AGENT_TESTING.md",
+        "notes/agent-testing.md",
+        "tests/"
+      ],
+      "tags": [
+        "M3",
+        "agent-testing",
+        "looper:finding:t025-vsync-percentile-device-pacing"
+      ],
+      "updated_at": "2026-11-03T06:02:02Z",
+      "created_at": "2026-11-02T20:04:56Z"
+    },
+    {
+      "id": "T026",
+      "title": "Profile and optimize performance in a bounded loop",
+      "priority": 2,
+      "status": "todo",
+      "details": "Round M3. Execute docs/PERFORMANCE.md after T025 and before the T015 desktop gate. Build reproducible Release benchmarks from fixed seeds and real SDL scenarios. Record at least three baseline samples and profile measured bottlenecks. Use claude -p as the nested runner with the existing configuration. The owner confirms that claude uses GLM 5.3. Verify local executable and command syntax without overriding the model, provider, or credentials. If the optional runner is unavailable, the executing agent performs the same loop without a human prerequisite. For each candidate, supply the requirements and measured hotspot to the nested agent, request one small patch in an isolated working copy, inspect the patch, independently run Debug/Release tests, pinned hashes, affected graphical scenarios, and at least three matching benchmark samples. Preserve rules, visuals, audio, controls, saves, pacing, and unrelated work. Retain only changes that improve measurements beyond run variance without material regressions. Prohibit recursive delegation, backlog edits, publication, and unrelated changes. Bound each nested call to ten minutes, terminate child processes on timeout, and save transcripts and exit status. Stop after five candidates, two consecutive rejected changes, or 90 minutes total; stop earlier if the measured frame budget is met and no actionable waste remains. Rerun the final regression suite and affected stability checks. Acceptance: notes/performance.md records source identities, runner details, commands, host/renderer/build settings, profiler evidence, before/after CPU and memory use, work per frame and frame-time percentiles, accepted/rejected changes, and unresolved limits. A measured no-change result can pass when the desktop target is met and profiling finds no actionable bottleneck. A time limit alone cannot pass an unmet target. Hardware performance and human testing stay deferred to final acceptance.",
+      "depends_on": [
+        "T025",
+        "T008"
+      ],
+      "files": [
+        "docs/PERFORMANCE.md",
+        "notes/performance.md",
+        "CMakeLists.txt",
+        "src/",
+        "tests/"
+      ],
+      "tags": [
+        "M3",
+        "performance",
+        "agent-testing"
+      ],
+      "updated_at": "2026-11-02T20:18:15Z",
+      "created_at": "2026-11-02T20:17:20Z"
+    },
+    {
+      "id": "T027",
+      "title": "Review screenshots with Codex and create fix tasks",
+      "priority": 2,
+      "status": "done",
+      "details": "Round M2. Implement and execute docs/DESIGN_REVIEW.md after T024. Capture the actual SDL application into a versioned packet under build/agent-checks/design-review/\u003crun-id\u003e/ with screenshots, manifest, source identity, seeds, input steps, observations, prompt, and output schema. Cover all scenes, ghost, hold states, previews, tall stacks, spawn/clear sequences, and a smaller letterboxed window. Run codex exec unattended using the existing model configuration, read-only sandbox, explicit image attachments, structured output, saved transcript, exit status, and bounded calls. Ask it to inspect every image and comment on design, UI, UX, clarity, controls presentation, and feedback within the approved game scope. Require evidence-linked, prioritized findings with reproduction steps and observable acceptance criteria. Reproduce findings, reject unsupported claims, and return accepted findings through the active Looper result contract. Looper planning creates or updates tasks; neither the reviewer nor a task worker edits the live backlog. Deduplicate root causes using stable keys and existing tasks. Verify actual follow-up task IDs and make T028 depend on required fix tasks; those fixes may depend on T027 but never on T028. Record optional aesthetic suggestions and defer changes to product requirements to final owner review. Acceptance: reusable capture/review command, validated real review, demonstrated task routing and duplicate suppression, actual task IDs, and notes/design-review.md linking evidence and decisions. JSON saved without task routing cannot pass. Bound calls to ten minutes, six images per call, twelve images per round, and two rounds total including T028. No intermediate human or device testing.",
+      "depends_on": [
+        "T024"
+      ],
+      "files": [
+        "docs/DESIGN_REVIEW.md",
+        "notes/design-review.md",
+        "tests/",
+        "tests/fixtures/tall-stack-ready.board.txt",
+        "tests/harness/scripts/design-review-clears.script.txt",
+        "tests/harness/scripts/design-review-letterbox.script.txt",
+        "tests/harness/scripts/design-review-scenes.script.txt",
+        "tests/harness/scripts/design-review-tall-stack.script.txt",
+        "tools/",
+        "tools/design-review/README.md",
+        "tools/design-review/build_prompt.py",
+        "tools/design-review/capture.sh",
+        "tools/design-review/check_fixes.py",
+        "tools/design-review/check_review.py",
+        "tools/design-review/letterbox-x11.sh",
+        "tools/design-review/make_packet.py",
+        "tools/design-review/packet.tsv",
+        "tools/design-review/review.schema.json",
+        "tools/design-review/review.sh",
+        "tools/design-review/review_ids.py"
+      ],
+      "tags": [
+        "M2",
+        "agent-testing",
+        "design-review"
+      ],
+      "updated_at": "2026-11-03T09:23:04Z",
+      "created_at": "2026-11-02T20:27:13Z"
+    },
+    {
+      "id": "T028",
+      "title": "Verify UI fixes from the screenshot review",
+      "priority": 2,
+      "status": "blocked",
+      "details": "Round M2 closure gate. Execute docs/DESIGN_REVIEW.md, T028. Require all accepted mandatory fixes from T027 through dependencies added by Looper planning. Capture new screenshots of affected scenes and run the second bounded codex exec review with the original findings and fresh evidence. Check the fixes independently and rerun affected application and deterministic tests. Record each finding as fixed, rejected with evidence, optional and deferred, or unresolved in notes/design-review.md. Route new required defects into deduplicated follow-up tasks through Looper and verify their fixes using targeted captures and checks without unlimited review rounds. Preserve approved rules, graphics constraints, and controls. Acceptance: actual linked task IDs, before-and-after captures, independent review output, verified required fixes, passing affected tests, and explicit dispositions. Keep this gate open while required findings remain unresolved. Optional cosmetic work and deferred changes to product requirements do not block closure. Human and device testing remain at final acceptance.\n\nReview repair: Make T028 depend on the three design-review fix tasks\nUpdate T028 ('Verify UI fixes from the screenshot review') through Looper planning so its depends_on includes the three fix tasks created from T027's accepted findings (keys control-hint-glyph-scale, ghost-outline-contrast, letterbox-scene-centered). Those fix tasks depend on T027 only and never on T028, so the graph stays acyclic. New task IDs are assigned by Looper planning, so a worker cannot name them in advance; after creation, add exactly those IDs to T028's depends_on and record them in notes/design-review.md's routing table. Optional cosmetic work (the hold LOCKED label suggestion) and deferred product questions (T029) must not gate T028.\nEvidence: docs/DESIGN_REVIEW.md 'T027' step 7 and the T028 contract text ('Require all accepted mandatory fixes from T027 through dependencies added by Looper planning'); notes/design-review.md 'Task routing'",
+      "depends_on": [
+        "T027"
+      ],
+      "files": [
+        "docs/DESIGN_REVIEW.md",
+        "notes/design-review.md",
+        "tests/",
+        "tools/",
+        "tools/design-review/README.md",
+        "tools/design-review/build_prompt.py",
+        "tools/design-review/prior-findings.json",
+        "tools/design-review/review.sh"
+      ],
+      "blockers": [
+        "An operator must complete this prerequisite; coding workers cannot execute it.",
+        "T028's depends_on still lists only T027. Looper planning has not applied the looper:finding:design-review-t028-depends-on-fix-tasks wiring, so the gate can start before its required fix tasks.",
+        "T030 (control-hint-glyph-scale), T031 (ghost-outline-contrast), and T032 (letterbox-scene-centered) are all todo; no fix exists at HEAD 13e337d, so the verification round, before-and-after captures, and fix dispositions have nothing to verify and the gate must stay open."
+      ],
+      "tags": [
+        "M2",
+        "agent-testing",
+        "design-review",
+        "looper:finding:design-review-t028-depends-on-fix-tasks",
+        "looper:operator"
+      ],
+      "updated_at": "2026-11-03T10:02:45Z",
+      "created_at": "2026-11-02T20:27:13Z",
+      "unblock_when": "Record evidence that the operator completed the action, then mark this task done. To delegate different work, explicitly change its contract and remove looper:operator."
+    },
+    {
+      "id": "T029",
+      "title": "Decide the hidden I-piece spawn delay rule",
+      "priority": 2,
+      "status": "blocked",
+      "details": "The I piece spawns at y=-2, fully above the visible board, and first appears exactly 48 ticks later (tick 5 to tick 53, seed 777), which equals the level 1 gravity interval (0.800 s at 60 Hz). Every other piece spawns at y=-1 and shows its lower rows immediately. Keep the 48-tick hidden interval or spawn pieces at row 0 so every piece is visible at once. A change moves lockout timing, so it is a design decision; nothing was changed in T024.\nEvidence: build/agent-checks/t024-final/review/t024-i-spawn-i-spawn-frame.png, t024-i-hidden-plus47.png, t024-i-first-visible-plus48.png; records in build/agent-checks/t024-final/t024-i-spawn.run.obs; notes/agent-testing.md T024 section",
+      "depends_on": [
+        "T024"
+      ],
+      "blockers": [
+        "An operator must complete this prerequisite; coding workers cannot execute it.",
+        "Deferred: Before the T018 physical device pass begins"
+      ],
+      "tags": [
+        "looper:deferred",
+        "looper:finding:t024-i-spawn-hidden-delay-design-question",
+        "looper:operator"
+      ],
+      "unblock_when": "Before the T018 physical device pass begins; remove looper:deferred and set todo when this condition is met."
+    },
+    {
+      "id": "T030",
+      "title": "Raise the control-hint glyph scale for readable hints",
+      "priority": 2,
+      "status": "todo",
+      "details": "Round M2 fix from the T027 screenshot review. The gameplay control hints and the menu footer hints (title hint, pause and game-over 'A CONFIRM') draw at glyph scale 1, so their text is 7 logical pixels tall while panel labels run at 14 and menu items at 21 (kHintScale in src/renderer_sdl.cpp, used by drawHintsPanel, the title hint, and the overlay hints). Measured on the reviewed gameplay-early frame: seven hint text rows of exactly 7 px; in the 640x480 letterboxed frame the same rows measure 4 to 5 device pixels. Reproduce: python3 tools/design-review/check_fixes.py --packet build/agent-checks/design-review/initial/packet (control-hint-glyph-scale FAIL, 7 px \u003c 14 px). Fix inside the approved scope: raise the hint glyph scale to at least 14 logical pixels (scale 2) and reflow the two hint columns inside the left panel x=52..324 (the control column would overlap the action column at x=176 at scale 2, so stack or shorten the labels); keep the 5x7 glyph table and rectangle drawing. Acceptance (observable): tools/design-review/check_fixes.py passes control-hint-glyph-scale on a fresh packet (hint glyph height \u003e= 14 logical px, no text past the panel edge), and the affected scenes rerun clean under tests/harness/run.sh. T028 verifies it with fresh captures.\nEvidence: build/agent-checks/design-review/initial/packet/review-initial/merged.json (reviewer keys small-control-and-menu-hints priority 2 and control-hints-too-small priority 3, merged into this one root cause); review-initial/fix-checks-before.json (measured 7 px rows, letterbox rows 4-5 px); notes/design-review.md 'Findings and dispositions'; src/renderer_sdl.cpp:36\n\nReview repair: Evidence: control-hint glyph defect reproduces at 13e337d\nFresh reproduction attached for the fix worker. At commit 13e337d (after the T014 rework), kHintScale is still 1 at src/renderer_sdl.cpp:36 and the hint rows draw at 7 px. A fresh 12-image packet (build/agent-checks/design-review/t028-preflight/ in the T028 worktree, seed 31337) measures text_row_runs [12,7,7,7,7,7,7,7] logical px; the letterboxed frame shows the same rows at 4-5 device px. Acceptance unchanged: hint glyphs at least 14 logical px high, reflowed inside the approved left panel, nothing clipped.\nEvidence: check_fixes.py on the t028-preflight packet: 0 of 3 required criteria pass; fix-checks.json saved next to the packet. Durable record: notes/design-review.md 'T028 verification status'.",
+      "depends_on": [
+        "T027"
+      ],
+      "tags": [
+        "looper:finding:control-hint-glyph-scale"
+      ]
+    },
+    {
+      "id": "T031",
+      "title": "Raise the ghost outline contrast above 3:1",
+      "priority": 3,
+      "status": "todo",
+      "details": "Round M2 fix from the T027 screenshot review. The ghost is a one-pixel outline in a color blended 60 percent toward the board well (ghostColor, include/stackfall/renderer_sdl.hpp), so the landing preview is the weakest shape on the board: measured outline (35, 91, 53) against the well (10, 12, 19) is a 2.44:1 luminance contrast, while the active piece fill reaches about 9.8:1 against the same well. Reported independently by both review calls. Fix inside the approved spec text 'same piece outline or dim fill': blend less toward the well and/or draw a two-pixel outline, keeping the center hollow so the ghost stays distinct from settled and active cells. Acceptance (observable): tools/design-review/check_fixes.py passes ghost-outline-contrast (\u003e= 3.0 contrast) on a fresh packet; ghost still hollow; tests/harness/run.sh and ctest stay green.\nEvidence: build/agent-checks/design-review/initial/packet/review-initial/merged.json (ghost-outline-low-contrast, both calls); review-initial/fix-checks-before.json (contrast 2.44); notes/design-review.md 'Findings and dispositions'; include/stackfall/renderer_sdl.hpp ghostColor\n\nReview repair: Evidence: ghost outline defect reproduces at 13e337d\nFresh reproduction attached for the fix worker. At commit 13e337d, ghostColor (include/stackfall/renderer_sdl.hpp:249) still blends three parts fill to five parts well. The fresh packet measures the outline at (35, 91, 53) against the well (10, 12, 19): 2.44:1, identical to the reviewed initial packet. Acceptance unchanged: at least 3:1 luminance contrast with the outline still hollow.\nEvidence: check_fixes.py on the t028-preflight packet: ghost-outline-contrast FAIL at 2.44. Durable record: notes/design-review.md 'T028 verification status'.",
+      "depends_on": [
+        "T027"
+      ],
+      "tags": [
+        "looper:finding:ghost-outline-contrast"
+      ]
+    },
+    {
+      "id": "T032",
+      "title": "Center the letterboxed scene when the window resizes",
+      "priority": 3,
+      "status": "todo",
+      "details": "Round M2 fix from the T027 screenshot review. The window is created SDL_WINDOW_RESIZABLE and SDL_RenderSetLogicalSize(960, 544) runs once at startup (src/main.cpp), but a later window resize scales the scene and anchors it at the top-left of the window: the reviewed 640x480 frame has 0 px of letterbox bar above the scene and 118 px below, and a 720x480 probe with the same driver shows 0 px above and 72 px below. SPEC section 6.1 requires letterboxing for a non-native desktop window; the RG503 runs fullscreen at the native size, so this affects desktop windows only. Fix: re-apply the logical size (or set an explicit centered viewport) when a SDL_WINDOWEVENT_SIZE_CHANGED arrives, so the slack splits evenly. Acceptance (observable): tools/design-review/check_fixes.py passes letterbox-scene-centered (both bars exist and differ by at most 2 px) on a fresh packet; native 960x544 output is unchanged.\nEvidence: build/agent-checks/design-review/initial/packet/review-initial/merged.json (letterbox-scene-not-centered, direct evidence); review-initial/fix-checks-before.json (top 0 px, bottom 118 px); the 720x480 probe in notes/design-review.md; src/main.cpp:1376 and src/main.cpp:1402\n\nReview repair: Evidence: letterbox centering defect reproduces at 13e337d\nFresh reproduction attached for the fix worker. At commit 13e337d, after the T014 error-handling rework moved the call to src/main.cpp:1515, SDL_RenderSetLogicalSize still runs once at startup and no window-resize handling exists. The fresh X11 letterbox session measures bars of 0 px above and 118 px below in the 640x480 window, identical to the initial packet. Acceptance unchanged: both bars exist and differ by at most 2 px.\nEvidence: check_fixes.py on the t028-preflight packet: letterbox-scene-centered FAIL (top 0, bottom 118); letterbox session status 'passed'. Durable record: notes/design-review.md 'T028 verification status'.",
+      "depends_on": [
+        "T027"
+      ],
+      "tags": [
+        "looper:finding:letterbox-scene-centered"
+      ]
+    }
+  ]
+}
