@@ -5,17 +5,22 @@
 #
 #   tests/harness/run.sh
 #
-# It builds the game and the headless reference replay, then drives six
+# It builds the game and the headless reference replay, then drives fifteen
 # sessions through the real SDL application under the dummy video driver:
 # the full scene cycle on the keyboard and on the developer virtual
-# controller, a normal planned game from an empty board, and three labeled
-# board fixtures (four-line clear, lock-out, block-out). Every session also
-# runs through the headless reference; check_harness.py compares the two
-# checkpoint streams field by field and adds expectations pinned from the
-# specification alone. On any failure the run directory keeps the log, the
-# records, and every screenshot as evidence and the script exits nonzero.
-# Every game process runs under `timeout` with a frame bound, so a hung
-# session cannot outlive the harness.
+# controller, a normal planned game from an empty board, the options screen
+# round trip that turns the ghost preview off, the six-row options screen on
+# both inputs, the hold-off round trip, the grayscale round trip, the staged
+# relaunch, legacy-settings, and next-count sessions of the options expansion
+# (T045), the abandoned-round record session of the mid-round persistence
+# (T052), and three labeled board fixtures (four-line clear, lock-out,
+# block-out). Every session also runs through the headless reference - a
+# staged session once per stage, over the shared save directory - and
+# check_harness.py compares the two checkpoint streams field by field and
+# adds expectations pinned from the specification alone. On any failure the
+# run directory keeps the log, the records, and every screenshot as evidence
+# and the script exits nonzero. Every game process runs under `timeout` with
+# a frame bound, so a hung session cannot outlive the harness.
 #
 # Options through environment variables:
 #   HARNESS_BUILD_DIR  build directory (default: build)
@@ -99,7 +104,8 @@ mkdir -p "$run_dir" || fail "cannot create $run_dir"
     src/observe.cpp include/stackfall/game.hpp include/stackfall/fixture.hpp \
     include/stackfall/observe.hpp tests/harness/run.sh \
     tests/harness/check_harness.py tests/harness/reference_replay.cpp \
-    tests/fixtures/*.board.txt tests/harness/scripts/*.script.txt
+    tests/fixtures/*.board.txt tests/harness/scripts/*.script.txt \
+    tests/harness/scripts/*.stages.txt tests/harness/settings/*.dat
 } > "$run_dir/source.sha256" || fail "cannot record source identity"
 cat "$run_dir/source.sha256"
 
@@ -116,9 +122,114 @@ fi
 # ---------------------------------------------------------------------------
 # Sessions. Each runs twice: the headless reference computes what the rules
 # core must do, then the real SDL application does it through the event path.
+# A session with a `<session>.stages.txt` manifest runs one game process per
+# listed stage over one shared save directory, so a session can relaunch the
+# game on the settings an earlier stage wrote or start from a legacy file.
 # ---------------------------------------------------------------------------
+
+# One reference-and-game pair over one script. `$1` names the run for the
+# logs, `$2` the script, `$3` the observation stem (`<stem>.ref.obs`,
+# `<stem>.run.obs`, `<stem>.run.log`, `<stem>.exit`), `$4` the save directory
+# both halves read the settings file from, and `$5` the evidence directory
+# that takes the stage's screenshots and input log.
+run_pair() {
+  pair_name=$1
+  pair_script=$2
+  pair_stem=$3
+  pair_save=$4
+  pair_dir=$5
+
+  echo "reference: $pair_name"
+  "$reference" --seed "$seed" --script "$pair_script" \
+    --fixture-dir "$fixtures" --settings "$pair_save/settings.dat" \
+    --high-score "$pair_save/highscore.dat" \
+    --out "$run_dir/$pair_stem.ref.obs" \
+    > "$run_dir/$pair_stem.ref.log" 2>&1 ||
+    fail "reference replay failed for $pair_name (see $run_dir/$pair_stem.ref.log)"
+
+  echo "game:      $pair_name (video driver $video)"
+  timeout --foreground "$timeout_s" \
+    env SDL_VIDEODRIVER="$video" SDL_AUDIODRIVER=dummy \
+    "$game" --seed "$seed" --tick-per-frame \
+    --input-script "$pair_script" --fixture-dir "$fixtures" \
+    --save-dir "$pair_save" --screenshot-dir "$pair_dir/shots" \
+    --observations "$run_dir/$pair_stem.run.obs" \
+    --input-log "$pair_dir/input.log" \
+    --frames 4000 > "$run_dir/$pair_stem.run.log" 2>&1 &
+  game_pid=$!
+  children="$children $game_pid"
+  wait "$game_pid"
+  status=$?
+  children=${children% "$game_pid"}
+  if [ "$status" -ne 0 ]; then
+    echo "harness: $pair_name exited $status; evidence in $run_dir" >&2
+    echo "exit=$status" > "$run_dir/$pair_stem.exit"
+    fail "session $pair_name failed"
+  fi
+  echo "exit=0" > "$run_dir/$pair_stem.exit"
+}
+
+# One staged session: every line of the manifest names one script and may add
+# `settings=<name>`, a file under tests/harness/settings/ the driver copies
+# into the shared save directory before the stage runs, so a stage may start
+# from a legacy settings file. The settings file is snapshotted before and
+# after every stage, so the checker reads the exact bytes each stage started
+# from and left behind.
+run_stages() {
+  stage_session=$1
+  stage_dir=$2
+  stage_manifest=$3
+  stage_save="$stage_dir/save"
+  stage_no=0
+  while IFS= read -r stage_line || [ -n "$stage_line" ]; do
+    stage_line=${stage_line%%#*}
+    [ -n "$stage_line" ] || continue
+    # The first word names the script; every later word is a `field=value`.
+    # Word splitting over the line, not `set --`, because that would clobber
+    # this function's own positional parameters.
+    stage_script=""
+    stage_template=""
+    for stage_field in $stage_line; do
+      case "$stage_field" in
+        script=*)
+          if [ -n "$stage_script" ]; then
+            fail "two scripts on one line of $stage_manifest"
+          fi
+          stage_script=${stage_field#script=}
+          ;;
+        settings=*) stage_template=${stage_field#settings=} ;;
+        *) fail "unknown field \"$stage_field\" in $stage_manifest" ;;
+      esac
+    done
+    [ -n "$stage_script" ] || fail "a line of $stage_manifest names no script"
+    stage_no=$((stage_no + 1))
+    [ -f "$scripts/$stage_script" ] ||
+      fail "missing script $scripts/$stage_script (named in $stage_manifest)"
+    echo
+    echo "--- stage $stage_no: $stage_script"
+    if [ -n "$stage_template" ]; then
+      [ -f "$settings_dir/$stage_template" ] ||
+        fail "missing settings template $settings_dir/$stage_template"
+      cp "$settings_dir/$stage_template" "$stage_save/settings.dat" ||
+        fail "cannot stage $stage_template for $stage_session"
+    fi
+    if [ -f "$stage_save/settings.dat" ]; then
+      cp "$stage_save/settings.dat" \
+        "$stage_dir/settings-before-stage$stage_no.dat"
+    fi
+    mkdir -p "$stage_dir/stage$stage_no/shots"
+    run_pair "$stage_session stage $stage_no" "$scripts/$stage_script" \
+      "$stage_session.stage$stage_no" "$stage_save" "$stage_dir/stage$stage_no"
+    [ -f "$stage_save/settings.dat" ] ||
+      fail "stage $stage_no of $stage_session left no settings.dat"
+    cp "$stage_save/settings.dat" "$stage_dir/settings-after-stage$stage_no.dat"
+  done < "$stage_manifest"
+  [ "$stage_no" -gt 0 ] || fail "$stage_manifest lists no stage"
+}
+
 seed=20261103
-sessions="scene-cycle-keyboard scene-cycle-pad normal-game-clears fixture-four-line fixture-lockout fixture-blockout"
+settings_dir="$repo/tests/harness/settings"
+sessions="scene-cycle-keyboard scene-cycle-pad normal-game-clears options-ghost options-six-keyboard options-six-pad hold-off grayscale options-relaunch options-legacy next-count record-abandon-save fixture-four-line fixture-lockout fixture-blockout"
 : > "$run_dir/sessions.txt"
 for session in $sessions; do
   echo "$session" >> "$run_dir/sessions.txt"
@@ -128,36 +239,16 @@ for session in $sessions; do
   echo
   echo "=== session $session ==="
   dir="$run_dir/$session"
-  mkdir -p "$dir/shots" "$dir/save"
-  script="$scripts/$session.script.txt"
-  [ -f "$script" ] || fail "missing script $script"
-
-  echo "reference: $session"
-  "$reference" --seed "$seed" --script "$script" \
-    --fixture-dir "$fixtures" --out "$run_dir/$session.ref.obs" \
-    > "$run_dir/$session.ref.log" 2>&1 ||
-    fail "reference replay failed for $session (see $run_dir/$session.ref.log)"
-
-  echo "game:      $session (video driver $video)"
-  timeout --foreground "$timeout_s" \
-    env SDL_VIDEODRIVER="$video" SDL_AUDIODRIVER=dummy \
-    "$game" --seed "$seed" --tick-per-frame \
-    --input-script "$script" --fixture-dir "$fixtures" \
-    --save-dir "$dir/save" --screenshot-dir "$dir/shots" \
-    --observations "$run_dir/$session.run.obs" \
-    --input-log "$dir/input.log" \
-    --frames 4000 > "$run_dir/$session.run.log" 2>&1 &
-  game_pid=$!
-  children="$children $game_pid"
-  wait "$game_pid"
-  status=$?
-  children=${children% "$game_pid"}
-  if [ "$status" -ne 0 ]; then
-    echo "harness: $session exited $status; evidence in $run_dir" >&2
-    echo "exit=$status" > "$run_dir/$session.exit"
-    fail "session $session failed"
+  mkdir -p "$dir/save"
+  manifest="$scripts/$session.stages.txt"
+  if [ -f "$manifest" ]; then
+    run_stages "$session" "$dir" "$manifest"
+  else
+    script="$scripts/$session.script.txt"
+    [ -f "$script" ] || fail "missing script $script"
+    mkdir -p "$dir/shots"
+    run_pair "$session" "$script" "$session" "$dir/save" "$dir"
   fi
-  echo "exit=0" > "$run_dir/$session.exit"
 
   # Repeat the planned normal game once more: the same seed and script must
   # reproduce the same checkpoint records byte for byte.

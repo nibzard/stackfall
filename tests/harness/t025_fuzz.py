@@ -42,17 +42,44 @@ SAVE_DRIVER = r"""// Bounded mutation loop over the two save parsers (T025 fuzz 
 #include <random>
 #include <string>
 
+// The legacy two-line settings file of the sound-only era (T013), which
+// parseSettingsFile still accepts with every later preference at its
+// default.
+std::string legacySettings(bool soundOn) {
+  return "version=" + std::to_string(stackfall::kSaveFormatVersion) +
+         "\nsound=" + (soundOn ? "on" : "off") + "\n";
+}
+
+// The legacy three-line settings file of the sound-and-ghost era (T039),
+// before the grid, hold, next, and grayscale lines of T044 joined.
+std::string legacySettings(bool soundOn, bool ghostOn) {
+  return "version=" + std::to_string(stackfall::kSaveFormatVersion) +
+         "\nsound=" + (soundOn ? "on" : "off") +
+         "\nghost=" + (ghostOn ? "on" : "off") + "\n";
+}
+
 int main(int argc, char** argv) {
   const int seconds = argc > 1 ? std::atoi(argv[1]) : 60;
   const unsigned seed = argc > 2 ? static_cast<unsigned>(std::atoi(argv[2]))
                                  : 0x5eed25u;
   std::mt19937 rng(seed);
+  stackfall::SettingsValues mixed;
+  mixed.soundOn = false;
+  mixed.gridOn = false;
+  mixed.nextPreviews = 3;
+  mixed.grayscaleOn = true;
   const std::string bases[] = {
       stackfall::formatSaveFile(0),
       stackfall::formatSaveFile(218),
       stackfall::formatSaveFile(18446744073709551615ULL),
-      stackfall::formatSettingsFile(true),
-      stackfall::formatSettingsFile(false),
+      stackfall::formatSettingsFile(stackfall::SettingsValues{}),
+      stackfall::formatSettingsFile(mixed),
+      // The legacy settings files of both earlier eras, so the loop also
+      // mutates the forms an upgrade must keep reading.
+      legacySettings(true),
+      legacySettings(false),
+      legacySettings(true, false),
+      legacySettings(false, true),
   };
   const auto deadline =
       std::chrono::steady_clock::now() + std::chrono::seconds(seconds);
@@ -103,10 +130,31 @@ int main(int argc, char** argv) {
         return 2;
       }
     }
-    bool sound = false;
-    if (stackfall::parseSettingsFile(bytes, &sound)) {
+    stackfall::SettingsValues parsed;
+    if (stackfall::parseSettingsFile(bytes, &parsed)) {
       ++accepted;
-      if (bytes != stackfall::formatSettingsFile(sound)) {
+      // An accepted settings file must equal the canonical rendering of the
+      // five preferences it carried, or one of the legacy files, which parse
+      // with every preference they do not name at its default.
+      const bool canonical =
+          bytes == stackfall::formatSettingsFile(parsed);
+      const stackfall::SettingsValues defaults{};
+      // The three-line file carries sound and ghost itself; only the four
+      // preferences of T044 must sit at their defaults.
+      const bool legacyThree =
+          parsed.gridOn == defaults.gridOn &&
+          parsed.holdOn == defaults.holdOn &&
+          parsed.nextPreviews == defaults.nextPreviews &&
+          parsed.grayscaleOn == defaults.grayscaleOn &&
+          bytes == legacySettings(parsed.soundOn, parsed.ghostOn);
+      const bool legacyTwo =
+          parsed.ghostOn == defaults.ghostOn &&
+          parsed.gridOn == defaults.gridOn &&
+          parsed.holdOn == defaults.holdOn &&
+          parsed.nextPreviews == defaults.nextPreviews &&
+          parsed.grayscaleOn == defaults.grayscaleOn &&
+          bytes == legacySettings(parsed.soundOn);
+      if (!canonical && !legacyThree && !legacyTwo) {
         std::fprintf(stderr, "FUZZ ORACLE: accepted non-canonical settings\n");
         return 2;
       }
@@ -270,7 +318,17 @@ def main():
         print("fuzz: no script corpus found")
         return 1
     canonical_save = b"version=1\nhigh_score=218\n"
-    canonical_settings = b"version=1\nsound=on\n"
+    canonical_settings = (
+        b"version=1\nsound=on\nghost=on\ngrid=on\nhold=on\nnext=5\n"
+        b"grayscale=off\n")
+    # The legacy settings files of the two earlier eras: both must load
+    # through the real binary with their saved values and the new defaults,
+    # and their mutations must stay within the same damage rules as the
+    # current form.
+    legacy_settings = [
+        b"version=1\nsound=off\n",
+        b"version=1\nsound=on\nghost=off\n",
+    ]
     counts = {"clean": 0, "rejected": 0}
     started = time.time()
     case_index = 0
@@ -299,7 +357,8 @@ def main():
                         blob.extend(bytes(rng.randrange(8)))
                 return bytes(blob)
             saves = {"highscore.dat": damage(canonical_save),
-                     "settings.dat": damage(canonical_settings)}
+                     "settings.dat": damage(
+                         rng.choice([canonical_settings] + legacy_settings))}
             status, detail = run_case(game, case_dir, saves=saves)
         else:
             source = rng.choice(corpus)

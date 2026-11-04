@@ -68,9 +68,11 @@ constexpr int kSpawnOriginX = 3;
 
 // The I drawing first occupies its local row 1, so its matrix starts one
 // row higher than the others; both choices put the topmost occupied cell
-// of the piece at y = -1.
-constexpr int kSpawnOriginYStandard = -1;
-constexpr int kSpawnOriginYI = -2;
+// of the piece at visible row y = 0, the immediate-spawn rule approved on
+// 2026-11-03 (task T029). Every piece is on screen the tick it appears,
+// and the hidden rows stay free for the rotations of section 4.4.
+constexpr int kSpawnOriginYStandard = 0;
+constexpr int kSpawnOriginYI = -1;
 
 // ---------------------------------------------------------------------------
 // Wall-kick tables, specification section 4.4. Reference:

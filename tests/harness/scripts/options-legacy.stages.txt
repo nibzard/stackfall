@@ -1,0 +1,8 @@
+# The two keyboard processes of the options-legacy session (T045), in order,
+# over the session's one save directory. Each stage's `settings=` field names
+# a template under tests/harness/settings/ that the driver copies into that
+# directory first, so stage one starts from the three-line file of the
+# sound-and-ghost era and stage two from the two-line file of the sound-only
+# era.
+script=options-legacy-three.script.txt settings=legacy-three-line.dat
+script=options-legacy-two.script.txt settings=legacy-two-line.dat

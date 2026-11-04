@@ -237,8 +237,9 @@ void run_observation_tests() {
     const std::string colors = std::string(200, '0') + "6600000000" +
                                "0000005000";
     SC_CHECK(record.find("colors=" + colors) != std::string::npos);
-    // The forced S piece replaced the natural first piece at spawn.
-    SC_CHECK(record.find("active=S,0,3,-1") != std::string::npos);
+    // The forced S piece replaced the natural first piece at spawn; its top
+    // cells sit in visible row 0 (task T029).
+    SC_CHECK(record.find("active=S,0,3,0") != std::string::npos);
   }
 
   // A started round names its pieces with the letters the fixtures and the

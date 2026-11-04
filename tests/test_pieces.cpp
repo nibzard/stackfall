@@ -267,13 +267,14 @@ void checkOrientationsFollowQuarterTurns() {
 }
 
 // Spawn geometry, specification section 4.2: matrix origin x = 3 for every
-// piece; the I starts at matrix y = -2 and the others at y = -1; the topmost
-// occupied cell of every piece sits at y = -1; the I spans columns 3..6 and
-// the O spans columns 4..5.
+// piece; the I starts at matrix y = -1 and the others at y = 0; the topmost
+// occupied cell of every piece sits at visible row y = 0, the
+// immediate-spawn rule of task T029, so no piece waits in the hidden rows;
+// the I spans columns 3..6 and the O spans columns 4..5.
 void checkSpawnGeometry() {
   for (PieceId id : stackfall::kAllPieceIds) {
     SC_CHECK(stackfall::spawnX(id) == 3);
-    SC_CHECK(stackfall::spawnY(id) == (id == PieceId::I ? -2 : -1));
+    SC_CHECK(stackfall::spawnY(id) == (id == PieceId::I ? -1 : 0));
 
     const stackfall::Piece piece = stackfall::makeSpawnPiece(id);
     SC_CHECK(piece.id == id);
@@ -303,22 +304,26 @@ void checkSpawnGeometry() {
 
     SC_CHECK(allOnBoard);
     SC_CHECK(boardCellsMatchOffsets);
-    SC_CHECK(minY == -1);  // the lower hidden row holds the top piece cells
+    // The top of every piece is the first visible row, so the renderer has
+    // cells to draw on the spawn tick itself (task T029).
+    SC_CHECK(minY == 0);
 
     if (id == PieceId::I) {
-      // The four I cells fill row y = -1 across columns 3..6.
+      // The four I cells fill row y = 0 across columns 3..6 and the piece
+      // holds no other row, so it is fully on screen at once.
       SC_CHECK(minX == 3);
       SC_CHECK(maxX == 6);
-      SC_CHECK(maxY == -1);
+      SC_CHECK(maxY == 0);
     } else if (id == PieceId::O) {
-      // The O is a 2x2 block over columns 4..5 and rows -1..0.
+      // The O is a 2x2 block over columns 4..5 and rows 0..1.
       SC_CHECK(minX == 4);
       SC_CHECK(maxX == 5);
-      SC_CHECK(maxY == 0);
+      SC_CHECK(maxY == 1);
     } else {
-      // Every JLSTZ piece spans columns 3..5 at spawn.
+      // Every JLSTZ piece spans columns 3..5 and rows 0..1 at spawn.
       SC_CHECK(minX == 3);
       SC_CHECK(maxX == 5);
+      SC_CHECK(maxY == 1);
     }
   }
 }
@@ -873,7 +878,8 @@ void checkRotationSweepOnEmptyBoard() {
 // rows, mirroring the storage rule of section 4.1, so candidates that would
 // leave the stored rows are refused before any row access.
 void checkRotationAtTopBoundary() {
-  // Every piece rotates in place when it spawns inside the hidden rows.
+  // Every piece rotates in place when it spawns at visible row 0 (the I
+  // matrix reaches the hidden rows, but its occupied row is row 0 too).
   for (PieceId id : stackfall::kAllPieceIds) {
     const stackfall::Piece start = stackfall::makeSpawnPiece(id);
     SC_CHECK(fitsOnEmptyBoard(start));

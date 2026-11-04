@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.16)
 
 project(stackfall
-  VERSION 0.1.0
+  VERSION 1.0.0
   DESCRIPTION "STACKFALL: an offline deterministic tetromino game for the Anbernic RG503"
   LANGUAGES CXX)
 
@@ -51,17 +51,26 @@ target_compile_features(stackfall_core PUBLIC cxx_std_17)
 # ---------------------------------------------------------------------------
 find_package(SDL2 REQUIRED)
 
+# Resolve SDL2 once, before the first consumer. Current package configs
+# export the SDL2::SDL2 imported target with their public dependencies.
+# Legacy configs set only the SDL2_INCLUDE_DIRS and SDL2_LIBRARIES
+# variables, so wrap those in one interface target for that case. Every SDL
+# consumer below links the STACKFALL_SDL variable alone; stackfall_core and
+# its headless suites keep no SDL dependency.
+if(TARGET SDL2::SDL2)
+  set(STACKFALL_SDL SDL2::SDL2)
+else()
+  add_library(stackfall_sdl2 INTERFACE)
+  target_include_directories(stackfall_sdl2 INTERFACE ${SDL2_INCLUDE_DIRS})
+  target_link_libraries(stackfall_sdl2 INTERFACE ${SDL2_LIBRARIES})
+  set(STACKFALL_SDL stackfall_sdl2)
+endif()
+
 add_library(stackfall_input STATIC
   src/input_sdl.cpp
 )
-target_link_libraries(stackfall_input PUBLIC stackfall_core)
+target_link_libraries(stackfall_input PUBLIC stackfall_core ${STACKFALL_SDL})
 target_compile_features(stackfall_input PUBLIC cxx_std_17)
-if(TARGET SDL2::SDL2)
-  target_link_libraries(stackfall_input PUBLIC SDL2::SDL2)
-else()
-  target_include_directories(stackfall_input PUBLIC ${SDL2_INCLUDE_DIRS})
-  target_link_libraries(stackfall_input PUBLIC ${SDL2_LIBRARIES})
-endif()
 
 # ---------------------------------------------------------------------------
 # stackfall_render: the procedural SDL renderer (task T010). It owns the
@@ -73,14 +82,8 @@ endif()
 add_library(stackfall_render STATIC
   src/renderer_sdl.cpp
 )
-target_link_libraries(stackfall_render PUBLIC stackfall_core)
+target_link_libraries(stackfall_render PUBLIC stackfall_core ${STACKFALL_SDL})
 target_compile_features(stackfall_render PUBLIC cxx_std_17)
-if(TARGET SDL2::SDL2)
-  target_link_libraries(stackfall_render PUBLIC SDL2::SDL2)
-else()
-  target_include_directories(stackfall_render PUBLIC ${SDL2_INCLUDE_DIRS})
-  target_link_libraries(stackfall_render PUBLIC ${SDL2_LIBRARIES})
-endif()
 
 # ---------------------------------------------------------------------------
 # stackfall_audio: the synthesized sound effects (task T013). It owns the cue
@@ -92,28 +95,35 @@ endif()
 add_library(stackfall_audio STATIC
   src/audio_sdl.cpp
 )
-target_link_libraries(stackfall_audio PUBLIC stackfall_core)
+target_link_libraries(stackfall_audio PUBLIC stackfall_core ${STACKFALL_SDL})
 target_compile_features(stackfall_audio PUBLIC cxx_std_17)
-if(TARGET SDL2::SDL2)
-  target_link_libraries(stackfall_audio PUBLIC SDL2::SDL2)
-else()
-  target_include_directories(stackfall_audio PUBLIC ${SDL2_INCLUDE_DIRS})
-  target_link_libraries(stackfall_audio PUBLIC ${SDL2_LIBRARIES})
-endif()
 
 # ---------------------------------------------------------------------------
-# stackfall: the game executable. Only this target links SDL2.
+# stackfall_developer: the developer automation of one session (task T048,
+# docs/AGENT_TESTING.md). It owns the script driver, the virtual gamepad, the
+# checkpoint capture, and the evidence streams behind the harness options, so
+# src/main.cpp keeps only the timing, the simulation, the rendering, and the
+# startup order. It carries the SDL dependency for the same reason the input,
+# render, and audio libraries do: the game binary and its future suites share
+# one implementation. The mirrored parser of tests/harness stays independent
+# of this library on purpose.
+# ---------------------------------------------------------------------------
+add_library(stackfall_developer STATIC
+  src/developer_session.cpp
+)
+target_link_libraries(stackfall_developer PUBLIC
+  stackfall_core stackfall_input stackfall_render stackfall_audio ${STACKFALL_SDL})
+target_compile_features(stackfall_developer PUBLIC cxx_std_17)
+
+# ---------------------------------------------------------------------------
+# stackfall: the game executable. It reaches SDL2 through the public
+# dependencies of the platform libraries above, so it states no SDL link of
+# its own.
 # ---------------------------------------------------------------------------
 add_executable(stackfall
   src/main.cpp
 )
-target_link_libraries(stackfall PRIVATE stackfall_core stackfall_input stackfall_render stackfall_audio)
-if(TARGET SDL2::SDL2)
-  target_link_libraries(stackfall PRIVATE SDL2::SDL2)
-else()
-  target_include_directories(stackfall PRIVATE ${SDL2_INCLUDE_DIRS})
-  target_link_libraries(stackfall PRIVATE ${SDL2_LIBRARIES})
-endif()
+target_link_libraries(stackfall PRIVATE stackfall_core stackfall_input stackfall_render stackfall_audio stackfall_developer)
 
 # ---------------------------------------------------------------------------
 # stackfall_tests: headless rule tests. It links stackfall_core only. Do not

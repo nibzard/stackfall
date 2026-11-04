@@ -48,6 +48,10 @@ key down down
 wait 2
 key down up
 wait 2
+key down down
+wait 2
+key down up
+wait 2
 check paused-at-quit-title
 wait 2
 key enter down
@@ -55,6 +59,10 @@ wait 2
 key enter up
 wait 2
 check back-at-title
+wait 2
+key down down
+wait 2
+key down up
 wait 2
 key down down
 wait 2

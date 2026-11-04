@@ -578,6 +578,10 @@ key down down
 wait 2
 key down up
 wait 2
+key down down
+wait 2
+key down up
+wait 2
 check title-at-quit
 wait 1
 wait 1

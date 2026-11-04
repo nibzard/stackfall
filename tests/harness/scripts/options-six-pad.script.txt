@@ -1,0 +1,184 @@
+# Options-six-pad session (T045, docs/AGENT_TESTING.md): the six-row options
+# screen on the developer virtual controller, seed 20261103, the input path of
+# scene-cycle-pad. The pad reaches all six rows and wraps past GRAYSCALE back
+# to SOUND, A changes each of the four new preferences (GRID off, HOLD off,
+# NEXT PIECES 5 -> 1 -> 2 -> 3, GRAYSCALE on), and B returns to the title.
+# A round then proves the pad's own hold inputs - Y and the left shoulder -
+# change nothing while HOLD is off, and the session quits through the title
+# menu. A `wait` follows every check, so no record carries the tick of the
+# input that comes after it.
+check title-start
+wait 1
+pad down down
+wait 2
+pad down up
+wait 2
+pad down down
+wait 2
+pad down up
+wait 2
+check title-at-options
+wait 1
+pad a down
+wait 2
+pad a up
+wait 2
+check options-sound-row
+wait 1
+pad down down
+wait 2
+pad down up
+wait 2
+check options-ghost-row
+wait 1
+pad down down
+wait 2
+pad down up
+wait 2
+check options-grid-row
+wait 1
+pad a down
+wait 2
+pad a up
+wait 2
+check grid-toggled
+wait 1
+pad down down
+wait 2
+pad down up
+wait 2
+check options-hold-row
+wait 1
+pad a down
+wait 2
+pad a up
+wait 2
+check hold-toggled
+wait 1
+pad down down
+wait 2
+pad down up
+wait 2
+check options-next-row
+wait 1
+pad a down
+wait 2
+pad a up
+wait 2
+check next-one
+wait 1
+pad a down
+wait 2
+pad a up
+wait 2
+check next-two
+wait 1
+pad a down
+wait 2
+pad a up
+wait 2
+check next-three
+wait 1
+pad down down
+wait 2
+pad down up
+wait 2
+check options-grayscale-row
+wait 1
+pad a down
+wait 2
+pad a up
+wait 2
+check grayscale-toggled
+wait 1
+pad down down
+wait 2
+pad down up
+wait 2
+check options-wrapped-to-sound
+wait 1
+pad b down
+wait 2
+pad b up
+wait 2
+check title-back
+wait 1
+pad up down
+wait 2
+pad up up
+wait 2
+pad up down
+wait 2
+pad up up
+wait 2
+check title-at-start
+wait 1
+pad a down
+wait 2
+pad a up
+wait 2
+check playing-start
+wait 1
+check before-hold-y
+wait 1
+pad y down
+wait 2
+pad y up
+wait 2
+check after-hold-y
+wait 1
+check before-hold-l1
+wait 1
+pad l1 down
+wait 2
+pad l1 up
+wait 2
+check after-hold-l1
+wait 1
+check hold-group-absent
+wait 1
+pad start down
+wait 2
+pad start up
+wait 2
+check paused
+wait 1
+pad down down
+wait 2
+pad down up
+wait 2
+pad down down
+wait 2
+pad down up
+wait 2
+pad down down
+wait 2
+pad down up
+wait 2
+check paused-at-quit
+wait 1
+pad a down
+wait 2
+pad a up
+wait 2
+check title-after-round
+wait 1
+pad down down
+wait 2
+pad down up
+wait 2
+pad down down
+wait 2
+pad down up
+wait 2
+pad down down
+wait 2
+pad down up
+wait 2
+check title-at-quit
+wait 1
+check quit-confirmed
+pad a down
+wait 2
+pad a up
+wait 2

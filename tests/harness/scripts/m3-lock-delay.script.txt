@@ -1,0 +1,369 @@
+# M3 gate session: lock delay and the reset budget, keyboard driver,
+# seed 20261103 (first piece T, then Z).
+#
+# Section 4.5 pins, read from the checkpoint ticks alone:
+#   * a piece that lands by soft drop stays active for exactly the 30
+#     grounded ticks that begin with its landing tick: the fall records
+#     pin the landing tick L (the tick the resting row first appears),
+#     every record through L+28 still shows the piece active, and the
+#     first record with settled cells lands exactly on L+29;
+#   * a successful move while grounded resets that timer (part two
+#     survives far past its own L2+29);
+#   * the budget is 15 resets: the sixteenth successful grounded move
+#     still moves the piece but the lock lands exactly 29 ticks after
+#     the fifteenth reset, not after the sixteenth.
+check title-first
+wait 1
+key enter down
+wait 2
+key enter up
+wait 3
+check round-start
+wait 1
+# --- part one: the T parks at the left wall and lands by soft drop ---
+key left down
+wait 16
+key left up
+wait 2
+check parked-left
+wait 1
+key down down
+check fall-01
+wait 1
+check fall-02
+wait 1
+check fall-03
+wait 1
+check fall-04
+wait 1
+check fall-05
+wait 1
+check fall-06
+wait 1
+check fall-07
+wait 1
+check fall-08
+wait 1
+check fall-09
+wait 1
+check fall-10
+wait 1
+check fall-11
+wait 1
+check fall-12
+wait 1
+check fall-13
+wait 1
+check fall-14
+wait 1
+check fall-15
+wait 1
+check fall-16
+wait 1
+check fall-17
+wait 1
+check fall-18
+wait 1
+check fall-19
+wait 1
+check fall-20
+wait 1
+check fall-21
+wait 1
+check fall-22
+wait 1
+check fall-23
+wait 1
+key down up
+wait 1
+check dropped
+wait 1
+check g-01
+wait 1
+check g-02
+wait 1
+check g-03
+wait 1
+check g-04
+wait 1
+check g-05
+wait 1
+check g-06
+wait 1
+check g-07
+wait 1
+check g-08
+wait 1
+check g-09
+wait 1
+check g-10
+wait 1
+check g-11
+wait 1
+check g-12
+wait 1
+check g-13
+wait 1
+check g-14
+wait 1
+check g-15
+wait 1
+check g-16
+wait 1
+check g-17
+wait 1
+check g-18
+wait 1
+check g-19
+wait 1
+check g-20
+wait 1
+check g-21
+wait 1
+check g-22
+wait 1
+check g-23
+wait 1
+check g-24
+wait 2
+check t-locked
+wait 2
+# --- part two: the Z lands mid-board and spends the reset budget ---
+# right tap 1
+key right down
+check z-tap-1
+wait 2
+key right up
+wait 2
+# right tap 2
+key right down
+check z-tap-2
+wait 2
+key right up
+wait 2
+# right tap 3
+key right down
+check z-tap-3
+wait 2
+key right up
+wait 2
+check z-mid
+wait 1
+key down down
+check z-fall-01
+wait 1
+check z-fall-02
+wait 1
+check z-fall-03
+wait 1
+check z-fall-04
+wait 1
+check z-fall-05
+wait 1
+check z-fall-06
+wait 1
+check z-fall-07
+wait 1
+check z-fall-08
+wait 1
+check z-fall-09
+wait 1
+check z-fall-10
+wait 1
+check z-fall-11
+wait 1
+check z-fall-12
+wait 1
+check z-fall-13
+wait 1
+check z-fall-14
+wait 1
+check z-fall-15
+wait 1
+check z-fall-16
+wait 1
+check z-fall-17
+wait 1
+check z-fall-18
+wait 1
+check z-fall-19
+wait 1
+check z-fall-20
+wait 1
+check z-fall-21
+wait 1
+check z-fall-22
+wait 1
+check z-fall-23
+wait 1
+key down up
+wait 1
+check z-dropped
+wait 2
+# grounded reset 1 (left)
+key left down
+check z-reset-01
+wait 2
+key left up
+wait 2
+# grounded reset 2 (right)
+key right down
+check z-reset-02
+wait 2
+key right up
+wait 2
+# grounded reset 3 (left)
+key left down
+check z-reset-03
+wait 2
+key left up
+wait 2
+# grounded reset 4 (right)
+key right down
+check z-reset-04
+wait 2
+key right up
+wait 2
+# grounded reset 5 (left)
+key left down
+check z-reset-05
+wait 2
+key left up
+wait 2
+# grounded reset 6 (right)
+key right down
+check z-reset-06
+wait 2
+key right up
+wait 2
+# grounded reset 7 (left)
+key left down
+check z-reset-07
+wait 2
+key left up
+wait 2
+# grounded reset 8 (right)
+key right down
+check z-reset-08
+wait 2
+key right up
+wait 2
+# grounded reset 9 (left)
+key left down
+check z-reset-09
+wait 2
+key left up
+wait 2
+# grounded reset 10 (right)
+key right down
+check z-reset-10
+wait 2
+key right up
+wait 2
+# grounded reset 11 (left)
+key left down
+check z-reset-11
+wait 2
+key left up
+wait 2
+# grounded reset 12 (right)
+key right down
+check z-reset-12
+wait 2
+key right up
+wait 2
+# grounded reset 13 (left)
+key left down
+check z-reset-13
+wait 2
+key left up
+wait 2
+# grounded reset 14 (right)
+key right down
+check z-reset-14
+wait 2
+key right up
+wait 2
+# grounded reset 15 (left)
+key left down
+check z-reset-15
+wait 2
+key left up
+wait 2
+# grounded reset 16 (right)
+key right down
+check z-reset-16
+wait 2
+key right up
+wait 2
+# per-tick watch through the lock
+check z-tail-01
+wait 1
+check z-tail-02
+wait 1
+check z-tail-03
+wait 1
+check z-tail-04
+wait 1
+check z-tail-05
+wait 1
+check z-tail-06
+wait 1
+check z-tail-07
+wait 1
+check z-tail-08
+wait 1
+check z-tail-09
+wait 1
+check z-tail-10
+wait 1
+check z-tail-11
+wait 1
+check z-tail-12
+wait 1
+check z-tail-13
+wait 1
+check z-tail-14
+wait 1
+check z-tail-15
+wait 1
+check z-tail-16
+wait 1
+check z-tail-17
+wait 1
+check z-tail-18
+wait 1
+check z-tail-19
+wait 1
+check z-tail-20
+wait 1
+check z-tail-21
+wait 1
+check z-tail-22
+wait 1
+check z-tail-23
+wait 1
+check z-tail-24
+wait 1
+check z-tail-25
+wait 1
+check z-tail-26
+wait 1
+check z-tail-27
+wait 1
+check z-tail-28
+wait 1
+check z-tail-29
+wait 1
+check z-tail-30
+wait 1
+check z-tail-31
+wait 1
+check z-tail-32
+wait 1
+check z-tail-33
+wait 1
+wait 2
+check z-locked
+wait 2
+quit

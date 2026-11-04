@@ -1,6 +1,7 @@
 # Full scene cycle on the keyboard driver, seed 20261103: title, controls,
-# play, pause, resume, restart, game over, play again, game over again,
-# title, quit. Normal game from an empty board; no fixtures.
+# play, pause, resume, pause again with a controls-screen detour, restart,
+# game over, play again, game over again, title, quit. Normal game from an
+# empty board; no fixtures.
 check title-first
 wait 1
 key down down
@@ -81,6 +82,28 @@ wait 2
 key down down
 wait 2
 key down up
+wait 2
+key down down
+wait 2
+key down up
+wait 2
+check paused-at-controls
+wait 2
+key enter down
+wait 2
+key enter up
+wait 2
+check pause-controls-open
+wait 2
+key esc down
+wait 2
+key esc up
+wait 2
+check pause-controls-back
+wait 2
+key up down
+wait 2
+key up up
 wait 2
 check paused-at-restart
 wait 2
@@ -676,6 +699,10 @@ wait 2
 key enter up
 wait 2
 check title-return
+wait 2
+key down down
+wait 2
+key down up
 wait 2
 key down down
 wait 2

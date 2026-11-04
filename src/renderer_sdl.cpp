@@ -1,13 +1,18 @@
 // The procedural renderer of milestone M2 (tasks T010 and T011,
-// specification sections 4.7, 6.1, and 6.2).
+// specification sections 4.7, 6.1, and 6.2), carrying the focused HUD of the
+// approved composition (task T037, finding focused-gameplay-hud).
 //
 // Every frame comes from filled rectangles and lines: the board well, its
 // faint grid and frame, the settled cells in their stored colors, the ghost,
 // the active piece, the hold and next previews at the smaller preview cell,
-// and the score fields and control hints drawn as glyphs. The section 4.7
-// screens draw the same way: the title and controls pages from glyphs and
-// preview pieces alone, the pause and game-over overlays as one translucent
-// veil plus a solid panel over the frozen play scene. Nothing loads a
+// and the statistics fields drawn as glyphs. Two narrow columns flank the
+// board - statistics on the left, the five Next previews on the right - and
+// ordinary gameplay draws no permanent control legend: the mappings live on
+// the controls screen, which the title and the pause overlay both reach. The
+// section 4.7 screens draw the same way: the title, controls, and options
+// pages from glyphs and preview pieces alone, the pause and game-over
+// overlays as one translucent veil plus a solid panel over the frozen play
+// scene. Nothing loads a
 // texture, a surface, or an image, so the build carries no asset files at
 // all. draw() reads the round through the const queries of Game only, in the
 // order of section 6.2, and never touches a mutator or a random source
@@ -34,11 +39,11 @@ namespace stackfall {
 namespace {
 
 // Text scales: one font pixel becomes a scale x scale square. Labels sit at
-// the small scale in the dim color, values at twice that in the bright color,
-// which keeps the score readable on the 5-inch panel without filling the side
-// column. The hints draw at the label scale as well: at scale 1 their glyphs
-// measured 7 px, which falls to 4 px in a 640x480 letterbox, so the hints now
-// match the 14 px label height (design review finding
+// the small scale in the dim color, values at the same scale in the bright
+// color, which keeps the score readable on the 5-inch panel inside the narrow
+// statistics column. The footer hints draw at that scale as well: at scale 1
+// their glyphs measured 7 px, which falls to 4 px in a 640x480 letterbox, so
+// they match the 14 px label height (design review finding
 // control-hint-glyph-scale).
 constexpr int kLabelScale = 2;
 constexpr int kValueScale = 2;
@@ -55,26 +60,13 @@ constexpr int kTextBatchGlyphs = 35;
 constexpr int kTextBatchCapacity =
     kTextBatchGlyphs * kGlyphColumns * kGlyphRows;
 
-// The control hints of the left panel, in section 5 order: the RG503 control
-// and what it does. The play panel stays gamepad-first on purpose: the full
-// gamepad and keyboard tables of the controls screen would not fit beside the
-// board, and the controls page of task T011 carries both columns.
-struct Hint {
-  const char* control;
-  const char* action;
-};
-
-constexpr Hint kHints[] = {
-    {"LEFT/RIGHT", "MOVE"},  {"DOWN", "SOFT DROP"}, {"A", "ROTATE CW"},
-    {"B", "ROTATE CCW"},     {"X", "HARD DROP"},    {"Y OR L1", "HOLD"},
-    {"START", "PAUSE"},
-};
-constexpr int kHintCount = static_cast<int>(sizeof(kHints) / sizeof(kHints[0]));
-
 // The section 4.7 menu items, drawn in listed order; the cursor indexes of
-// Game address them by position.
-constexpr const char* kTitleItems[] = {"START GAME", "CONTROLS", "QUIT"};
-constexpr const char* kPauseItems[] = {"RESUME", "RESTART", "QUIT TO TITLE"};
+// Game address them by position. The options rows append their ON/OFF value
+// at draw time, because the value is platform state the core never holds.
+constexpr const char* kTitleItems[] = {"START GAME", "CONTROLS", "OPTIONS",
+                                       "QUIT"};
+constexpr const char* kPauseItems[] = {"RESUME", "RESTART", "CONTROLS",
+                                       "QUIT TO TITLE"};
 constexpr const char* kOverItems[] = {"PLAY AGAIN", "TITLE"};
 
 // The controls screen rows: the section 5 gamepad mapping, its keyboard
@@ -120,6 +112,36 @@ Renderer::Renderer(SDL_Renderer* renderer) noexcept : renderer_(renderer) {}
 void Renderer::setShowGrid(bool show) noexcept { showGrid_ = show; }
 
 bool Renderer::showGrid() const noexcept { return showGrid_; }
+
+void Renderer::setShowGhost(bool show) noexcept { showGhost_ = show; }
+
+bool Renderer::showGhost() const noexcept { return showGhost_; }
+
+void Renderer::setSoundOn(bool on) noexcept { soundOn_ = on; }
+
+bool Renderer::soundOn() const noexcept { return soundOn_; }
+
+void Renderer::setShowHold(bool show) noexcept { showHold_ = show; }
+
+bool Renderer::showHold() const noexcept { return showHold_; }
+
+void Renderer::setNextPreviews(int count) noexcept {
+  // The queue holds kPreviewCount pieces, so a count outside the preference
+  // range clamps to it instead of reading past the queue.
+  if (count < 1) {
+    nextPreviews_ = 1;
+  } else if (count > kPreviewCount) {
+    nextPreviews_ = kPreviewCount;
+  } else {
+    nextPreviews_ = count;
+  }
+}
+
+int Renderer::nextPreviews() const noexcept { return nextPreviews_; }
+
+void Renderer::setGrayscale(bool on) noexcept { grayscale_ = on; }
+
+bool Renderer::grayscale() const noexcept { return grayscale_; }
 
 // ---------------------------------------------------------------------------
 // The letterbox canvas (section 6.1, design review finding
@@ -277,7 +299,15 @@ void Renderer::draw(const Game& game) {
       drawTitleScreen(game);
       return;
     case Scene::Controls:
-      drawControlsScreen();
+      drawControlsScreen("A OR B BACK TO TITLE");
+      return;
+    case Scene::PauseControls:
+      // The same mappings page over the frozen round; back returns to the
+      // pause overlay, not the title (task T037).
+      drawControlsScreen("A OR B BACK TO PAUSE");
+      return;
+    case Scene::Options:
+      drawOptionsScreen(game);
       return;
     case Scene::Playing:
       drawPlayScene(game);
@@ -300,12 +330,15 @@ void Renderer::drawPlayScene(const Game& game) const {
   }
   drawBoardFrame();          // 2. board border ...
   drawSettledCells(game);    //    ... and settled cells in stored colors
-  drawGhostPiece(game);      // 3. ghost below the active piece
+  if (showGhost_) {
+    drawGhostPiece(game);    // 3. ghost below the active piece, when shown
+  }
   drawActivePiece(game);     // 4. active piece
-  drawHoldPanel(game);       // 5. hold and next previews
+  if (showHold_) {
+    drawHoldPanel(game);     // 5. hold and next previews; hold hides entirely
+  }                          //    when its preference is off (task T044)
   drawNextPanel(game);
-  drawScorePanel(game);      // 6. score fields and panel text
-  drawHintsPanel();
+  drawStatsPanel(game);      // 6. the statistics fields of the left column
 }
 
 // The play background is the canvas color plus the darker board well, so the
@@ -360,7 +393,7 @@ void Renderer::drawSettledCells(const Game& game) const {
         continue;
       }
       drawCell(cellX(x), cellY(y), kBoardCellSize,
-               cellPalette(static_cast<PieceId>(code)));
+               piecePalette(static_cast<PieceId>(code), false));
     }
   }
 }
@@ -374,7 +407,7 @@ void Renderer::drawGhostPiece(const Game& game) const {
   if (ghost.y <= active.y) {
     return;  // the landing row is the live row, so there is nothing to show
   }
-  const SDL_Color color = ghostColor(active.id);
+  const SDL_Color color = pieceGhostColor(active.id);
   for (const Cell& cell : boardCells(ghost)) {
     if (cell.y < 0) {
       continue;  // hidden rows are never drawn
@@ -388,7 +421,7 @@ void Renderer::drawActivePiece(const Game& game) const {
     return;
   }
   const Piece active = game.activePiece();
-  const CellPalette& palette = cellPalette(active.id);
+  const CellPalette& palette = piecePalette(active.id, false);
   for (const Cell& cell : boardCells(active)) {
     if (cell.y < 0) {
       continue;  // the part of a spawning piece in the hidden rows
@@ -407,7 +440,7 @@ void Renderer::drawActivePiece(const Game& game) const {
 // lock, so an unavailable hold reads clearly.
 void Renderer::drawPreviewPiece(PieceId id, const SDL_Rect& box,
                                 bool dimmed) const {
-  const CellPalette& palette = dimmed ? dimCellPalette(id) : cellPalette(id);
+  const CellPalette& palette = piecePalette(id, dimmed);
   const std::array<Cell, kCellsPerPiece>& cells =
       pieceCells(id, Rotation::Spawn);
   // Matrix coordinates run 0..3, so 4 is one past the largest possible value.
@@ -436,7 +469,6 @@ void Renderer::drawHoldPanel(const Game& game) const {
   const int centerX = kLeftPanelX + kLeftPanelWidth / 2;
   drawTextCentered(centerX, kPanelHeadingY, kLabelScale, kTextDim, "HOLD");
   const SDL_Rect box = holdBox();
-  drawRectOutline(kPanelLine, box.x - 8, box.y - 8, box.w + 16, box.h + 16);
   if (game.hasHoldPiece()) {
     drawPreviewPiece(game.holdPieceId(), box, game.holdLocked());
   }
@@ -445,20 +477,35 @@ void Renderer::drawHoldPanel(const Game& game) const {
 void Renderer::drawNextPanel(const Game& game) const {
   const int centerX = kRightPanelX + kRightPanelWidth / 2;
   drawTextCentered(centerX, kPanelHeadingY, kLabelScale, kTextDim, "NEXT");
-  const SDL_Rect panel = nextPanelBox();
-  drawRectOutline(kPanelLine, panel.x - 8, panel.y - 8, panel.w + 16,
-                  panel.h + 16);
   const auto& queue = game.queue();
-  for (int index = 0; index < kPreviewCount; ++index) {
-    drawPreviewPiece(queue[index], nextSlotBox(index), false);
+  // Exactly the preference's count of previews draws, in queue order; the
+  // count changes nothing about the queue or the randomizer behind it
+  // (task T044). The first preview draws at full color and the rest dimmer,
+  // so the piece that lands next reads beside the board while the far queue
+  // stays identifiable but quiet (task T037 contrast hierarchy).
+  for (int index = 0; index < nextPreviews_; ++index) {
+    drawPreviewPiece(queue[index], nextSlotBox(index), index > 0);
   }
 }
 
-void Renderer::drawScorePanel(const Game& game) const {
-  const int centerX = kRightPanelX + kRightPanelWidth / 2;
+// The statistics fields of the left column. A value draws at the value scale
+// while it fits the column; a longer one draws one step smaller, because the
+// longest number the saturating counter can hold (twenty digits) measures
+// 119 px at scale 1 and so still fits the 128 px column with room to spare.
+// Every supported value therefore stays inside the column and never reaches
+// the board or the other group (task T037).
+int Renderer::statValueScale(const char* value) const {
+  if (textWidth(kValueScale, value) <= kLeftPanelWidth) {
+    return kValueScale;
+  }
+  return 1;
+}
+
+void Renderer::drawStatsPanel(const Game& game) const {
+  const int centerX = kLeftPanelX + kLeftPanelWidth / 2;
   char value[24];
 
-  int y = nextPanelBox().y + nextPanelBox().h + 16;
+  int y = kStatsFirstLabelY;
   struct Field {
     const char* label;
     std::uint64_t number;
@@ -472,28 +519,10 @@ void Renderer::drawScorePanel(const Game& game) const {
     drawTextCentered(centerX, y, kLabelScale, kTextDim, field.label);
     y += kGlyphRows * kLabelScale + 4;
     formatUnsigned(field.number, value, sizeof(value));
-    drawTextCentered(centerX, y, kValueScale, kText, value);
+    drawTextCentered(centerX, y, statValueScale(value), kText, value);
+    // The label rows stay anchored at the full value scale, so a long value
+    // never shifts the fields below it.
     y += kGlyphRows * kValueScale + 18;
-  }
-}
-
-void Renderer::drawHintsPanel() const {
-  const int centerX = kLeftPanelX + kLeftPanelWidth / 2;
-  int y = holdBox().y + holdBox().h + 28;
-  drawTextCentered(centerX, y, kLabelScale, kTextDim, "CONTROLS");
-  y += kGlyphRows * kLabelScale + 12;
-
-  // Two aligned columns: the control on the left, its action beside it. At
-  // the hint scale the widest control ("LEFT/RIGHT") spans 118 px and ends at
-  // 182, and the widest action ("ROTATE CCW") spans 118 px more, so the action
-  // column starts past the first end and stops at 310, inside the panel edge
-  // at 324.
-  const int controlX = kLeftPanelX + 12;
-  constexpr int kActionColumnX = 192;
-  for (int index = 0; index < kHintCount; ++index) {
-    drawText(controlX, y, kHintScale, kTextDim, kHints[index].control);
-    drawText(kActionColumnX, y, kHintScale, kText, kHints[index].action);
-    y += kGlyphRows * kHintScale + 6;
   }
 }
 
@@ -542,8 +571,10 @@ void Renderer::drawTitleScreen(const Game& game) const {
 }
 
 // The controls page: three aligned columns of the section 5 tables plus one
-// footer line; every press of A or B returns to the title.
-void Renderer::drawControlsScreen() const {
+// footer line. The title opens it with "A OR B BACK TO TITLE"; the pause
+// overlay opens the same page over its frozen round with "A OR B BACK TO
+// PAUSE" (task T037), because ordinary gameplay carries no permanent legend.
+void Renderer::drawControlsScreen(const char* footer) const {
   clearBackground();
   drawTextCentered(kCanvasWidth / 2, kControlsHeadingY, kControlsHeadingScale,
                    kText, "CONTROLS");
@@ -564,7 +595,49 @@ void Renderer::drawControlsScreen() const {
     y += kControlsRowHeight;
   }
   drawTextCentered(kCanvasWidth / 2, kControlsFooterY, kLabelScale, kText,
-                   "A OR B BACK TO TITLE");
+                   footer);
+}
+
+// The options page of tasks T040 and T044: one heading, the six setting rows
+// at the shared menu metrics, and one footer line. The rows carry their value
+// as ON/OFF or, for NEXT PIECES, the count digit, read from the preferences
+// this renderer mirrors, because the rules core moves the cursor alone and
+// never holds a row value (specification section 7). A changes the highlighted
+// row and B returns to the title; the platform layer owns both actions.
+void Renderer::drawOptionsScreen(const Game& game) const {
+  clearBackground();
+  drawTextCentered(kCanvasWidth / 2, kOptionsHeadingY, kOptionsHeadingScale,
+                   kText, "OPTIONS");
+  char nextText[24];
+  std::snprintf(nextText, sizeof(nextText), "NEXT PIECES %d", nextPreviews_);
+  const char* rows[kOptionsItemCount] = {
+      soundOn_ ? "SOUND ON" : "SOUND OFF",
+      showGhost_ ? "GHOST ON" : "GHOST OFF",
+      showGrid_ ? "GRID ON" : "GRID OFF",
+      showHold_ ? "HOLD ON" : "HOLD OFF",
+      nextText,
+      grayscale_ ? "GRAYSCALE ON" : "GRAYSCALE OFF",
+  };
+  for (int index = 0; index < kOptionsItemCount; ++index) {
+    drawMenuItem(kCanvasWidth / 2, kOptionsMenuY + index * kMenuItemHeight,
+                 kMenuScale, rows[index], index == game.optionsSelection());
+  }
+  drawTextCentered(kCanvasWidth / 2, kOptionsFooterY, kHintScale, kTextDim,
+                   "UP/DOWN CHOOSE - A CHANGE - B BACK");
+}
+
+// The palette of one piece under the current settings (task T044): grayscale
+// on replaces the color palettes with the gray ones everywhere a piece draws,
+// and off restores the color ones exactly.
+const CellPalette& Renderer::piecePalette(PieceId id, bool dimmed) const {
+  if (grayscale_) {
+    return dimmed ? grayscaleDimPalette(id) : grayscalePalette(id);
+  }
+  return dimmed ? dimCellPalette(id) : cellPalette(id);
+}
+
+SDL_Color Renderer::pieceGhostColor(PieceId id) const {
+  return grayscale_ ? grayscaleGhostColor(id) : ghostColor(id);
 }
 
 // The translucent veil that dims the frozen play scene under an overlay. One
@@ -588,7 +661,9 @@ void Renderer::drawOverlayPanel(const SDL_Rect& panel) const {
 }
 
 // The pause overlay of section 4.7 over the frozen round: Resume / Restart /
-// Quit to Title, with Resume the default item.
+// Controls / Quit to Title, with Resume the default item. The panel nests
+// between the HUD columns, so the frozen statistics and previews stay visible
+// beside it (task T037); Controls opens the mappings page and returns here.
 void Renderer::drawPauseOverlay(const Game& game) const {
   drawVeil();
   const SDL_Rect panel = pausePanel();
@@ -601,7 +676,7 @@ void Renderer::drawPauseOverlay(const Game& game) const {
                  kMenuScale, kPauseItems[index], index == game.pauseSelection());
   }
   drawTextCentered(kCanvasWidth / 2, panel.y + kPauseHintOffsetY, kHintScale,
-                   kTextDim, "A CONFIRM - START OR B RESUME");
+                   kTextDim, "A CONFIRM - B RESUME");
 }
 
 // The game-over overlay of section 4.7: the final score, total lines, and

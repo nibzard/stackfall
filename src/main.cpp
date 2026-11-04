@@ -27,20 +27,35 @@
 // simulation tick per frame with pacing off, which makes a scripted session's
 // tick numbering independent of wall-clock batching. The stability pass of
 // task T025 adds --frame-times, which records the raw duration of every frame
-// of a real-time paced run for the median and percentile measurements.
+// of a real-time paced run for the median and percentile measurements. The
+// bounded-image pass of task T054 adds --screenshot-budget, which caps the
+// bytes of checkpoint images one session writes: past the cap the session
+// skips the images and keeps writing every observation record.
 // Every one of them is
-// inert unless a harness passes it.
+// inert unless a harness passes it. The driver behind them - the script
+// parser and runner, the virtual gamepad, the checkpoint capture, and the
+// evidence streams - lives in src/developer_session.cpp (task T048); this
+// file calls it before the event poll and after the render and keeps the
+// timing, the simulation, and the rendering itself.
 //
-// High-score persistence (task T012) runs through src/storage.cpp: the store
-// resolves the launcher's conf/ directory from STACKFALL_SAVE_DIR or
-// XDG_DATA_HOME, the session loads the record before the title screen draws
-// it, and a round that sets a record saves it at game over.
+// High-score persistence (tasks T012 and T052) runs through src/storage.cpp:
+// the store resolves the launcher's conf/ directory from STACKFALL_SAVE_DIR
+// or XDG_DATA_HOME, the session loads the record before the title screen
+// draws it, a round that sets a record saves it at game over, and the
+// platform layer also writes the record the moment a running score passes
+// the stored best - the tick loop below - so an abandoned round, a
+// window close, or a power loss keeps every point up to the piece in play.
 //
 // Sound (task T013) runs through src/audio_sdl.cpp: the loop observes every
 // simulation tick with a CueDetector, a working device plays the five
 // synthesized cues of specification section 6.3, and the M key or the
 // controller Select button switches the mute, whose starting state comes from
-// settings.dat beside the high-score record. A missing audio device logs one
+// settings.dat beside the high-score record. That file carries the six
+// player preferences of tasks T039 and T044 - sound, ghost, grid, hold, next
+// preview count, and grayscale - which a session loads and applies at
+// startup through one shared call; the options screen of tasks T040 and T044
+// changes any of them and each change applies that same call before it
+// writes the whole file at once. A missing audio device logs one
 // line and changes nothing else about the session.
 //
 // Logging (task T014, specification section 9) goes to stdout and, whenever a
@@ -60,6 +75,19 @@
 // subsystem that will not start leaves the keyboard playable; and the loop's
 // fallback frame limiter holds 60 Hz pacing whenever presentation does not
 // block.
+//
+// Resource ownership (task T047) follows one rule: every platform resource of
+// the session - the log file, the SDL library, the window, the renderer, the
+// controller set, the developer automation of src/developer_session.cpp (the
+// virtual pad, the script, and the evidence files), and the audio device -
+// belongs to one scoped owner declared in main, and the owners
+// release in the reverse order of their declaration. That reverse order is the
+// EXIT order of specification section 4.7: the audio device closes before
+// SDL_Quit through declaration order alone, every SDL handle returns before
+// the library shuts down, and the session log closes last, so the shutdown
+// lines still land in log.txt. A startup step that fails leaves through one
+// `return`, and the owners built so far clean up after it, so a new failure
+// path needs no hand-written cleanup block.
 
 #include <cstdarg>
 #include <cstdint>
@@ -70,17 +98,16 @@
 
 #include <filesystem>
 #include <string>
-#include <vector>
 
 #include <SDL.h>
 
 #include "stackfall/audio_sdl.hpp"
+#include "stackfall/developer_session.hpp"
 #include "stackfall/game.hpp"
 #include "stackfall/input.hpp"
 #include "stackfall/input_sdl.hpp"
 #include "stackfall/observe.hpp"
 #include "stackfall/renderer_sdl.hpp"
-#include "stackfall/script.hpp"
 #include "stackfall/storage.hpp"
 #include "stackfall/version.hpp"
 
@@ -104,6 +131,7 @@ constexpr int kMaxControllers = 4;
 using stackfall::AudioDriver;
 using stackfall::CueDetector;
 using stackfall::CueSet;
+using stackfall::DeveloperSession;
 using stackfall::Game;
 using stackfall::HighScoreStore;
 using stackfall::LoadResult;
@@ -111,12 +139,14 @@ using stackfall::Renderer;
 using stackfall::SaveStatus;
 using stackfall::Scene;
 using stackfall::SettingsStore;
+using stackfall::SettingsValues;
 using stackfall::SdlInput;
 using stackfall::SoundCue;
 using stackfall::kCanvasHeight;
 using stackfall::kCanvasWidth;
 using stackfall::kLogFileEnv;
 using stackfall::kSoundCueCount;
+using stackfall::observationSceneName;
 using stackfall::saveStatusName;
 using stackfall::soundCueName;
 
@@ -201,6 +231,25 @@ void closeSessionLog() {
   }
 }
 
+// Owns the session log for the whole process (task T047). The constructor
+// opens the sink before anything that can fail; the destructor closes it after
+// every other owner of the session has released its resource and written its
+// last line, because this owner is the first object of main and destruction
+// runs in reverse order. file() hands the open stream to the owners that write
+// their own lines into it, the developer automation of
+// src/developer_session.cpp among them; they never close it.
+class SessionLog {
+ public:
+  explicit SessionLog(const std::string& path) { openSessionLog(path); }
+
+  ~SessionLog() { closeSessionLog(); }
+
+  SessionLog(const SessionLog&) = delete;
+  SessionLog& operator=(const SessionLog&) = delete;
+
+  std::FILE* file() const { return g_sessionLog; }
+};
+
 // ---------------------------------------------------------------------------
 // Command line.
 // ---------------------------------------------------------------------------
@@ -219,6 +268,8 @@ struct Options {
   const char* fixtureDir;      // nullptr: `fixture` commands cannot resolve
   const char* frameTimes;      // nullptr: no per-frame time record (T025)
   bool tickPerFrame;           // developer: one tick per frame, pacing off
+  bool hasScreenshotBudget;    // developer: --screenshot-budget was passed
+  std::uint64_t screenshotBudget;  // 0: the session writes without a cap
 };
 
 void printUsage() {
@@ -228,7 +279,8 @@ void printUsage() {
       "                 [--input-script FILE] [--virtual-controller]\n"
       "                 [--save-dir DIR] [--observations FILE]\n"
       "                 [--screenshot-dir DIR] [--fixture-dir DIR]\n"
-      "                 [--frame-times FILE] [--tick-per-frame]\n"
+      "                 [--screenshot-budget BYTES] [--frame-times FILE]\n"
+      "                 [--tick-per-frame]\n"
       "  --frames N            render N frames, then exit (0 = until quit)\n"
       "  --seed N              start the round from seed N (deterministic)\n"
       "  --input-log FILE      record one line per simulation tick\n"
@@ -237,11 +289,16 @@ void printUsage() {
       "  --save-dir DIR        write the high score, settings, and log here\n"
       "  --observations FILE   write one record per checkpoint command\n"
       "  --screenshot-dir DIR  write one BMP per checkpoint command\n"
+      "  --screenshot-budget BYTES\n"
+      "                        cap this session's checkpoint image bytes;\n"
+      "                        past the cap the session skips images and\n"
+      "                        keeps every record (default %llu; 0 = no cap)\n"
       "  --fixture-dir DIR     resolve `fixture` script commands here\n"
       "  --frame-times FILE    record one microsecond frame duration per\n"
       "                        frame of a real-time paced run (T025)\n"
       "  --tick-per-frame      one simulation tick per frame, pacing off\n"
-      "  --help                show this text\n");
+      "  --help                show this text\n",
+      static_cast<unsigned long long>(stackfall::kDefaultScreenshotBudget));
 }
 
 // Parses a whole non-negative decimal string into `out`; false on anything
@@ -268,9 +325,9 @@ bool parseUnsigned(const char* text, std::uint64_t* out) {
 // launcher environment cannot break startup. Scripted sessions need exact
 // values, so a missing option value warns and drops the option.
 Options parseOptions(int argc, char** argv) {
-  Options options{0,   false, false, 0,    nullptr, nullptr,
-                  false, nullptr, nullptr, nullptr, nullptr,
-                  nullptr, false};
+  // Zero keeps every option off: no frame cap, no seed, no evidence file, no
+  // budget override, so the developer session keeps its own defaults.
+  Options options{};
   for (int i = 1; i < argc; ++i) {
     const char* arg = argv[i];
     const bool needsValue = std::strcmp(arg, "--frames") == 0 ||
@@ -281,6 +338,7 @@ Options parseOptions(int argc, char** argv) {
                             std::strcmp(arg, "--observations") == 0 ||
                             std::strcmp(arg, "--screenshot-dir") == 0 ||
                             std::strcmp(arg, "--fixture-dir") == 0 ||
+                            std::strcmp(arg, "--screenshot-budget") == 0 ||
                             std::strcmp(arg, "--frame-times") == 0;
     if (needsValue) {
       if (i + 1 >= argc) {
@@ -289,18 +347,21 @@ Options parseOptions(int argc, char** argv) {
       }
       ++i;
       const char* value = argv[i];
+      const bool numericOption = std::strcmp(arg, "--frames") == 0 ||
+                                 std::strcmp(arg, "--seed") == 0 ||
+                                 std::strcmp(arg, "--screenshot-budget") == 0;
       std::uint64_t parsed = 0;
-      if ((std::strcmp(arg, "--frames") == 0 ||
-           std::strcmp(arg, "--seed") == 0) &&
-          parseUnsigned(value, &parsed)) {
+      if (numericOption && parseUnsigned(value, &parsed)) {
         if (std::strcmp(arg, "--frames") == 0) {
           options.frameLimit = parsed;
-        } else {
+        } else if (std::strcmp(arg, "--seed") == 0) {
           options.hasSeed = true;
           options.seed = parsed;
+        } else {
+          options.hasScreenshotBudget = true;
+          options.screenshotBudget = parsed;
         }
-      } else if (std::strcmp(arg, "--frames") == 0 ||
-                 std::strcmp(arg, "--seed") == 0) {
+      } else if (numericOption) {
         std::fprintf(stderr,
                      "Warning: %s needs a number, got \"%s\"; ignored\n", arg,
                      value);
@@ -350,7 +411,9 @@ std::uint64_t deriveSeed() {
 // is the fallback whenever no controller is open (specification sections 5
 // and 9). SDL queues an SDL_CONTROLLERDEVICEADDED event for every controller
 // already attached when the subsystem starts, so the added handler skips
-// devices that discovery already opened.
+// devices that discovery already opened. The set owns every handle it opened
+// (task T047): its destructor closes them, so the exit paths need no manual
+// sweep.
 // ---------------------------------------------------------------------------
 
 struct ControllerSlot {
@@ -360,6 +423,14 @@ struct ControllerSlot {
 
 class ControllerSet {
  public:
+  ControllerSet() = default;
+
+  // Closes every controller this set opened. Safe when none are open.
+  ~ControllerSet() { closeAll(); }
+
+  ControllerSet(const ControllerSet&) = delete;
+  ControllerSet& operator=(const ControllerSet&) = delete;
+
   // Opens and logs every attached game controller, and names joysticks that
   // carry no controller mapping (a missing SDL_GAMECONTROLLERCONFIG on a new
   // device shows up here). Returns how many controllers are open.
@@ -416,6 +487,7 @@ class ControllerSet {
 
   int openCount() const { return count_; }
 
+ private:
   void closeAll() {
     for (int i = 0; i < count_; ++i) {
       SDL_GameControllerClose(slots_[i].handle);
@@ -423,7 +495,6 @@ class ControllerSet {
     count_ = 0;
   }
 
- private:
   void open(int deviceIndex) {
     if (count_ >= kMaxControllers) {
       logf("Game controller limit of %d reached; device %d ignored\n",
@@ -450,378 +521,24 @@ class ControllerSet {
 };
 
 // ---------------------------------------------------------------------------
-// Scripted input for recorded desktop sessions (docs/AGENT_TESTING.md, T023).
-// A script is a list of commands, one per line, '#' starts a comment:
-//
-//   key <name> down|up    push a keyboard event into the SDL queue
-//   pad <name> down|up    press a virtual pad button
-//   wait <ticks>          hold the script until that many ticks ran
-//   stall <ms>            delay the frame, forcing a catch-up batch
-//   detach                detach the virtual controller
-//   restart               restart the round with the same seed
-//   fixture <name>        load a board fixture from --fixture-dir
-//   check <name>          record one observation and one screenshot
-//   shot <name>           record one screenshot, no observation
-//   quit                  leave the main loop cleanly
-//   echo <text>           log a marker line
-//
-// Commands run before the event poll of each frame, in order, until the next
-// pending `wait` completes. Key and pad presses travel the real SDL event
-// path; nothing here touches the adapter directly.
-//
-// `check` and `shot` only mark the checkpoint here. The main loop flushes the
-// marks after the frame's simulation ticks and its render, so the observation
-// record and the screenshot describe exactly the state the frame drew - the
-// same state the headless reference replay of tests/harness records after its
-// tick, which is what makes the two streams comparable.
+// SDL, window, and renderer.
 // ---------------------------------------------------------------------------
 
-struct ScriptContext {
-  SDL_Joystick* virtualJoystick = nullptr;  // opened handle for pad commands
-  int virtualDevice = -1;                   // device index for detach
-  Game* game = nullptr;                     // for restart and fixtures
-  CueDetector* cues = nullptr;              // a restart resets the snapshot
-  std::FILE* inputLog = nullptr;            // markers land next to the ticks
-  const char* fixtureDir = nullptr;         // resolves `fixture` commands
-  // Checkpoints the loop flushes after the current frame renders.
-  std::vector<std::string> pendingChecks;
-  std::vector<std::string> pendingShots;
-};
-
-class InputScript {
+// Owns the SDL library lifetime of the process (task T047). Declared before
+// every owner of an SDL resource below, so destruction - which runs in the
+// reverse order of declaration - has released each of them before SDL_Quit
+// runs: the audio device first, then the virtual pad, the controller set, the
+// renderer, and the window. SDL_Quit is safe to call after any SDL_Init
+// outcome, so an early startup failure shares this one cleanup.
+class SdlLibrary {
  public:
-  bool load(const char* path, ScriptContext* context) {
-    context_ = context;
-    std::FILE* file = std::fopen(path, "r");
-    if (file == nullptr) {
-      logErrorf("Cannot open input script \"%s\"\n", path);
-      return false;
-    }
-    std::string line;
-    char buffer[256];
-    bool ok = true;
-    while (std::fgets(buffer, sizeof(buffer), file) != nullptr) {
-      line = buffer;
-      if (!parseLine(line) && ok) {
-        ok = false;  // report the first bad line, keep reading for the report
-      }
-    }
-    std::fclose(file);
-    return ok;
-  }
+  SdlLibrary() = default;
 
-  // Runs the commands due before this frame's event poll.
-  void pump(std::uint64_t tickCount) {
-    while (index_ < commands_.size()) {
-      const Command& command = commands_[index_];
-      if (command.kind == Command::Kind::Wait) {
-        if (!waiting_) {
-          waitUntil_ = tickCount + static_cast<std::uint64_t>(command.value);
-          waiting_ = true;
-        }
-        if (tickCount < waitUntil_) {
-          return;
-        }
-        waiting_ = false;
-        ++index_;
-        continue;
-      }
-      run(command);
-      ++index_;
-    }
-  }
+  ~SdlLibrary() { SDL_Quit(); }
 
- private:
-  struct Command {
-    enum class Kind : std::uint8_t {
-      KeyDown,
-      KeyUp,
-      PadDown,
-      PadUp,
-      Wait,
-      Stall,
-      Detach,
-      Restart,
-      Fixture,
-      Check,
-      Shot,
-      Quit,
-      Echo
-    };
-    Kind kind;
-    int value = 0;    // scancode, button, ticks, or milliseconds
-    std::string text;  // echo marker, checkpoint, or fixture name
-  };
-
-  // The script key table: names for the mapped scancodes of section 5.
-  struct KeyName {
-    const char* name;
-    SDL_Scancode scancode;
-  };
-  static const KeyName* findKey(const char* name) {
-    static const KeyName keys[] = {
-        {"left", SDL_SCANCODE_LEFT},
-        {"right", SDL_SCANCODE_RIGHT},
-        {"up", SDL_SCANCODE_UP},
-        {"down", SDL_SCANCODE_DOWN},
-        {"x", SDL_SCANCODE_X},
-        {"z", SDL_SCANCODE_Z},
-        {"space", SDL_SCANCODE_SPACE},
-        {"c", SDL_SCANCODE_C},
-        {"lshift", SDL_SCANCODE_LSHIFT},
-        {"enter", SDL_SCANCODE_RETURN},
-        {"esc", SDL_SCANCODE_ESCAPE},
-        {"m", SDL_SCANCODE_M},
-    };
-    for (const KeyName& key : keys) {
-      if (std::strcmp(key.name, name) == 0) {
-        return &key;
-      }
-    }
-    return nullptr;
-  }
-
-  static void pushKeyEvent(SDL_Scancode scancode, bool pressed) {
-    SDL_Event event;
-    SDL_zero(event);
-    event.type = pressed ? SDL_KEYDOWN : SDL_KEYUP;
-    event.key.repeat = 0;
-    event.key.keysym.scancode = scancode;
-    event.key.keysym.sym = SDL_GetKeyFromScancode(scancode);
-    SDL_PushEvent(&event);
-  }
-
-  void marker(const char* text) {
-    logf("script: %s\n", text);
-    if (context_ != nullptr && context_->inputLog != nullptr) {
-      std::fprintf(context_->inputLog, "script %s\n", text);
-      std::fflush(context_->inputLog);
-    }
-  }
-
-  void run(const Command& command) {
-    switch (command.kind) {
-      case Command::Kind::KeyDown:
-      case Command::Kind::KeyUp: {
-        const bool pressed = command.kind == Command::Kind::KeyDown;
-        pushKeyEvent(static_cast<SDL_Scancode>(command.value), pressed);
-        break;
-      }
-      case Command::Kind::PadDown:
-      case Command::Kind::PadUp: {
-        if (context_ == nullptr || context_->virtualJoystick == nullptr) {
-          marker("pad command without a virtual controller; ignored");
-          break;
-        }
-        const bool pressed = command.kind == Command::Kind::PadDown;
-        SDL_JoystickSetVirtualButton(context_->virtualJoystick, command.value,
-                                     pressed ? 1 : 0);
-        // Virtual buttons set state; SDL emits the event only on the next
-        // update. Apply it now, so a tap (down and up in one frame) still
-        // produces both events, exactly like a quick real press.
-        SDL_JoystickUpdate();
-        break;
-      }
-      case Command::Kind::Wait:
-        break;  // handled in pump()
-      case Command::Kind::Stall:
-        logf("script: stalling %d ms for a catch-up frame\n", command.value);
-        SDL_Delay(command.value);
-        break;
-      case Command::Kind::Detach:
-        if (context_ != nullptr && context_->virtualJoystick != nullptr) {
-          SDL_JoystickClose(context_->virtualJoystick);
-          context_->virtualJoystick = nullptr;
-          stackfall::detachVirtualController(context_->virtualDevice);
-          context_->virtualDevice = -1;
-        }
-        break;
-      case Command::Kind::Restart:
-        if (context_ != nullptr && context_->game != nullptr) {
-          context_->game->start(context_->game->seed());
-          // The round changed outside a simulation tick, so the cue detector
-          // must forget its snapshot: the emptied board is a restart, not a
-          // clear.
-          if (context_->cues != nullptr) {
-            context_->cues->reset();
-          }
-          marker("restart");
-        }
-        break;
-      case Command::Kind::Fixture: {
-        if (context_ == nullptr || context_->game == nullptr) {
-          break;
-        }
-        if (context_->fixtureDir == nullptr) {
-          marker("fixture command without --fixture-dir; ignored");
-          break;
-        }
-        const std::string path = std::string(context_->fixtureDir) + "/" +
-                                 command.text + ".board.txt";
-        stackfall::BoardFixture fixture;
-        std::string error;
-        if (!stackfall::loadBoardFixture(path, &fixture, &error)) {
-          marker(("fixture " + command.text + " unavailable: " + error).c_str());
-          break;
-        }
-        if (!context_->game->applyBoardFixture(fixture)) {
-          marker(("fixture " + command.text + " rejected: the round is not "
-                  "playing or the board is inconsistent").c_str());
-          break;
-        }
-        if (context_->cues != nullptr) {
-          // A replaced board is not a line clear, exactly like a restart.
-          context_->cues->reset();
-        }
-        const std::string activeText =
-            fixture.hasActive
-                ? std::string(1, stackfall::pieceLetter(fixture.active))
-                : std::string("kept");
-        // The fixture line is evidence of a labeled board state, not a session
-        // event: stdout and the input log below carry it beside the tick
-        // stream, and log.txt stays a log.
-        std::printf(
-            "Fixture \"%s\" applied from %s (provenance: %s; active %s)\n",
-            fixture.name.c_str(), path.c_str(),
-            fixture.provenance.empty() ? "unlabeled"
-                                       : fixture.provenance.c_str(),
-            activeText.c_str());
-        if (context_->inputLog != nullptr) {
-          std::fprintf(context_->inputLog, "fixture %s path=%s\n",
-                       command.text.c_str(), path.c_str());
-          std::fflush(context_->inputLog);
-        }
-        break;
-      }
-      case Command::Kind::Check:
-        if (context_ != nullptr) {
-          context_->pendingChecks.push_back(command.text);
-        }
-        break;
-      case Command::Kind::Shot:
-        if (context_ != nullptr) {
-          context_->pendingShots.push_back(command.text);
-        }
-        break;
-      case Command::Kind::Quit: {
-        // Through the queue, like a window close: the loop leaves through
-        // its ordinary exit path.
-        SDL_Event event;
-        SDL_zero(event);
-        event.type = SDL_QUIT;
-        SDL_PushEvent(&event);
-        marker("quit");
-        break;
-      }
-      case Command::Kind::Echo:
-        marker(command.text.c_str());
-        break;
-    }
-  }
-
-  // Parses one script line into commands_. Returns false and reports the
-  // line on a syntax error, because a recorded session must not run halfway
-  // by accident.
-  bool parseLine(const std::string& raw) {
-    const size_t hash = raw.find('#');
-    std::string line = raw.substr(0, hash);
-    while (!line.empty() && (line.back() == '\n' || line.back() == '\r' ||
-                             line.back() == ' ' || line.back() == '\t')) {
-      line.pop_back();
-    }
-    if (line.empty()) {
-      return true;
-    }
-    const size_t verbEnd = line.find_first_of(" \t");
-    const std::string verb = line.substr(0, verbEnd);
-    const std::string rest =
-        verbEnd == std::string::npos ? "" : line.substr(verbEnd + 1);
-    const size_t nameEnd = rest.find_first_of(" \t");
-    const std::string name =
-        rest.empty() || nameEnd == 0 ? "" : rest.substr(0, nameEnd);
-    const std::string tail =
-        nameEnd == std::string::npos ? "" : rest.substr(nameEnd + 1);
-    const size_t tailEnd = tail.find_first_of(" \t");
-    const std::string state = tail.substr(0, tailEnd);
-
-    Command command;
-    if (verb == "key" || verb == "pad") {
-      // "key <name> down|up" and "pad <name> down|up".
-      const bool down = state == "down";
-      const bool up = state == "up";
-      if (!down && !up) {
-        return reportSyntax(raw, "key/pad needs down or up");
-      }
-      if (verb == "key") {
-        const KeyName* key = findKey(name.c_str());
-        if (key == nullptr) {
-          return reportSyntax(raw, "unknown key name");
-        }
-        command.kind = down ? Command::Kind::KeyDown : Command::Kind::KeyUp;
-        command.value = key->scancode;
-      } else {
-        const int button = stackfall::virtualPadButtonFromName(name.c_str());
-        if (button < 0) {
-          return reportSyntax(raw, "unknown pad button name");
-        }
-        command.kind = down ? Command::Kind::PadDown : Command::Kind::PadUp;
-        command.value = button;
-      }
-    } else if (verb == "wait" || verb == "stall") {
-      // The count runs through the shared bounded rule of the core, never a
-      // narrowing cast: a fuzzed count above the 32-bit range once became a
-      // negative SDL_Delay argument that hung the session (T025 fuzz pass).
-      if (!stackfall::parseScriptCount(name.c_str(), &command.value)) {
-        return reportSyntax(raw, "wait/stall needs a number from 0 to "
-                                 "3600000");
-      }
-      command.kind =
-          verb == "wait" ? Command::Kind::Wait : Command::Kind::Stall;
-    } else if (verb == "detach") {
-      command.kind = Command::Kind::Detach;
-    } else if (verb == "restart") {
-      command.kind = Command::Kind::Restart;
-    } else if (verb == "quit") {
-      command.kind = Command::Kind::Quit;
-    } else if (verb == "fixture" || verb == "check" || verb == "shot") {
-      if (name.empty() || nameEnd != std::string::npos) {
-        return reportSyntax(raw, "fixture/check/shot needs one name");
-      }
-      command.text = name;
-      command.kind = verb == "fixture" ? Command::Kind::Fixture
-                      : verb == "check" ? Command::Kind::Check
-                                        : Command::Kind::Shot;
-    } else if (verb == "echo") {
-      command.kind = Command::Kind::Echo;
-      command.text = rest;
-    } else {
-      return reportSyntax(raw, "unknown command");
-    }
-    commands_.push_back(std::move(command));
-    return true;
-  }
-
-  static bool reportSyntax(const std::string& raw, const char* why) {
-    // The line keeps its newline in the log file too, so one report cannot
-    // run into the next entry.
-    std::string line = raw;
-    if (line.empty() || line.back() != '\n') {
-      line += '\n';
-    }
-    logErrorf("Input script error (%s): %s", why, line.c_str());
-    return false;
-  }
-
-  ScriptContext* context_ = nullptr;
-  std::vector<Command> commands_;
-  size_t index_ = 0;
-  bool waiting_ = false;
-  std::uint64_t waitUntil_ = 0;
+  SdlLibrary(const SdlLibrary&) = delete;
+  SdlLibrary& operator=(const SdlLibrary&) = delete;
 };
-
-// ---------------------------------------------------------------------------
-// Window and renderer.
-// ---------------------------------------------------------------------------
 
 // The render driver names this build of SDL carries, comma-separated, so a
 // failure message can tell the operator exactly what SDL_RENDER_DRIVER may
@@ -909,6 +626,58 @@ SDL_Renderer* createRenderer(SDL_Window* window, const char** lastError) {
   return nullptr;
 }
 
+// Owns the application window. The constructor takes the window parameters and
+// the caller checks valid(); the failure message belongs to main, because it
+// is the step that decides a window is fatal (specification section 9).
+class SdlWindow {
+ public:
+  SdlWindow(const char* title, int width, int height) {
+    window_ = SDL_CreateWindow(title, SDL_WINDOWPOS_CENTERED,
+                               SDL_WINDOWPOS_CENTERED, width, height,
+                               SDL_WINDOW_RESIZABLE);
+  }
+
+  ~SdlWindow() {
+    if (window_ != nullptr) {
+      SDL_DestroyWindow(window_);
+    }
+  }
+
+  SdlWindow(const SdlWindow&) = delete;
+  SdlWindow& operator=(const SdlWindow&) = delete;
+
+  bool valid() const { return window_ != nullptr; }
+  SDL_Window* get() const { return window_; }
+
+ private:
+  SDL_Window* window_ = nullptr;
+};
+
+// Owns the SDL renderer. The constructor runs the fallback chain of
+// createRenderer(), which logs every attempt, and leaves the reason of the
+// last failure in `lastError` for the caller's error message.
+class SdlRenderer {
+ public:
+  SdlRenderer(SDL_Window* window, const char** lastError) {
+    renderer_ = createRenderer(window, lastError);
+  }
+
+  ~SdlRenderer() {
+    if (renderer_ != nullptr) {
+      SDL_DestroyRenderer(renderer_);
+    }
+  }
+
+  SdlRenderer(const SdlRenderer&) = delete;
+  SdlRenderer& operator=(const SdlRenderer&) = delete;
+
+  bool valid() const { return renderer_ != nullptr; }
+  SDL_Renderer* get() const { return renderer_; }
+
+ private:
+  SDL_Renderer* renderer_ = nullptr;
+};
+
 // The build architecture, spelled out from compiler macros so the startup log
 // names the machine the binary was built for on every toolchain: the AArch64
 // handheld and an x86_64 desktop both identify themselves without a runtime
@@ -984,24 +753,6 @@ void paceFrame(Uint64& frameSlot, Uint64 framePeriodCounts, Uint64 frequency,
 // Input log of a recorded session: one line per simulation tick.
 // ---------------------------------------------------------------------------
 
-const char* sceneName(Scene scene) {
-  switch (scene) {
-    case Scene::Boot:
-      return "boot";
-    case Scene::Title:
-      return "title";
-    case Scene::Controls:
-      return "controls";
-    case Scene::Playing:
-      return "playing";
-    case Scene::Paused:
-      return "paused";
-    case Scene::GameOver:
-      return "gameover";
-  }
-  return "?";
-}
-
 void logTick(std::FILE* log, std::uint64_t tick, int slot, int batch,
              const stackfall::TickInput& input) {
   const stackfall::InputFrame& f = input.game;
@@ -1065,6 +816,37 @@ void saveHighScore(const HighScoreStore& store, const Game& game,
   }
 }
 
+// One crash-safe write of a running round's record (task T052). The loop
+// calls this the moment the score passes the saved record, and the store's
+// atomic temporary-file, flush, and rename write makes every one of these
+// saves safe to interrupt, so an abandoned round, a window close, or a
+// power loss costs at most the points of the piece in play. The input-log
+// line carries the tick, so evidence can prove the save ran while the
+// round was still going; the failure line is the high score's own, so a
+// failed record write counts exactly like a failed game-over save. A
+// session without a save directory saves nothing here: its load already
+// reported that persistence is off.
+void saveRunningRecord(const HighScoreStore& store, std::uint64_t score,
+                       std::uint64_t tick, std::FILE* inputLog) {
+  if (!store.hasDirectory()) {
+    return;
+  }
+  const SaveStatus status = store.save(score);
+  if (status == SaveStatus::Ok) {
+    logf("Record %llu saved to %s\n",
+         static_cast<unsigned long long>(score), store.filePath().c_str());
+  } else {
+    logf("Saving the high score %llu failed: %s\n",
+         static_cast<unsigned long long>(score), saveStatusName(status));
+  }
+  if (inputLog != nullptr) {
+    std::fprintf(inputLog, "record save=%llu tick=%llu status=%s\n",
+                 static_cast<unsigned long long>(score),
+                 static_cast<unsigned long long>(tick),
+                 saveStatusName(status));
+  }
+}
+
 // One rendered frame: the letterbox base paints the bars of a window that is
 // not the canvas (task T032, specification section 6.1), the procedural
 // renderer draws the whole round in the section 6.2 order, and the present
@@ -1077,105 +859,160 @@ void renderFrame(Renderer& renderer, const Game& game,
 }
 
 // ---------------------------------------------------------------------------
-// Checkpoint capture (docs/AGENT_TESTING.md, T023). A checkpoint saves the
-// frame the loop just rendered, exactly as presented: readOutputPixels copies
-// the whole renderer output - the letterbox bars of a non-native window
-// included (task T032) - into a fresh surface and SDL_SaveBMP writes the
-// lossless BMP, both from core SDL2, so no image library and no asset path is
-// involved. The screenshot names the checkpoint, never a frame number, so
-// evidence stays comparable across runs.
+// Sound (task T013, specification section 6.3) and the six player
+// preferences of the options screen (tasks T040 and T044).
 // ---------------------------------------------------------------------------
 
-bool saveScreenshot(SDL_Renderer* sdlRenderer, const std::string& path) {
-  int width = 0;
-  int height = 0;
-  if (SDL_GetRendererOutputSize(sdlRenderer, &width, &height) != 0) {
-    logf("Screenshot %s failed: %s\n", path.c_str(), SDL_GetError());
-    return false;
-  }
-  SDL_Surface* surface = SDL_CreateRGBSurfaceWithFormat(
-      0, width, height, 32, SDL_PIXELFORMAT_RGB888);
-  if (surface == nullptr) {
-    logf("Screenshot %s failed: %s\n", path.c_str(), SDL_GetError());
-    return false;
-  }
-  bool ok = true;
-  if (!stackfall::readOutputPixels(sdlRenderer, surface)) {
-    logf("Screenshot %s failed to read pixels: %s\n", path.c_str(),
-         SDL_GetError());
-    ok = false;
-  } else if (SDL_SaveBMP(surface, path.c_str()) != 0) {
-    logf("Screenshot %s failed to save: %s\n", path.c_str(), SDL_GetError());
-    ok = false;
-  }
-  SDL_FreeSurface(surface);
-  return ok;
+// The one place that maps the session's preference values onto their owners:
+// the audio mute and the renderer's option gates. Startup calls it right
+// after the settings load and every change route calls it right after
+// flipping its value, so the owners always agree with `prefs` and a future
+// preference needs exactly one new line here (task T049, refactor-review
+// item 4). Muting never touches the audio device, so this is equally safe
+// with no device at all (specification section 6.3).
+void applyPreferences(const SettingsValues& prefs, AudioDriver& audio,
+                      Renderer& renderer) {
+  audio.setMuted(!prefs.soundOn);
+  renderer.setSoundOn(prefs.soundOn);
+  renderer.setShowGhost(prefs.ghostOn);
+  renderer.setShowGrid(prefs.gridOn);
+  renderer.setShowHold(prefs.holdOn);
+  renderer.setNextPreviews(prefs.nextPreviews);
+  renderer.setGrayscale(prefs.grayscaleOn);
 }
 
-// Flushes the checkpoints a script marked this frame. Called after the
-// frame's ticks and its render, so the record and the image describe the
-// state that was drawn; the observation names the screenshot it saved, and a
-// checkpoint without a screenshot directory records `shot=none` instead of
-// failing, because a rules-only session still deserves its records.
-void flushCheckpoints(ScriptContext& context, const Game& game,
-                      SDL_Renderer* sdlRenderer, const char* screenshotDir,
-                      std::FILE* observations) {
-  for (const std::string& name : context.pendingShots) {
-    if (screenshotDir == nullptr) {
-      logf("Checkpoint %s has no --screenshot-dir; no image\n", name.c_str());
-      continue;
-    }
-    const std::string path =
-        std::string(screenshotDir) + "/" + name + ".bmp";
-    if (saveScreenshot(sdlRenderer, path)) {
-      logf("Checkpoint shot %s -> %s\n", name.c_str(), path.c_str());
-    }
-  }
-  context.pendingShots.clear();
-  for (const std::string& name : context.pendingChecks) {
-    std::string shotPath = "none";
-    if (screenshotDir != nullptr) {
-      const std::string path =
-          std::string(screenshotDir) + "/" + name + ".bmp";
-      if (saveScreenshot(sdlRenderer, path)) {
-        shotPath = path;
-        logf("Checkpoint %s -> %s\n", name.c_str(), path.c_str());
-      }
-    } else {
-      logf("Checkpoint %s has no --screenshot-dir; no image\n", name.c_str());
-    }
-    const std::string record =
-        stackfall::observationLine(name, game) + " shot=" + shotPath;
-    // The record line is structured data, not a session event: stdout and the
-    // observations file carry it, and log.txt stays a log.
-    std::printf("%s\n", record.c_str());
-    if (observations != nullptr) {
-      std::fprintf(observations, "%s\n", record.c_str());
-      std::fflush(observations);
-    }
-  }
-  context.pendingChecks.clear();
-}
-
-// ---------------------------------------------------------------------------
-// Sound (task T013, specification section 6.3).
-// ---------------------------------------------------------------------------
-
-// The sound toggle is platform-layer state, so it never travels through the
-// rules adapter: the keyboard M key and the controller Select button switch it
-// here, directly in the event loop, and the setting is written to settings.dat
-// the moment it changes, so a session interrupted right after a toggle keeps
-// the player's choice.
-void toggleSound(AudioDriver& audio, const SettingsStore& settings,
-                 std::FILE* inputLog) {
-  audio.toggleMute();
-  const SaveStatus status = settings.save(!audio.muted());
+// Every preference change writes the whole settings file through one atomic
+// save, so a session interrupted right after a change keeps every value and
+// the five preferences that did not change ride along unchanged. `what` names
+// the preference for the failure line, and `inputLogLine` is the per-tick
+// input log's evidence line with the new value and the save status.
+void savePreference(const SettingsStore& settings, const SettingsValues& prefs,
+                    const char* what, const char* inputLogLine,
+                    std::FILE* inputLog) {
+  const SaveStatus status = settings.save(prefs);
   if (status != SaveStatus::Ok) {
-    logf("Saving the sound setting failed: %s\n", saveStatusName(status));
+    logf("Saving the %s setting failed: %s\n", what, saveStatusName(status));
   }
   if (inputLog != nullptr) {
-    std::fprintf(inputLog, "sound %s status=%s\n",
-                 audio.muted() ? "muted" : "unmuted", saveStatusName(status));
+    std::fprintf(inputLog, "%s status=%s\n", inputLogLine,
+                 saveStatusName(status));
+  }
+}
+
+// The sound toggle is platform-layer state, so it never travels through the
+// rules adapter: the keyboard M key and the controller Select button switch
+// it here, directly in the event loop, and the options screen reaches the
+// same function on its SOUND row (task T040). The value flips here and
+// `applyPreferences` moves it into the mute and the renderer's row label.
+void toggleSound(AudioDriver& audio, const SettingsStore& settings,
+                 SettingsValues& prefs, Renderer& renderer,
+                 std::FILE* inputLog) {
+  prefs.soundOn = !prefs.soundOn;
+  applyPreferences(prefs, audio, renderer);
+  char line[48];
+  std::snprintf(line, sizeof(line), "sound %s",
+                prefs.soundOn ? "unmuted" : "muted");
+  savePreference(settings, prefs, "sound", line, inputLog);
+}
+
+// The ghost toggle of the options screen (task T040), the same platform-layer
+// pattern as the sound: flip the session value, apply it, and write the file
+// at once.
+void toggleGhost(AudioDriver& audio, const SettingsStore& settings,
+                 SettingsValues& prefs, Renderer& renderer,
+                 std::FILE* inputLog) {
+  prefs.ghostOn = !prefs.ghostOn;
+  applyPreferences(prefs, audio, renderer);
+  char line[48];
+  std::snprintf(line, sizeof(line), "ghost %s",
+                prefs.ghostOn ? "shown" : "hidden");
+  savePreference(settings, prefs, "ghost", line, inputLog);
+}
+
+// The grid toggle of the options screen (task T044) reuses the renderer gate
+// the developer options already had: off removes the faint grid lines, on
+// restores them, and no piece pixel changes either way.
+void toggleGrid(AudioDriver& audio, const SettingsStore& settings,
+                SettingsValues& prefs, Renderer& renderer,
+                std::FILE* inputLog) {
+  prefs.gridOn = !prefs.gridOn;
+  applyPreferences(prefs, audio, renderer);
+  char line[48];
+  std::snprintf(line, sizeof(line), "grid %s",
+                prefs.gridOn ? "shown" : "hidden");
+  savePreference(settings, prefs, "grid", line, inputLog);
+}
+
+// The hold toggle of the options screen (task T044): off makes the loop drop
+// every mapped hold edge before the round sees it - so no hold swap happens
+// and no hold lock is spent - and hides the Hold preview; on restores the
+// once-per-piece rule of the core untouched.
+void toggleHold(AudioDriver& audio, const SettingsStore& settings,
+                SettingsValues& prefs, Renderer& renderer,
+                std::FILE* inputLog) {
+  prefs.holdOn = !prefs.holdOn;
+  applyPreferences(prefs, audio, renderer);
+  char line[48];
+  std::snprintf(line, sizeof(line), "hold %s",
+                prefs.holdOn ? "enabled" : "disabled");
+  savePreference(settings, prefs, "hold", line, inputLog);
+}
+
+// The NEXT PIECES row of the options screen (task T044): select cycles
+// 1, 2, 3, 4, 5, and back to 1. The count changes only how many queue
+// previews the renderer draws; the queue and the randomizer behind it stay
+// byte-identical.
+void cycleNextPreviews(AudioDriver& audio, const SettingsStore& settings,
+                       SettingsValues& prefs, Renderer& renderer,
+                       std::FILE* inputLog) {
+  prefs.nextPreviews = prefs.nextPreviews >= stackfall::kSettingsNextMax
+                           ? stackfall::kSettingsNextMin
+                           : prefs.nextPreviews + 1;
+  applyPreferences(prefs, audio, renderer);
+  char line[48];
+  std::snprintf(line, sizeof(line), "next %d", prefs.nextPreviews);
+  savePreference(settings, prefs, "next", line, inputLog);
+}
+
+// The grayscale toggle of the options screen (task T044): on draws the play
+// scene's pieces, previews, and ghost in grays while the text and outlines
+// keep their colors; off restores the normal palette exactly.
+void toggleGrayscale(AudioDriver& audio, const SettingsStore& settings,
+                     SettingsValues& prefs, Renderer& renderer,
+                     std::FILE* inputLog) {
+  prefs.grayscaleOn = !prefs.grayscaleOn;
+  applyPreferences(prefs, audio, renderer);
+  char line[48];
+  std::snprintf(line, sizeof(line), "grayscale %s",
+                prefs.grayscaleOn ? "on" : "off");
+  savePreference(settings, prefs, "grayscale", line, inputLog);
+}
+
+// A on one row of the options screen changes that row's value. The rules core
+// keeps the highlighted row and changes nothing itself; this platform half
+// applies the change (tasks T040 and T044, specification section 7).
+void applyOptionsSelect(Renderer& renderer, AudioDriver& audio,
+                        const SettingsStore& settings, SettingsValues& prefs,
+                        int row, std::FILE* inputLog) {
+  switch (row) {
+    case 0:
+      toggleSound(audio, settings, prefs, renderer, inputLog);
+      break;
+    case 1:
+      toggleGhost(audio, settings, prefs, renderer, inputLog);
+      break;
+    case 2:
+      toggleGrid(audio, settings, prefs, renderer, inputLog);
+      break;
+    case 3:
+      toggleHold(audio, settings, prefs, renderer, inputLog);
+      break;
+    case 4:
+      cycleNextPreviews(audio, settings, prefs, renderer, inputLog);
+      break;
+    default:
+      toggleGrayscale(audio, settings, prefs, renderer, inputLog);
+      break;
   }
 }
 
@@ -1225,9 +1062,10 @@ void logCues(const CueSet& cues, std::uint64_t tick, std::FILE* inputLog) {
 // Returns false when the program should exit: window close, or the Q key,
 // which stands in for the EXIT state until the title screen of milestone M2
 // offers Quit. Escape no longer exits: it pauses (specification section 5).
-bool pollEvents(SDL_Renderer* sdlRenderer, ControllerSet& controllers,
-                SdlInput& input, AudioDriver& audio,
-                const SettingsStore& settings, std::FILE* inputLog) {
+bool pollEvents(SDL_Renderer* sdlRenderer, Renderer& renderer,
+                ControllerSet& controllers, SdlInput& input,
+                AudioDriver& audio, const SettingsStore& settings,
+                SettingsValues& prefs, std::FILE* inputLog) {
   SDL_Event event;
   while (SDL_PollEvent(&event) != 0) {
     input.handleEvent(event);
@@ -1259,7 +1097,7 @@ bool pollEvents(SDL_Renderer* sdlRenderer, ControllerSet& controllers,
         // Select switches the sound, the one button of the RG503 layout that
         // no rule of section 5 claims (specification sections 5 and 6.3).
         if (event.cbutton.button == SDL_CONTROLLER_BUTTON_BACK) {
-          toggleSound(audio, settings, inputLog);
+          toggleSound(audio, settings, prefs, renderer, inputLog);
         }
         break;
       case SDL_KEYDOWN:
@@ -1267,7 +1105,7 @@ bool pollEvents(SDL_Renderer* sdlRenderer, ControllerSet& controllers,
           return false;
         }
         if (event.key.repeat == 0 && event.key.keysym.sym == SDLK_m) {
-          toggleSound(audio, settings, inputLog);
+          toggleSound(audio, settings, prefs, renderer, inputLog);
         }
         break;
       default:
@@ -1299,14 +1137,22 @@ bool pollEvents(SDL_Renderer* sdlRenderer, ControllerSet& controllers,
 // frames. The headless reference replay of tests/harness produces its
 // records under the same mapping, which is what makes the two streams
 // comparable byte for byte.
+//
+// The developer automation of the session - the script driver, the virtual
+// pad, and the checkpoint capture - sits behind `developer` (task T048), so
+// the loop's own list names only what it drives itself: the renderers, the
+// controller set, the input adapter, the round with its two stores, the
+// preferences, and the sound. The evidence streams the loop writes through
+// (`developer.inputLog()`, `developer.frameTimes()`) belong to the same
+// owner, which is what took them off this list.
 int runMainLoop(Renderer& renderer, SDL_Renderer* sdlRenderer,
                 ControllerSet& controllers, SdlInput& input, Game& game,
                 const HighScoreStore& highScores, const SettingsStore& settings,
-                AudioDriver& audio, CueDetector& cueDetector,
-                InputScript* script, ScriptContext* scriptContext,
-                std::FILE* inputLog, std::FILE* observations,
-                std::FILE* frameTimes, const char* screenshotDir,
+                SettingsValues& prefs, AudioDriver& audio,
+                CueDetector& cueDetector, DeveloperSession& developer,
                 bool tickPerFrame, Uint64 frameLimit) {
+  std::FILE* const inputLog = developer.inputLog();
+  std::FILE* const frameTimes = developer.frameTimes();
   const Uint64 frequency = SDL_GetPerformanceFrequency();
   const Uint64 tickUnit = frequency;  // scaled units per 1/60 s tick
   const Uint64 stallCounts = frequency * kStallWarnMs / 1000;
@@ -1327,15 +1173,28 @@ int runMainLoop(Renderer& renderer, SDL_Renderer* sdlRenderer,
   // reached playing (docs/AGENT_TESTING.md relies on these markers).
   Scene lastScene = Scene::Boot;
 
+  // The persisted record this session owns (task T052, specification
+  // sections 4.7 and 9). It seeds from the load that opened the session -
+  // game.highScore() holds exactly that value here - and rises with every
+  // mid-round save below, in the platform layer alone: the rules core never
+  // learns of it, so its gameplay, its hashes, and its input timing stay as
+  // they were. `roundActive` says whether a round is in play (Playing,
+  // Paused, or the controls screen over a frozen round), and `roundTicks`
+  // is the round's tick count after the previous tick; together they name
+  // the round boundaries the feedback below waits for.
+  std::uint64_t savedRecord = game.highScore();
+  bool roundActive = false;
+  std::uint64_t roundTicks = 0;
+
   while (running) {
     // Scripted input first, so its queued events reach this frame's poll.
-    if (script != nullptr) {
-      script->pump(ticksSimulated);
+    if (developer.hasScript()) {
+      developer.pumpScript(ticksSimulated);
     }
 
     // Events next, before any simulation (specification section 5).
-    running = pollEvents(sdlRenderer, controllers, input, audio, settings,
-                         inputLog);
+    running = pollEvents(sdlRenderer, renderer, controllers, input, audio,
+                         settings, prefs, inputLog);
 
     int batch = 0;
     if (tickPerFrame) {
@@ -1378,11 +1237,60 @@ int runMainLoop(Renderer& renderer, SDL_Renderer* sdlRenderer,
     }
     int slot = 0;
     while (slot < batch) {
-      const stackfall::TickInput tickInput = input.takeTickInput();
+      stackfall::TickInput tickInput = input.takeTickInput();
+      // Hold disabled on the options screen ignores every mapped hold input
+      // (controller Y or left shoulder, keyboard C or left shift): the edge
+      // is dropped here, before the round can see it, so no hold swap happens
+      // and no hold lock is spent (task T044, specification section 5). The
+      // input log records the frame the tick really consumed.
+      if (!prefs.holdOn) {
+        tickInput.game.holdPressed = false;
+      }
       if (inputLog != nullptr) {
         logTick(inputLog, ticksSimulated, slot, batch, tickInput);
       }
+      // The scene before the tick owns the select edge: the A press that
+      // opens the options screen belongs to the title, and only a select
+      // pressed while the screen already showed changes a value, so the
+      // opening press never toggles one (task T040).
+      const Scene sceneBeforeTick = game.scene();
       game.tick(tickInput);
+      if (sceneBeforeTick == Scene::Options && tickInput.menu.selectPressed) {
+        applyOptionsSelect(renderer, audio, settings, prefs,
+                           game.optionsSelection(), inputLog);
+      }
+      // The record persists the moment the running score passes the best
+      // the store holds (task T052): every save runs through the atomic
+      // temporary-file, flush, and rename write, so a quit to the title, a
+      // window close, or a power loss keeps every point up to the piece in
+      // play instead of waiting for a game over that never came.
+      if (game.score() > savedRecord) {
+        savedRecord = game.score();
+        saveRunningRecord(highScores, savedRecord, ticksSimulated, inputLog);
+      }
+      // Round boundaries feed the persisted best back into the session,
+      // between rounds only (specification section 4.7): a round that ends
+      // by game over, Quit to Title, or Restart leaves the record the next
+      // round must beat in the game's own high score, while a running round
+      // keeps the record it began with, so the core's newRecord flag of
+      // endRound() and the game-over screen still compare against that
+      // record and Play Again plays against the best so far. A restart is
+      // the one boundary that ends one round and begins the next in a
+      // single tick: the fresh round's clock restarts, which is how the
+      // platform layer tells it from a resume.
+      const Scene sceneAfterTick = game.scene();
+      if (roundActive && sceneAfterTick != Scene::Playing &&
+          sceneAfterTick != Scene::Paused &&
+          sceneAfterTick != Scene::PauseControls) {
+        roundActive = false;  // game over or Quit to Title ended the round
+        game.setHighScore(savedRecord);
+      } else if (sceneAfterTick == Scene::Playing && !roundActive) {
+        roundActive = true;  // Start Game or Play Again began a round
+      } else if (roundActive && sceneAfterTick == Scene::Playing &&
+                 game.tickCount() < roundTicks) {
+        game.setHighScore(savedRecord);  // Restart replaced the round
+      }
+      roundTicks = game.tickCount();
       // The detector reads what the tick did and the driver plays it, so a
       // cue sounds once per event exactly (specification section 6.3).
       const CueSet cues = cueDetector.observe(game);
@@ -1395,12 +1303,13 @@ int runMainLoop(Renderer& renderer, SDL_Renderer* sdlRenderer,
 
     // Scene transitions and the game-over summary go to both logs.
     if (game.scene() != lastScene) {
-      logf("Scene %s -> %s at tick %llu\n", sceneName(lastScene),
-           sceneName(game.scene()),
+      logf("Scene %s -> %s at tick %llu\n", observationSceneName(lastScene),
+           observationSceneName(game.scene()),
            static_cast<unsigned long long>(ticksSimulated));
       if (inputLog != nullptr) {
         std::fprintf(inputLog, "scene %s -> %s tick=%llu\n",
-                     sceneName(lastScene), sceneName(game.scene()),
+                     observationSceneName(lastScene),
+                     observationSceneName(game.scene()),
                      static_cast<unsigned long long>(ticksSimulated));
       }
       if (lastScene == Scene::Title && game.scene() == Scene::Playing) {
@@ -1457,11 +1366,9 @@ int runMainLoop(Renderer& renderer, SDL_Renderer* sdlRenderer,
     ++framesRendered;
 
     // Checkpoints flush after the render they name, so record and image
-    // describe the state that was drawn (docs/AGENT_TESTING.md, T023).
-    if (scriptContext != nullptr) {
-      flushCheckpoints(*scriptContext, game, sdlRenderer, screenshotDir,
-                       observations);
-    }
+    // describe the state that was drawn (docs/AGENT_TESTING.md, T023). The
+    // call is a no-op unless a script marked checkpoints this frame.
+    developer.captureCheckpoints(game, sdlRenderer);
 
     const bool limitReached = frameLimit != 0 && framesRendered >= frameLimit;
     // Pacing the last frame away would only delay the exit, so the limiter
@@ -1504,8 +1411,9 @@ int main(int argc, char** argv) {
 
   // The log sink opens before anything that can fail, so the startup banner
   // and every failure below leave their line in log.txt beside the record
-  // (task T014, specification section 9).
-  openSessionLog(stackfall::logFilePath(saveDirectory));
+  // (task T014, specification section 9). Its owner is the first object of
+  // the session, so it closes after everything below has gone quiet.
+  const SessionLog sessionLog(stackfall::logFilePath(saveDirectory));
 
   SDL_version compiled;
   SDL_VERSION(&compiled);
@@ -1523,226 +1431,196 @@ int main(int argc, char** argv) {
     logf("Harness mode: one simulation tick per frame, pacing off\n");
   }
 
-  // Video failing is fatal and logged; the game is nothing without a window.
-  if (SDL_Init(SDL_INIT_VIDEO) != 0) {
-    logErrorf("SDL_Init(SDL_INIT_VIDEO) failed: %s\n", SDL_GetError());
-    closeSessionLog();
-    return EXIT_FAILURE;
-  }
-  // The controller subsystem gets its own attempt, because a platform whose
-  // gamepad support will not start must still run: the session logs the
-  // failure and plays on the keyboard, which is the no-controller state of
-  // specification section 9 (task T014). No controller event can arrive
-  // afterwards, exactly as when no device exists.
-  const bool controllersUsable = SDL_Init(SDL_INIT_GAMECONTROLLER) == 0;
-  if (!controllersUsable) {
-    logErrorf("SDL_Init(SDL_INIT_GAMECONTROLLER) failed: %s\n",
-              SDL_GetError());
-  }
+  int exitCode = EXIT_FAILURE;
+  {
+    // Every platform resource of the session, as scoped owners in creation
+    // order (task T047). The block's end releases them in the reverse order,
+    // which is the EXIT order of specification section 4.7: the audio device
+    // first, then the developer session's evidence streams and virtual pad,
+    // the controller set, the renderer, and the window, and SDL_Quit
+    // after all of them. A startup step that fails leaves through one
+    // `return`, and the owners built so far release what the session had.
+    const SdlLibrary sdl;
 
-  SDL_Window* window =
-      SDL_CreateWindow("STACKFALL", SDL_WINDOWPOS_CENTERED,
-                       SDL_WINDOWPOS_CENTERED, kCanvasWidth, kCanvasHeight,
-                       SDL_WINDOW_RESIZABLE);
-  if (window == nullptr) {
-    logErrorf("SDL_CreateWindow failed: %s\n", SDL_GetError());
-    SDL_Quit();
-    closeSessionLog();
-    return EXIT_FAILURE;
-  }
-  const char* videoDriver = SDL_GetCurrentVideoDriver();
-  logf("Window: %dx%d, video driver \"%s\"\n", kCanvasWidth, kCanvasHeight,
-       videoDriver != nullptr ? videoDriver : "?");
-
-  const char* rendererError = "no attempt was made";
-  SDL_Renderer* renderer = createRenderer(window, &rendererError);
-  if (renderer == nullptr) {
-    logErrorf(
-        "Every renderer creation attempt failed: %s\n"
-        "Set SDL_RENDER_DRIVER to one of the drivers listed above "
-        "(for example software), or switch video drivers with "
-        "SDL_VIDEODRIVER (for example SDL_VIDEODRIVER=dummy for a "
-        "headless run)\n",
-        rendererError);
-    SDL_DestroyWindow(window);
-    SDL_Quit();
-    closeSessionLog();
-    return EXIT_FAILURE;
-  }
-  if (!stackfall::applyCanvas(renderer)) {
-    logErrorf("Setting the %dx%d canvas failed: %s\n", kCanvasWidth,
-              kCanvasHeight, SDL_GetError());
-  }
-
-  // The procedural renderer of task T010 draws every frame from this one
-  // wrapper; it reads the round and never writes it (specification section 7).
-  Renderer sceneRenderer(renderer);
-
-  // The PortMaster environment carries controller mappings in
-  // SDL_GAMECONTROLLERCONFIG (specification section 5); load them before
-  // controller discovery so the lines apply to the first scan.
-  SdlInput input;
-  input.loadEnvironmentMappings();
-
-  // The developer virtual pad, for scripted sessions and manual checks.
-  int virtualDevice = -1;
-  SDL_Joystick* virtualJoystick = nullptr;
-  if (options.virtualController || options.inputScript != nullptr) {
-    virtualDevice = stackfall::attachVirtualController();
-    if (virtualDevice >= 0) {
-      virtualJoystick = SDL_JoystickOpen(virtualDevice);
-    }
-  }
-
-  ControllerSet controllers;
-  if (controllersUsable) {
-    controllers.discover();
-  } else {
-    logf("No game controller subsystem; keyboard fallback active\n");
-  }
-
-  std::FILE* inputLog = nullptr;
-  if (options.inputLog != nullptr) {
-    inputLog = std::fopen(options.inputLog, "w");
-    if (inputLog == nullptr) {
-      logErrorf("Warning: cannot open input log \"%s\"\n", options.inputLog);
-    }
-  }
-
-  // The structured checkpoint records and the screenshot directory of the
-  // unattended harness (docs/AGENT_TESTING.md, T023). Both stay closed and
-  // absent in a normal run.
-  std::FILE* observations = nullptr;
-  if (options.observations != nullptr) {
-    observations = std::fopen(options.observations, "w");
-    if (observations == nullptr) {
-      logErrorf("Warning: cannot open observations \"%s\"\n",
-                options.observations);
-    }
-  }
-  if (options.screenshotDir != nullptr) {
-    logf("Checkpoint screenshots into %s\n", options.screenshotDir);
-  }
-
-  Game game;
-  const std::uint64_t seed = options.hasSeed ? options.seed : deriveSeed();
-  // The session opens at the title menu of section 4.7; the first round and
-  // every later fresh round draw their seeds from one deterministic stream
-  // seeded here, so a scripted session with --seed replays exactly.
-  game.openTitle(seed);
-  logf("Title screen; session seed %llu\n",
-       static_cast<unsigned long long>(seed));
-  if (inputLog != nullptr) {
-    std::fprintf(inputLog, "input-log seed=%llu\n",
-                 static_cast<unsigned long long>(seed));
-  }
-
-  // The saved record joins the session before the title screen renders it:
-  // the launcher's conf/ directory carries it across launches
-  // (specification sections 9 and 10.3, task T012). `saveDirectory` above
-  // already holds the harness's --save-dir, so the record, the settings, and
-  // the session log land in one directory (task T033).
-  const HighScoreStore highScores(saveDirectory);
-  loadStoredHighScore(highScores, game, inputLog);
-
-  // Sound (task T013, specification section 6.3). The settings file beside the
-  // record supplies the starting mute state - sound stays on unless a valid
-  // file turns it off - and the device open may fail without costing anything
-  // else: the driver reports silence and the session plays on.
-  const SettingsStore settings(saveDirectory);
-  AudioDriver audio;
-  CueDetector cueDetector;
-  const stackfall::SettingsResult soundSetting = settings.load();
-  audio.setMuted(!soundSetting.soundOn);
-  if (settings.hasDirectory()) {
-    logf("Sound setting %s (%s) from %s\n", soundSetting.soundOn ? "on" : "off",
-         saveStatusName(soundSetting.status), settings.filePath().c_str());
-  } else {
-    logf("No save directory: the sound setting stays in memory this "
-         "session\n");
-  }
-  if (inputLog != nullptr) {
-    std::fprintf(inputLog, "sound start=%s\n",
-                 soundSetting.soundOn ? "on" : "off");
-  }
-  audio.open();
-  logf("Sound toggle: M key or controller Select\n");
-
-  ScriptContext context;
-  context.virtualJoystick = virtualJoystick;
-  context.virtualDevice = virtualDevice;
-  context.game = &game;
-  context.cues = &cueDetector;
-  context.inputLog = inputLog;
-  context.fixtureDir = options.fixtureDir;
-  InputScript script;
-  InputScript* scriptPtr = nullptr;
-  if (options.inputScript != nullptr) {
-    if (!script.load(options.inputScript, &context)) {
-      audio.close();
-      if (inputLog != nullptr) {
-        std::fclose(inputLog);
-      }
-      if (observations != nullptr) {
-        std::fclose(observations);
-      }
-      if (virtualJoystick != nullptr) {
-        SDL_JoystickClose(virtualJoystick);
-        stackfall::detachVirtualController(virtualDevice);
-      }
-      controllers.closeAll();
-      SDL_DestroyRenderer(renderer);
-      SDL_DestroyWindow(window);
-      SDL_Quit();
-      closeSessionLog();
+    // Video failing is fatal and logged; the game is nothing without a window.
+    if (SDL_Init(SDL_INIT_VIDEO) != 0) {
+      logErrorf("SDL_Init(SDL_INIT_VIDEO) failed: %s\n", SDL_GetError());
       return EXIT_FAILURE;
     }
-    scriptPtr = &script;
-  }
-
-  // The frame-time record of the T025 measurement runs, opened beside the
-  // other structured streams and closed on the ordinary exit path below.
-  std::FILE* frameTimes = nullptr;
-  if (options.frameTimes != nullptr) {
-    frameTimes = std::fopen(options.frameTimes, "w");
-    if (frameTimes == nullptr) {
-      logErrorf("Warning: cannot open frame-time record \"%s\"\n",
-                options.frameTimes);
+    // The controller subsystem gets its own attempt, because a platform whose
+    // gamepad support will not start must still run: the session logs the
+    // failure and plays on the keyboard, which is the no-controller state of
+    // specification section 9 (task T014). No controller event can arrive
+    // afterwards, exactly as when no device exists.
+    const bool controllersUsable = SDL_Init(SDL_INIT_GAMECONTROLLER) == 0;
+    if (!controllersUsable) {
+      logErrorf("SDL_Init(SDL_INIT_GAMECONTROLLER) failed: %s\n",
+                SDL_GetError());
     }
+
+    const SdlWindow window("STACKFALL", kCanvasWidth, kCanvasHeight);
+    if (!window.valid()) {
+      logErrorf("SDL_CreateWindow failed: %s\n", SDL_GetError());
+      return EXIT_FAILURE;
+    }
+    const char* videoDriver = SDL_GetCurrentVideoDriver();
+    logf("Window: %dx%d, video driver \"%s\"\n", kCanvasWidth, kCanvasHeight,
+         videoDriver != nullptr ? videoDriver : "?");
+
+    const char* rendererError = "no attempt was made";
+    const SdlRenderer renderer(window.get(), &rendererError);
+    if (!renderer.valid()) {
+      logErrorf(
+          "Every renderer creation attempt failed: %s\n"
+          "Set SDL_RENDER_DRIVER to one of the drivers listed above "
+          "(for example software), or switch video drivers with "
+          "SDL_VIDEODRIVER (for example SDL_VIDEODRIVER=dummy for a "
+          "headless run)\n",
+          rendererError);
+      return EXIT_FAILURE;
+    }
+    if (!stackfall::applyCanvas(renderer.get())) {
+      logErrorf("Setting the %dx%d canvas failed: %s\n", kCanvasWidth,
+                kCanvasHeight, SDL_GetError());
+    }
+
+    // The procedural renderer of task T010 draws every frame from this one
+    // wrapper; it reads the round and never writes it (specification section
+    // 7).
+    Renderer sceneRenderer(renderer.get());
+
+    // The PortMaster environment carries controller mappings in
+    // SDL_GAMECONTROLLERCONFIG (specification section 5); load them before
+    // controller discovery so the lines apply to the first scan.
+    SdlInput input;
+    input.loadEnvironmentMappings();
+
+    // Declaration order, not creation order, sets the release order: the
+    // developer automation is declared after the controller set, so its
+    // virtual pad releases first, exactly as the exit path always did. The
+    // pad is still attached before discovery runs, because discovery opens it
+    // as one more controller and logs it like a real one. Everything else the
+    // developer session owns - the script, the evidence streams, and the
+    // capture - opens below, at the steps that always created it.
+    ControllerSet controllers;
+    DeveloperSession developer(sessionLog.file());
+    if (options.virtualController || options.inputScript != nullptr) {
+      developer.attachPad();
+    }
+    if (controllersUsable) {
+      controllers.discover();
+    } else {
+      logf("No game controller subsystem; keyboard fallback active\n");
+    }
+
+    developer.openInputLog(options.inputLog);
+    std::FILE* const inputLog = developer.inputLog();
+
+    // The structured checkpoint records and the screenshot directory of the
+    // unattended harness (docs/AGENT_TESTING.md, T023). Both stay closed and
+    // absent in a normal run. The image budget of task T054 arrives only when
+    // the option named one; without it the session keeps the 256 MiB default,
+    // and 0 removes the cap.
+    developer.openObservations(options.observations);
+    developer.setScreenshotDir(options.screenshotDir);
+    if (options.hasScreenshotBudget) {
+      developer.setScreenshotBudget(options.screenshotBudget);
+    }
+    developer.setFixtureDir(options.fixtureDir);
+
+    Game game;
+    const std::uint64_t seed = options.hasSeed ? options.seed : deriveSeed();
+    // The session opens at the title menu of section 4.7; the first round and
+    // every later fresh round draw their seeds from one deterministic stream
+    // seeded here, so a scripted session with --seed replays exactly.
+    game.openTitle(seed);
+    logf("Title screen; session seed %llu\n",
+         static_cast<unsigned long long>(seed));
+    if (inputLog != nullptr) {
+      std::fprintf(inputLog, "input-log seed=%llu\n",
+                   static_cast<unsigned long long>(seed));
+    }
+
+    // The saved record joins the session before the title screen renders it:
+    // the launcher's conf/ directory carries it across launches
+    // (specification sections 9 and 10.3, task T012). `saveDirectory` above
+    // already holds the harness's --save-dir, so the record, the settings, and
+    // the session log land in one directory (task T033).
+    const HighScoreStore highScores(saveDirectory);
+    loadStoredHighScore(highScores, game, inputLog);
+
+    // Sound (task T013, specification section 6.3) and the six player
+    // preferences of the options screen (tasks T039, T040, and T044). The
+    // settings file beside the record supplies every starting state - each
+    // stays at its default unless a valid file changes it - and one
+    // `applyPreferences` call moves all of them into their owners, the same
+    // call every later change routes through, so the play scene gates the
+    // ghost, the grid, the Hold preview, and the preview count from the first
+    // frame and the options screen shows every row's value. The device open
+    // may fail without costing anything else: the driver reports silence and
+    // the session plays on. The driver is declared after every other owner
+    // above, so its destructor closes the device before any of them and long
+    // before SDL_Quit (specification section 4.7).
+    const SettingsStore settings(saveDirectory);
+    AudioDriver audio;
+    CueDetector cueDetector;
+    const stackfall::SettingsResult preferences = settings.load();
+    SettingsValues prefs = preferences;
+    applyPreferences(prefs, audio, sceneRenderer);
+    if (settings.hasDirectory()) {
+      logf("Settings: sound %s, ghost preview %s, grid %s, hold %s, next "
+           "previews %d, grayscale %s (%s) from %s\n",
+           prefs.soundOn ? "on" : "off", prefs.ghostOn ? "on" : "off",
+           prefs.gridOn ? "on" : "off", prefs.holdOn ? "on" : "off",
+           prefs.nextPreviews, prefs.grayscaleOn ? "on" : "off",
+           saveStatusName(preferences.status), settings.filePath().c_str());
+    } else {
+      logf("No save directory: the player settings stay in memory this "
+           "session\n");
+    }
+    if (inputLog != nullptr) {
+      std::fprintf(inputLog, "sound start=%s\n", prefs.soundOn ? "on" : "off");
+      std::fprintf(inputLog, "ghost start=%s\n", prefs.ghostOn ? "on" : "off");
+      std::fprintf(inputLog, "grid start=%s\n", prefs.gridOn ? "on" : "off");
+      std::fprintf(inputLog, "hold start=%s\n", prefs.holdOn ? "on" : "off");
+      std::fprintf(inputLog, "next start=%d\n", prefs.nextPreviews);
+      std::fprintf(inputLog, "grayscale start=%s\n",
+                   prefs.grayscaleOn ? "on" : "off");
+    }
+    audio.open();
+    logf("Sound toggle: M key or controller Select\n");
+
+    // The script binds the round and the cue detector itself, the two
+    // application objects its `restart` and `fixture` commands act on; no
+    // wider context travels with them (task T048).
+    if (options.inputScript != nullptr) {
+      if (!developer.loadScript(options.inputScript, &game, &cueDetector)) {
+        // A recorded session must not run halfway by accident. The owners of
+        // this block release everything the session had already built; no
+        // clean-shutdown line belongs to a session that never ran.
+        return EXIT_FAILURE;
+      }
+    }
+
+    // The frame-time record of the T025 measurement runs, opened beside the
+    // other structured streams and after the script, so a rejected script
+    // leaves no file behind. It is the developer session's last stream to
+    // open and its first to close.
+    developer.openFrameTimes(options.frameTimes);
+
+    exitCode = runMainLoop(sceneRenderer, renderer.get(), controllers, input,
+                           game, highScores, settings, prefs, audio,
+                           cueDetector, developer, options.tickPerFrame,
+                           options.frameLimit);
   }
 
-  const int exitCode = runMainLoop(
-      sceneRenderer, renderer, controllers, input, game, highScores, settings,
-      audio, cueDetector, scriptPtr, &context, inputLog, observations,
-      frameTimes, options.screenshotDir, options.tickPerFrame,
-      options.frameLimit);
-
-  if (frameTimes != nullptr) {
-    std::fclose(frameTimes);
+  // EXIT state (specification section 4.7): the block above released every
+  // resource in the reverse order of creation - the audio device before
+  // SDL_Quit, the script-released pad closed exactly once - and the session
+  // log is still open, so the ordinary exit leaves its line in log.txt. A
+  // startup failure returned early and prints nothing here.
+  if (exitCode == EXIT_SUCCESS) {
+    logf("Clean shutdown\n");
   }
-
-  // EXIT state (specification section 4.7): release every resource in the
-  // reverse order of creation and leave a clean process. A script may have
-  // detached the virtual pad mid-session, so read its shared context. Audio
-  // closes first, because section 4.7 names stopping the sound as part of a
-  // clean exit.
-  audio.close();
-  if (inputLog != nullptr) {
-    std::fclose(inputLog);
-  }
-  if (observations != nullptr) {
-    std::fclose(observations);
-  }
-  if (context.virtualJoystick != nullptr) {
-    SDL_JoystickClose(context.virtualJoystick);
-    stackfall::detachVirtualController(context.virtualDevice);
-    context.virtualJoystick = nullptr;
-  }
-  controllers.closeAll();
-  SDL_DestroyRenderer(renderer);
-  SDL_DestroyWindow(window);
-  SDL_Quit();
-  logf("Clean shutdown\n");
-  closeSessionLog();
   return exitCode;
 }

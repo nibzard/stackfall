@@ -109,7 +109,8 @@ def quit_to_title_start(script, tag):
     """Leave the round through the pause menu, then start a fresh one."""
     script.tap("esc", 2)
     script.tap("down", 2)
-    script.tap("down", 2)   # Resume -> Restart -> Quit to Title
+    script.tap("down", 2)
+    script.tap("down", 2)   # Resume -> Restart -> Controls -> Quit to Title
     script.check("%s-paused" % tag)
     script.tap("enter", 2)
     script.wait(10)
@@ -148,7 +149,8 @@ def quit_from_title(script):
     script.wait(5)
     script.check("final-title")
     script.tap("down", 2)   # Start Game -> Controls
-    script.tap("down", 2)   # Controls -> Quit
+    script.tap("down", 2)   # Controls -> Options
+    script.tap("down", 2)   # Options -> Quit
     script.check("final-at-quit")
     script.wait(1)
     script.check("quit-confirmed")

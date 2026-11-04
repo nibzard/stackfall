@@ -1,0 +1,127 @@
+# Next-count step (T045, docs/AGENT_TESTING.md): the one script all five
+# stages of the next-count session run, seed 20261103, keyboard. Each stage
+# selects the NEXT PIECES row once, so the shared save directory walks the
+# ring 5 -> 1 -> 2 -> 3 -> 4 -> 5 across the five processes and every stage
+# plays its round one preview further along. The round starts from the same
+# title seed in every fresh process, hard-drops one piece so the queue
+# advances, and abandons through the pause menu, so the five observation
+# streams are identical outside the loaded record - the abandoned round
+# persists its 36 mid-round (T052), and every stage after the first loads
+# that record - while the five screenshots show one more preview each time.
+# A `wait` follows every check, so no record carries the tick of the input
+# that comes after it.
+check title-start
+wait 1
+key down down
+wait 2
+key down up
+wait 2
+key down down
+wait 2
+key down up
+wait 2
+check title-at-options
+wait 1
+key enter down
+wait 2
+key enter up
+wait 2
+check options-open
+wait 1
+key down down
+wait 2
+key down up
+wait 2
+key down down
+wait 2
+key down up
+wait 2
+key down down
+wait 2
+key down up
+wait 2
+key down down
+wait 2
+key down up
+wait 2
+check options-next-row
+wait 1
+key enter down
+wait 2
+key enter up
+wait 2
+check next-advanced
+wait 1
+key esc down
+wait 2
+key esc up
+wait 2
+check title-back
+wait 1
+key up down
+wait 2
+key up up
+wait 2
+key up down
+wait 2
+key up up
+wait 2
+check title-at-start
+wait 1
+key enter down
+wait 2
+key enter up
+wait 2
+check playing-start
+wait 1
+key space down
+wait 2
+key space up
+wait 2
+check after-lock
+wait 1
+key esc down
+wait 2
+key esc up
+wait 2
+check paused
+wait 1
+key down down
+wait 2
+key down up
+wait 2
+key down down
+wait 2
+key down up
+wait 2
+key down down
+wait 2
+key down up
+wait 2
+check paused-at-quit
+wait 1
+key enter down
+wait 2
+key enter up
+wait 2
+check title-after-round
+wait 1
+key down down
+wait 2
+key down up
+wait 2
+key down down
+wait 2
+key down up
+wait 2
+key down down
+wait 2
+key down up
+wait 2
+check title-at-quit
+wait 1
+check quit-confirmed
+key enter down
+wait 2
+key enter up
+wait 2

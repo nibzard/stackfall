@@ -155,13 +155,13 @@ def gen_menu(ticks, path):
     script = Script("T026 title and menu benchmark (%d ticks)" % ticks)
     script.marker("title idle and cursor")
     while script.ticks < ticks:
-        script.tap("down", 6)   # Start Game -> Controls -> Quit
+        script.tap("down", 6)   # Start Game -> Controls -> Options -> Quit
         script.wait(24)
         script.tap("up", 6)
         script.wait(24)
-        script.tap("down", 6)   # back to Controls
+        script.tap("down", 6)   # back toward the submenu items
         script.wait(10)
-        script.tap("enter", 4)  # open Controls
+        script.tap("enter", 4)  # open the highlighted screen
         script.wait(30)
         script.tap("esc", 4)    # back to the title
         script.wait(30)

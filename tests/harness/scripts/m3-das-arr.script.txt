@@ -1,0 +1,125 @@
+# M3 gate session: delayed auto-shift (DAS) and auto-repeat rate (ARR),
+# keyboard driver, seed 20261103 (first piece T, spawn x=3).
+#
+# Section 4.5 pins, read from the checkpoint ticks alone:
+#   * a fresh press moves on its own tick (press-move records the move tick);
+#   * the charge then holds the piece for ten ticks (charge-01..09);
+#   * the first repeat lands exactly ten ticks after the press tick;
+#   * the next repeat lands exactly two ticks after that (ARR), then every
+#     two ticks until the wall, where repeats fail without moving;
+#   * releasing and switching direction moves immediately on the switch tick;
+#   * left and right held together move nothing, and releasing one leaves
+#     the other as a fresh press that moves immediately;
+#   * a pause mid-charge freezes the charge where it is: the first repeat
+#     after the resume still lands exactly ten ticks after the press tick
+#     on the playing clock, because paused ticks do not count. The
+#     post-resume records take one tick each, so the checker reads the
+#     repeat cadence straight from their x positions.
+check title-first
+wait 1
+key enter down
+wait 2
+key enter up
+wait 3
+check round-start
+wait 1
+# --- left: press, ten-tick charge, two-tick repeats, wall ---
+key left down
+check press-move
+wait 1
+check charge-01
+wait 1
+check charge-02
+wait 1
+check charge-03
+wait 1
+check charge-04
+wait 1
+check charge-05
+wait 1
+check charge-06
+wait 1
+check charge-07
+wait 1
+check charge-08
+wait 1
+check charge-09
+wait 1
+check repeat-first
+wait 1
+check arr-gap
+wait 1
+check repeat-second
+wait 1
+check repeat-third
+wait 1
+check repeat-fourth
+wait 2
+key left up
+wait 2
+check released-at-wall
+wait 2
+# --- right: switch moves immediately, then a pause mid-charge ---
+key right down
+check switch-move
+wait 1
+check right-charge-01
+wait 1
+check right-charge-02
+wait 1
+check right-charge-03
+wait 1
+check right-charge-04
+wait 1
+check right-charge-05
+wait 1
+key esc down
+wait 2
+key esc up
+wait 2
+check paused-mid-charge
+wait 6
+check paused-still
+wait 1
+key esc down
+wait 2
+key esc up
+wait 1
+check resumed
+wait 1
+check post-resume-01
+wait 1
+check post-resume-02
+wait 1
+check post-resume-03
+wait 1
+check post-resume-04
+wait 1
+check post-resume-05
+wait 1
+check post-resume-06
+wait 1
+check post-resume-07
+wait 1
+check post-resume-08
+wait 2
+key right up
+wait 2
+# --- cancel: both directions, then one takes over ---
+key left down
+check left-switch-move
+wait 2
+key right down
+check both-held
+wait 2
+key left up
+check right-takes-over
+wait 2
+key right up
+wait 2
+key left down
+check left-switch-back
+wait 2
+key left up
+wait 2
+quit

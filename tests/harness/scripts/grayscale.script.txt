@@ -1,0 +1,232 @@
+# Grayscale session (T045, docs/AGENT_TESTING.md): the GRAYSCALE preference of
+# the options screen against specification section 6.2 step 5, seed 20261103,
+# keyboard. GRAYSCALE on, then a round that stashes a piece and hard-drops
+# two, so the captured play scene holds settled cells, the active piece, the
+# ghost, a Hold preview, and Next previews at once; the checker reads that
+# frame with the dependency-free BMP reader and requires every piece pixel to
+# be gray while the text, the board outline, and the ghost keep their
+# readability. The screen then turns GRAYSCALE off - B followed by A reopens
+# it on the row it left, so that visit needs no downs - and a second round of
+# the same shape proves the color palette returns. A `wait` follows every
+# check, so no record carries the tick of the input that comes after it.
+check title-start
+wait 1
+key down down
+wait 2
+key down up
+wait 2
+key down down
+wait 2
+key down up
+wait 2
+check title-at-options
+wait 1
+key enter down
+wait 2
+key enter up
+wait 2
+check options-open
+wait 1
+key down down
+wait 2
+key down up
+wait 2
+key down down
+wait 2
+key down up
+wait 2
+key down down
+wait 2
+key down up
+wait 2
+key down down
+wait 2
+key down up
+wait 2
+key down down
+wait 2
+key down up
+wait 2
+check options-grayscale-row
+wait 1
+key enter down
+wait 2
+key enter up
+wait 2
+check grayscale-toggled
+wait 1
+key esc down
+wait 2
+key esc up
+wait 2
+check title-back
+wait 1
+key up down
+wait 2
+key up up
+wait 2
+key up down
+wait 2
+key up up
+wait 2
+check title-at-start
+wait 1
+key enter down
+wait 2
+key enter up
+wait 2
+check playing-start
+wait 1
+check before-hold
+wait 1
+key c down
+wait 2
+key c up
+wait 2
+check after-hold
+wait 1
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+check gray-scene
+wait 1
+key esc down
+wait 2
+key esc up
+wait 2
+check paused
+wait 1
+key down down
+wait 2
+key down up
+wait 2
+key down down
+wait 2
+key down up
+wait 2
+key down down
+wait 2
+key down up
+wait 2
+check paused-at-quit
+wait 1
+key enter down
+wait 2
+key enter up
+wait 2
+check title-after-round
+wait 1
+key down down
+wait 2
+key down up
+wait 2
+key down down
+wait 2
+key down up
+wait 2
+check title-at-options-again
+wait 1
+key enter down
+wait 2
+key enter up
+wait 2
+check options-open-again
+wait 1
+check options-grayscale-row-again
+wait 1
+key enter down
+wait 2
+key enter up
+wait 2
+check grayscale-off-toggled
+wait 1
+key esc down
+wait 2
+key esc up
+wait 2
+check title-back-off
+wait 1
+key up down
+wait 2
+key up up
+wait 2
+key up down
+wait 2
+key up up
+wait 2
+check title-at-start-again
+wait 1
+key enter down
+wait 2
+key enter up
+wait 2
+check color-playing-start
+wait 1
+check color-before-hold
+wait 1
+key c down
+wait 2
+key c up
+wait 2
+check color-after-hold
+wait 1
+key space down
+wait 2
+key space up
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+check color-scene
+wait 1
+key esc down
+wait 2
+key esc up
+wait 2
+check paused-again
+wait 1
+key down down
+wait 2
+key down up
+wait 2
+key down down
+wait 2
+key down up
+wait 2
+key down down
+wait 2
+key down up
+wait 2
+check paused-at-quit-again
+wait 1
+key enter down
+wait 2
+key enter up
+wait 2
+check title-after-second-round
+wait 1
+key down down
+wait 2
+key down up
+wait 2
+key down down
+wait 2
+key down up
+wait 2
+key down down
+wait 2
+key down up
+wait 2
+check title-at-quit
+wait 1
+check quit-confirmed
+key enter down
+wait 2
+key enter up
+wait 2

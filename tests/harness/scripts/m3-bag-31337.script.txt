@@ -1,0 +1,189 @@
+# M3 gate session: the seven-bag randomizer and the five-piece queue,
+# keyboard driver, seed 31337. One check per lock reconstructs the piece
+# stream from the queue windows; every block of seven consecutive
+# draws must be a permutation of I O T S Z J L (section 4.3), the
+# queue must always hold exactly five pieces, and overlapping windows
+# must agree. Placements rotate left / center / right so the stack
+# stays low and no round ends early.
+check title
+wait 1
+key enter down
+wait 2
+key enter up
+wait 3
+check piece-00
+wait 1
+# piece 0 -> center
+key space down
+wait 2
+key space up
+wait 4
+check lock-00
+wait 2
+# piece 1 -> center
+key space down
+wait 2
+key space up
+wait 4
+check lock-01
+wait 2
+# piece 2 -> right
+key right down
+wait 16
+key right up
+wait 2
+key space down
+wait 2
+key space up
+wait 4
+check lock-02
+wait 2
+# piece 3 -> left
+key left down
+wait 16
+key left up
+wait 2
+key space down
+wait 2
+key space up
+wait 4
+check lock-03
+wait 2
+# piece 4 -> center
+key space down
+wait 2
+key space up
+wait 4
+check lock-04
+wait 2
+# piece 5 -> right
+key right down
+wait 16
+key right up
+wait 2
+key space down
+wait 2
+key space up
+wait 4
+check lock-05
+wait 2
+# piece 6 -> left
+key left down
+wait 16
+key left up
+wait 2
+key space down
+wait 2
+key space up
+wait 4
+check lock-06
+wait 2
+# piece 7 -> center
+key space down
+wait 2
+key space up
+wait 4
+check lock-07
+wait 2
+# piece 8 -> right
+key right down
+wait 16
+key right up
+wait 2
+key space down
+wait 2
+key space up
+wait 4
+check lock-08
+wait 2
+# piece 9 -> left
+key left down
+wait 16
+key left up
+wait 2
+key space down
+wait 2
+key space up
+wait 4
+check lock-09
+wait 2
+# piece 10 -> center
+key space down
+wait 2
+key space up
+wait 4
+check lock-10
+wait 2
+# piece 11 -> right
+key right down
+wait 16
+key right up
+wait 2
+key space down
+wait 2
+key space up
+wait 4
+check lock-11
+wait 2
+# piece 12 -> left
+key left down
+wait 16
+key left up
+wait 2
+key space down
+wait 2
+key space up
+wait 4
+check lock-12
+wait 2
+# piece 13 -> center
+key space down
+wait 2
+key space up
+wait 4
+check lock-13
+wait 2
+# piece 14 -> right
+key right down
+wait 16
+key right up
+wait 2
+key space down
+wait 2
+key space up
+wait 4
+check lock-14
+wait 2
+# piece 15 -> left
+key left down
+wait 16
+key left up
+wait 2
+key space down
+wait 2
+key space up
+wait 4
+check lock-15
+wait 2
+# piece 16 -> center
+key space down
+wait 2
+key space up
+wait 4
+check lock-16
+wait 2
+# piece 17 -> right
+key right down
+wait 16
+key right up
+wait 2
+key space down
+wait 2
+key space up
+wait 4
+check lock-17
+wait 2
+wait 2
+check after-locks
+wait 2
+quit

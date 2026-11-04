@@ -15,7 +15,8 @@
       "region": "left panel control hints (x=52..324) and the title, pause, and game-over footer hint lines",
       "observed_problem": "The gameplay control hints and the menu footer hints draw at glyph scale 1, so their text is 7 logical px tall while panel labels run at 14 px and menu items at 21 px. In the letterboxed 640x480 frame the same rows measure 4 to 5 device pixels.",
       "player_effect": "The player cannot read the control hints while learning the game, especially in a smaller desktop window.",
-      "acceptance_criteria": "Hint glyphs at least 14 logical px high (scale 2), reflowed inside the approved left panel x=52..324, with no hint text past the panel edge or the board frame. tools/design-review/check_fixes.py passes control-hint-glyph-scale on a fresh packet.",
+      "acceptance_criteria": "T030 raised every hint line to the 14 px label height and T028 verified it. Task T037 (approved 2026-11-03) later removed the permanent gameplay legend outright: ordinary gameplay carries no control hints, and the menu footer hints stay at the 14 px scale. On a fresh packet tools/design-review/check_fixes.py passes focused-hud-stats-left (seven statistics rows, no legend below them, quiet gaps) instead of control-hint-glyph-scale.",
+      "superseded": "The gameplay-hint portion is superseded by the approved focused HUD of task T037; the menu footer hint scale of T030 still holds. Do not report the missing gameplay legend as a defect.",
       "affected_files": ["src/renderer_sdl.cpp", "include/stackfall/renderer_sdl.hpp"],
       "fix_task": "T030"
     },
@@ -54,8 +55,8 @@
     },
     {
       "key": "t024-i-spawn-hidden-delay-design-question",
-      "disposition": "product requirement question, deferred to T029",
-      "reason": "Owned by T029 with the operator; the review prompt already tells the reviewer not to report it."
+      "disposition": "decided and implemented by task T029 on 2026-11-03",
+      "reason": "The design owner approved immediate spawn visibility: every piece now spawns with its topmost occupied cells at visible row 0 (I matrix origin y=-1, all others y=0), so the hidden I-piece interval no longer occurs. See notes/stackfall-visible-spawn-decision-2026-11-03.md and the T029 section of notes/agent-testing.md. Do not report immediate spawn visibility as a defect."
     }
   ]
 }

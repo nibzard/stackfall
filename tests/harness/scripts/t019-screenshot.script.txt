@@ -1,0 +1,203 @@
+# T019 release-screenshot session: keyboard driver, seed 20261103.
+# The first nine placements are the rehearsed opening of
+# normal-game-clears.script.txt, unchanged, so the board of the release
+# screenshot is the board the harness already pins. The session then
+# soft-drops the next piece partway down and stops: the outer driver
+# (tools/portmaster/capture-screenshot.sh) resizes the window to 640x480
+# at the screenshot-ready checkpoint, so the captured frame is the real
+# letterboxed 4:3 output of the desktop build.
+key enter down
+wait 2
+key enter up
+wait 3
+# piece 0: T rotation 0 at matrix x=0
+key left down
+wait 2
+key left up
+wait 2
+key left down
+wait 2
+key left up
+wait 2
+key left down
+wait 2
+key left up
+wait 2
+check piece-00
+wait 1
+key space down
+wait 2
+key space up
+wait 4
+check lock-00
+wait 2
+# piece 1: Z rotation 0 at matrix x=3
+check piece-01
+wait 1
+key space down
+wait 2
+key space up
+wait 4
+check lock-01
+wait 2
+# piece 2: L rotation 0 at matrix x=6
+key right down
+wait 2
+key right up
+wait 2
+key right down
+wait 2
+key right up
+wait 2
+key right down
+wait 2
+key right up
+wait 2
+check piece-02
+wait 1
+key space down
+wait 2
+key space up
+wait 4
+check lock-02
+wait 2
+# piece 3: I rotation 1 at matrix x=7
+key x down
+wait 2
+key x up
+wait 2
+key right down
+wait 2
+key right up
+wait 2
+key right down
+wait 2
+key right up
+wait 2
+key right down
+wait 2
+key right up
+wait 2
+key right down
+wait 2
+key right up
+wait 2
+check piece-03
+wait 1
+key space down
+wait 2
+key space up
+wait 4
+check lock-03
+wait 2
+# piece 4: J rotation 0 at matrix x=5
+key right down
+wait 2
+key right up
+wait 2
+key right down
+wait 2
+key right up
+wait 2
+check piece-04
+wait 1
+key space down
+wait 2
+key space up
+wait 4
+check lock-04
+wait 2
+# piece 5: S rotation 0 at matrix x=3
+check piece-05
+wait 1
+key space down
+wait 2
+key space up
+wait 4
+check lock-05
+wait 2
+# piece 6: O rotation 0 at matrix x=5
+key right down
+wait 2
+key right up
+wait 2
+key right down
+wait 2
+key right up
+wait 2
+check piece-06
+wait 1
+key space down
+wait 2
+key space up
+wait 4
+check lock-06
+wait 2
+# piece 7: L rotation 3 at matrix x=7
+key x down
+wait 2
+key x up
+wait 2
+key x down
+wait 2
+key x up
+wait 2
+key x down
+wait 2
+key x up
+wait 2
+key right down
+wait 2
+key right up
+wait 2
+key right down
+wait 2
+key right up
+wait 2
+key right down
+wait 2
+key right up
+wait 2
+key right down
+wait 2
+key right up
+wait 2
+check piece-07
+wait 1
+key space down
+wait 2
+key space up
+wait 4
+check lock-07
+wait 2
+# piece 8: T rotation 0 at matrix x=0
+key left down
+wait 2
+key left up
+wait 2
+key left down
+wait 2
+key left up
+wait 2
+key left down
+wait 2
+key left up
+wait 2
+check piece-08
+wait 1
+key space down
+wait 2
+key space up
+wait 4
+check lock-08
+wait 2
+# The tenth piece in flight: soft drop it partway down the board, then
+# hand the frame to the outer driver at the two checkpoints.
+key down down
+wait 6
+key down up
+wait 8
+check screenshot-ready
+wait 30
+check screenshot
+wait 5

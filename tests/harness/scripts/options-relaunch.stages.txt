@@ -1,0 +1,9 @@
+# The four keyboard processes of the options-relaunch session (T045), in
+# order, over the session's one save directory: each stage toggles one of the
+# four new preferences and quits, so the settings file holds one exact
+# canonical rendering after every change and the next stage proves a relaunch
+# restored every earlier value.
+script=options-relaunch-grid.script.txt
+script=options-relaunch-hold.script.txt
+script=options-relaunch-next.script.txt
+script=options-relaunch-grayscale.script.txt

@@ -1,13 +1,17 @@
 // Atomic high-score persistence, task T012 (specification sections 9 and
-// 10.3), and the settings file of the sound toggle, task T013 (specification
-// section 6.3). See include/stackfall/storage.hpp for the file formats, the
-// directory resolution, and the atomic write sequence the two files share.
+// 10.3), and the settings file of the player preferences, tasks T013, T039,
+// and T044 (specification section 6.3). See include/stackfall/storage.hpp for
+// the file formats, the directory resolution, and the atomic write sequence
+// the files share. Task T046 gives the two loads one shared bounded-read
+// procedure, readSaveFile below, while each store keeps its own parser, its
+// own default values, and its own recovery boundary
+// (notes/refactor-review.md).
 //
 // Everything here reports failure through SaveStatus instead of throwing: a
 // missing, invalid, or partial record is a high score of 0, never a crash, and
 // a failed save leaves the previous record untouched (specification section 9,
-// section 11 item 20). A damaged settings file costs only the sound
-// preference, which falls back to on.
+// section 11 item 20). A damaged settings file costs only the preferences,
+// which fall back to their defaults.
 
 #include "stackfall/storage.hpp"
 
@@ -154,6 +158,70 @@ SaveStatus atomicWriteTextFile(const std::string& directory,
     // may be left behind here; the next successful save reuses its name.
     return SaveStatus::WriteFailed;
   }
+}
+
+// The bytes of one save file, or the status that stopped the read before any
+// byte was usable. `bytes` is empty unless the status is Ok.
+struct SaveFileBytes {
+  SaveStatus status = SaveStatus::Ok;
+  std::string bytes;
+};
+
+// The bounded read both loads share (task T046): resolve `directory` and
+// `fileName`, check that something exists there, accept only a regular file,
+// and read it through the size cap of readSmallFile. One place maps an absent
+// directory, a missing file, a name that is not a regular file, and a file
+// that exists but cannot be read to their statuses. The two stores keep their
+// own parsers, their own default values, and their own recovery boundary;
+// nothing a parser throws escapes the store that called it.
+SaveFileBytes readSaveFile(const std::string& directory, const char* fileName) {
+  SaveFileBytes file;
+  if (directory.empty()) {
+    file.status = SaveStatus::NoSaveDirectory;
+    return file;
+  }
+  try {
+    const std::string path = joinPath(directory, fileName);
+    const std::filesystem::file_status status =
+        std::filesystem::status(std::filesystem::path(path));
+    if (!std::filesystem::exists(status)) {
+      file.status = SaveStatus::NotFound;
+      return file;
+    }
+    // A directory or device that happens to carry the file's name is not that
+    // file; treat it as invalid rather than reading it.
+    if (!std::filesystem::is_regular_file(status)) {
+      file.status = SaveStatus::Invalid;
+      return file;
+    }
+    if (!readSmallFile(path, &file.bytes)) {
+      file.status = SaveStatus::Invalid;  // exists, but cannot be read
+      return file;
+    }
+    return file;
+  } catch (...) {
+    // A storage error is never a game error: the caller recovers to its own
+    // defaults, exactly as it does for a file that failed to parse.
+    file.bytes.clear();
+    file.status = SaveStatus::Invalid;
+    return file;
+  }
+}
+
+// The settings file as the sound-only era of task T013 wrote it. The parser
+// still accepts both legacy renderings, with the preferences the file does
+// name at their saved values and every later preference at its default.
+std::string legacySettingsFile(bool soundOn) {
+  return std::string("version=") + std::to_string(kSaveFormatVersion) +
+         "\nsound=" + (soundOn ? "on" : "off") + "\n";
+}
+
+// The settings file as the sound-and-ghost era of task T039 wrote it, before
+// the grid, hold, next, and grayscale lines of T044 joined.
+std::string legacySettingsFile(bool soundOn, bool ghostOn) {
+  return std::string("version=") + std::to_string(kSaveFormatVersion) +
+         "\nsound=" + (soundOn ? "on" : "off") +
+         "\nghost=" + (ghostOn ? "on" : "off") + "\n";
 }
 
 }  // namespace
@@ -306,32 +374,14 @@ std::string HighScoreStore::filePath() const {
 
 LoadResult HighScoreStore::load() const {
   LoadResult result;  // high score 0, NotFound
-  if (directory_.empty()) {
-    result.status = SaveStatus::NoSaveDirectory;
+  const SaveFileBytes file = readSaveFile(directory_, kSaveFileName);
+  if (file.status != SaveStatus::Ok) {
+    result.status = file.status;
     return result;
   }
   try {
-    const std::string path = filePath();
-    const std::filesystem::file_status status =
-        std::filesystem::status(std::filesystem::path(path));
-    if (!std::filesystem::exists(status)) {
-      result.status = SaveStatus::NotFound;
-      return result;
-    }
-    // A directory or device that happens to carry the record's name is not a
-    // record; treat it as invalid rather than reading it.
-    if (!std::filesystem::is_regular_file(status)) {
-      result.status = SaveStatus::Invalid;
-      return result;
-    }
-
-    std::string bytes;
-    if (!readSmallFile(path, &bytes)) {
-      result.status = SaveStatus::Invalid;  // exists, but cannot be read
-      return result;
-    }
     std::uint64_t value = 0;
-    if (!parseSaveFile(bytes, &value)) {
+    if (!parseSaveFile(file.bytes, &value)) {
       result.status = SaveStatus::Invalid;
       return result;
     }
@@ -355,27 +405,79 @@ SaveStatus HighScoreStore::save(std::uint64_t highScore) const {
 }
 
 // ---------------------------------------------------------------------------
-// The settings file of the sound toggle (task T013, specification section
-// 6.3). Same directory, same write sequence, one boolean value.
+// The settings file of the player preferences (tasks T013, T039, and T044,
+// specification section 6.3). Same directory, same write sequence, one line
+// per preference.
 // ---------------------------------------------------------------------------
 
-std::string formatSettingsFile(bool soundOn) {
-  return std::string("version=") + std::to_string(kSaveFormatVersion) +
-         "\nsound=" + (soundOn ? "on" : "off") + "\n";
+std::string formatSettingsFile(const SettingsValues& values) {
+  std::string bytes = "version=";
+  bytes += std::to_string(kSaveFormatVersion);
+  bytes += "\nsound=";
+  bytes += values.soundOn ? "on" : "off";
+  bytes += "\nghost=";
+  bytes += values.ghostOn ? "on" : "off";
+  bytes += "\ngrid=";
+  bytes += values.gridOn ? "on" : "off";
+  bytes += "\nhold=";
+  bytes += values.holdOn ? "on" : "off";
+  bytes += "\nnext=";
+  bytes += std::to_string(values.nextPreviews);
+  bytes += "\ngrayscale=";
+  bytes += values.grayscaleOn ? "on" : "off";
+  bytes += "\n";
+  return bytes;
 }
 
-bool parseSettingsFile(const std::string& bytes, bool* soundOn) {
+bool parseSettingsFile(const std::string& bytes, SettingsValues* values) {
   if (bytes.size() > kMaxSaveFileBytes) {
     return false;
   }
-  // Exact-format check first, so only the two canonical renderings continue
-  // and everything else, including a file that lost its final newline, is a
-  // damaged preference rather than a setting.
-  if (bytes != formatSettingsFile(true) && bytes != formatSettingsFile(false)) {
+  // Exact-format check against every readable rendering, so only whole,
+  // canonical files continue and everything else, including one that lost its
+  // final newline, is a damaged preference rather than a setting.
+  SettingsValues parsed;
+  bool readable = false;
+  // The four boolean preferences pair with the grayscale flag and the next
+  // count: 2^5 combinations times the five counts are the 160 canonical
+  // renderings of the current format.
+  for (int booleans = 0; booleans < 32; ++booleans) {
+    for (int next = kSettingsNextMin; next <= kSettingsNextMax; ++next) {
+      const SettingsValues candidate{(booleans & 1) != 0, (booleans & 2) != 0,
+                                     (booleans & 4) != 0, (booleans & 8) != 0,
+                                     next, (booleans & 16) != 0};
+      if (bytes == formatSettingsFile(candidate)) {
+        parsed = candidate;
+        readable = true;
+      }
+    }
+  }
+  // The legacy three-line file of the sound-and-ghost era parses with the
+  // four later preferences at their defaults, so an upgrade never loses a
+  // saved sound or ghost choice.
+  for (int soundValue = 0; soundValue <= 1; ++soundValue) {
+    for (int ghostValue = 0; ghostValue <= 1; ++ghostValue) {
+      if (bytes == legacySettingsFile(soundValue == 1, ghostValue == 1)) {
+        parsed = SettingsValues{soundValue == 1, ghostValue == 1, true, true,
+                                kSettingsNextMax, false};
+        readable = true;
+      }
+    }
+  }
+  // The legacy two-line file of the sound-only era parses with the ghost and
+  // the four later preferences at their defaults.
+  for (int soundValue = 0; soundValue <= 1; ++soundValue) {
+    if (bytes == legacySettingsFile(soundValue == 1)) {
+      parsed = SettingsValues{soundValue == 1, true, true, true,
+                              kSettingsNextMax, false};
+      readable = true;
+    }
+  }
+  if (!readable) {
     return false;
   }
-  if (soundOn != nullptr) {
-    *soundOn = bytes == formatSettingsFile(true);
+  if (values != nullptr) {
+    *values = parsed;
   }
   return true;
 }
@@ -395,49 +497,43 @@ std::string SettingsStore::filePath() const {
 }
 
 SettingsResult SettingsStore::load() const {
-  SettingsResult result;  // sound on, NotFound
-  if (directory_.empty()) {
-    result.status = SaveStatus::NoSaveDirectory;
+  SettingsResult result;  // every preference at its default, NotFound
+  const SaveFileBytes file = readSaveFile(directory_, kSettingsFileName);
+  if (file.status != SaveStatus::Ok) {
+    result.status = file.status;
     return result;
   }
   try {
-    const std::string path = filePath();
-    const std::filesystem::file_status status =
-        std::filesystem::status(std::filesystem::path(path));
-    if (!std::filesystem::exists(status)) {
-      result.status = SaveStatus::NotFound;
-      return result;
-    }
-    if (!std::filesystem::is_regular_file(status)) {
+    SettingsValues values;
+    if (!parseSettingsFile(file.bytes, &values)) {
       result.status = SaveStatus::Invalid;
       return result;
     }
-
-    std::string bytes;
-    if (!readSmallFile(path, &bytes)) {
-      result.status = SaveStatus::Invalid;  // exists, but cannot be read
-      return result;
-    }
-    bool soundOn = true;
-    if (!parseSettingsFile(bytes, &soundOn)) {
-      result.status = SaveStatus::Invalid;
-      return result;
-    }
-    result.soundOn = soundOn;
+    result.soundOn = values.soundOn;
+    result.ghostOn = values.ghostOn;
+    result.gridOn = values.gridOn;
+    result.holdOn = values.holdOn;
+    result.nextPreviews = values.nextPreviews;
+    result.grayscaleOn = values.grayscaleOn;
     result.status = SaveStatus::Ok;
     return result;
   } catch (...) {
-    // A damaged preference never costs more than the preference: the sound
-    // stays on and the game carries on.
+    // A damaged preference never costs more than the preferences: every one
+    // stays at its default and the game carries on.
     result.soundOn = true;
+    result.ghostOn = true;
+    result.gridOn = true;
+    result.holdOn = true;
+    result.nextPreviews = kSettingsNextMax;
+    result.grayscaleOn = false;
     result.status = SaveStatus::Invalid;
     return result;
   }
 }
 
-SaveStatus SettingsStore::save(bool soundOn) const {
+SaveStatus SettingsStore::save(const SettingsValues& values) const {
   return atomicWriteTextFile(directory_, kSettingsFileName,
-                             formatSettingsFile(soundOn));
+                             formatSettingsFile(values));
 }
 
 }  // namespace stackfall

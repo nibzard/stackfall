@@ -43,16 +43,20 @@ struct GameTestPeer;
 
 // The screens of the state machine of section 4.7. A session opens at Title,
 // runs rounds through Playing and Paused, ends them at GameOver, and shows the
-// controller mappings at Controls. The numeric values are pinned by the
-// regression hash, which folds the scene, so Controls joins at the end instead
-// of its flow order.
+// controller mappings at Controls and PauseControls and the player settings at
+// Options. The numeric values are pinned by the regression hash, which folds
+// the scene, so Controls, Options, and PauseControls join at the end instead
+// of their flow order.
 enum class Scene : std::uint8_t {
-  Boot = 0,  // constructed, not started yet
-  Title,     // Start Game / Controls / Quit over the saved high score
-  Playing,   // simulation runs
-  Paused,    // simulation frozen, no counter moves
-  GameOver,  // round ended by block-out or lock-out
-  Controls,  // the mappings screen, reached from and returning to Title
+  Boot = 0,        // constructed, not started yet
+  Title,           // Start Game / Controls / Options / Quit over the saved high score
+  Playing,         // simulation runs
+  Paused,          // simulation frozen, no counter moves
+  GameOver,        // round ended by block-out or lock-out
+  Controls,        // the mappings screen, reached from and returning to Title
+  Options,         // SOUND, GHOST, GRID, HOLD, NEXT PIECES, GRAYSCALE; the
+                   // values are platform state (task T044)
+  PauseControls,   // the mappings screen over a frozen round (task T037)
 };
 
 // Tick-flow constants of section 4.5, all counted in 60 Hz simulation ticks.
@@ -62,10 +66,13 @@ inline constexpr int kLockDelayTicks = 30;  // grounded ticks before a lock
 inline constexpr int kLockDelayResets = 15; // lock timer resets per piece
 
 // Menu sizes of the section 4.7 screens, so the screens and their tests name
-// one count instead of a bare literal.
-inline constexpr int kTitleItemCount = 3;  // Start Game, Controls, Quit
-inline constexpr int kPauseItemCount = 3;  // Resume, Restart, Quit to Title
-inline constexpr int kOverItemCount = 2;   // Play Again, Title
+// one count instead of a bare literal. The title items are Start Game,
+// Controls, Options, Quit.
+inline constexpr int kTitleItemCount = 4;
+inline constexpr int kPauseItemCount = 4;   // Resume, Restart, Controls, Quit
+inline constexpr int kOverItemCount = 2;    // Play Again, Title
+// SOUND, GHOST, GRID, HOLD, NEXT PIECES, GRAYSCALE (task T044).
+inline constexpr int kOptionsItemCount = 6;
 
 class Game {
  public:
@@ -146,16 +153,20 @@ class Game {
   Scene scene() const;
 
   // The highlighted item of each menu, 0-based: title Start Game / Controls /
-  // Quit, pause Resume / Restart / Quit to Title, game over Play Again /
-  // Title (specification section 4.7). Menu state only; a round never reads
-  // it and the state hash never folds it.
+  // Options / Quit, pause Resume / Restart / Controls / Quit to Title, game
+  // over Play Again / Title, options SOUND / GHOST / GRID / HOLD / NEXT
+  // PIECES / GRAYSCALE (specification section 4.7). Menu state only; a round
+  // never reads it and the state hash never folds it.
   int titleSelection() const;
   int pauseSelection() const;
   int overSelection() const;
+  int optionsSelection() const;
 
   // The session high score shown on the title screen. The platform layer
-  // loads it at startup and saves it when a round improves it; until the
-  // persistence of milestone M3 it stays 0 within one process.
+  // loads it at startup, saves the record the moment a running score passes
+  // the stored best (task T052), and feeds the persisted best back through
+  // setHighScore between rounds, so a running round always compares against
+  // the record it began with.
   std::uint64_t highScore() const;
   void setHighScore(std::uint64_t score);
 
@@ -227,17 +238,30 @@ class Game {
   // screen and changes nothing but that screen's cursor and the scene.
   // -------------------------------------------------------------------------
 
-  // TITLE: Start Game opens a round, Controls shows the mappings, Quit asks
-  // the platform layer to exit.
+  // TITLE: Start Game opens a round, Controls shows the mappings, Options
+  // shows the player settings, Quit asks the platform layer to exit.
   void tickTitle(const MenuFrame& menu);
 
   // CONTROLS: confirm and back both return to the title.
   void tickControls(const MenuFrame& menu);
 
+  // OPTIONS: back returns to the title and the D-pad moves the cursor over
+  // the six rows. Select changes nothing here: the row values are platform
+  // state (the six player preferences), which the core never holds, so the
+  // platform layer applies the change of the highlighted row itself
+  // (specification section 7).
+  void tickOptions(const MenuFrame& menu);
+
   // PAUSED: back resumes, the D-pad moves the cursor, A runs the highlighted
   // item, and the pause key alone still resumes. Every gameplay counter stays
   // frozen (section 4.5).
   void tickPaused(const TickInput& input);
+
+  // PAUSE_CONTROLS: the mappings screen of the ordinary Controls page, opened
+  // over a frozen round from the pause overlay (task T037). Confirm and back
+  // both return to the overlay with the cursor still on its Controls item;
+  // no counter of the round below moves.
+  void tickPauseControls(const MenuFrame& menu);
 
   // GAME_OVER: Play Again opens a fresh round, Title returns to the title.
   void tickGameOver(const MenuFrame& menu);
@@ -285,9 +309,10 @@ class Game {
   // alone, and a round started through start() leaves them untouched.
   std::uint64_t nextSeed_ = 0;    // the seed the next fresh round begins from
   std::uint64_t highScore_ = 0;   // session best, until milestone M3 persists it
-  int titleCursor_ = 0;           // highlighted title item, 0..2
-  int pauseCursor_ = 0;           // highlighted pause item, 0..2
+  int titleCursor_ = 0;           // highlighted title item, 0..3
+  int pauseCursor_ = 0;           // highlighted pause item, 0..3
   int overCursor_ = 0;            // highlighted game-over item, 0..1
+  int optionsCursor_ = 0;         // highlighted options row, 0..5
   bool newRecord_ = false;        // the ended round beat highScore_
   bool quitRequested_ = false;    // Quit confirmed on the title menu
 

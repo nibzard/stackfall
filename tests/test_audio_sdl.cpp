@@ -523,10 +523,11 @@ void testGameOverCueFiresOnce() {
 
 void testLockOutRaisesTheGameOverCue() {
   // A stack that reaches the top of the visible field, with two free cells at
-  // row 0: the O that stands in them leaves cells in the hidden rows, and that
-  // lock ends the round (specification section 4.5). The tick raises the
-  // game-over cue and nothing else, even though the lock also changed the
-  // board.
+  // row 0. Under the immediate-spawn rule of task T029 the O spawns in row 0,
+  // so the test stands it one row higher, the way an upward kick leaves a
+  // piece: its top cells sit in the hidden rows, and that lock ends the round
+  // (specification section 4.5). The tick raises the game-over cue and
+  // nothing else, even though the lock also changed the board.
   Game game;
   game.start(kSeed);
   CueDetector detector;
@@ -539,7 +540,7 @@ void testLockOutRaisesTheGameOverCue() {
       board.settleCell(x, 0, PieceId::J);
     }
   }
-  GameTestPeer::setPiece(game, makeSpawnPiece(PieceId::O));
+  GameTestPeer::setPiece(game, Piece{PieceId::O, Rotation::Spawn, 3, -1});
   prime(game, detector);
   SC_CHECK(game.activePiece().y == -1);  // its top cells sit in a hidden row
 

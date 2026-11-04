@@ -1,0 +1,59 @@
+# Options-legacy stage `three` (T045, docs/AGENT_TESTING.md): one keyboard
+# process of the legacy settings session, seed 20261103. The driver writes the
+# three-line file of the sound-and-ghost era - sound off, ghost off, and no
+# later line - into the save directory before the process starts. The startup
+# log must report both saved values plus the defaults of the four newer
+# preferences, and the one GRID select this stage makes rewrites the file in
+# the canonical six-line form with both saved values kept. A `wait` follows
+# every check, so no record carries the tick of the input that comes after it.
+check title-start
+wait 1
+key down down
+wait 2
+key down up
+wait 2
+key down down
+wait 2
+key down up
+wait 2
+check title-at-options
+wait 1
+key enter down
+wait 2
+key enter up
+wait 2
+check options-open
+wait 1
+key down down
+wait 2
+key down up
+wait 2
+key down down
+wait 2
+key down up
+wait 2
+check options-grid-row
+wait 1
+key enter down
+wait 2
+key enter up
+wait 2
+check grid-toggled
+wait 1
+key esc down
+wait 2
+key esc up
+wait 2
+check title-back
+wait 1
+key down down
+wait 2
+key down up
+wait 2
+check title-at-quit
+wait 1
+check quit-confirmed
+key enter down
+wait 2
+key enter up
+wait 2

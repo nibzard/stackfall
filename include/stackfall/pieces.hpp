@@ -35,9 +35,10 @@ const std::array<Cell, kCellsPerPiece>& pieceCells(PieceId id,
 int pieceMatrixSize(PieceId id);
 
 // Spawn origin of a piece: the matrix corner sits at column 3 for every
-// piece, at row -2 for I and at row -1 for the others. This centers the I
+// piece, at row -1 for I and at row 0 for the others. This centers the I
 // at board columns 3..6 and the O at columns 4..5, and puts the topmost
-// occupied cell of every piece at y = -1 (specification section 4.2).
+// occupied cell of every piece at visible row y = 0, so each piece is on
+// screen the tick it spawns (specification section 4.2).
 int spawnX(PieceId id);
 int spawnY(PieceId id);
 

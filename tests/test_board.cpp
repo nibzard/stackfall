@@ -291,7 +291,8 @@ void checkPlacementAgainstBounds() {
   // Fall distance on an empty board: the O lands with its low row on row 19
   // and the spawn I falls until its single row sits on row 19.
   SC_CHECK(board.maxDrop(Piece{PieceId::O, Rotation::Spawn, 4, 0}) == 18);
-  SC_CHECK(board.maxDrop(stackfall::makeSpawnPiece(PieceId::I)) == 20);
+  SC_CHECK(board.maxDrop(stackfall::makeSpawnPiece(PieceId::I)) == 19);
+  SC_CHECK(board.maxDrop(stackfall::makeSpawnPiece(PieceId::O)) == 18);
   SC_CHECK(board.maxDrop(Piece{PieceId::O, Rotation::Spawn, 4, 18}) == 0);
 
   // No query commits anything: the board stays empty throughout.
@@ -429,12 +430,19 @@ void checkActivePieceNotCommittedBeforeLock() {
 void checkLockReportsHiddenCells() {
   Board board;
 
-  // The I at spawn fills row -1, so all four locked cells are hidden and the
-  // game layer would end the round on lock-out (section 4.5).
+  // The I at spawn fills visible row 0 under the immediate-spawn rule of
+  // task T029, so its lock hides no cell; the piece lifted one row into the
+  // hidden rows by a kick is the one that reports four.
   const stackfall::LockReport iReport =
       board.lockPiece(stackfall::makeSpawnPiece(PieceId::I));
-  SC_CHECK(iReport.hiddenCells == 4);
-  SC_CHECK(board.rowMask(-1) == 0x0078);  // bits 3..6, columns 3..6
+  SC_CHECK(iReport.hiddenCells == 0);
+  SC_CHECK(board.rowMask(0) == 0x0078);  // bits 3..6, columns 3..6
+  SC_CHECK(board.rowMask(-1) == 0);
+  board.clear();
+  const stackfall::LockReport liftedI =
+      board.lockPiece(Piece{PieceId::I, Rotation::Spawn, 3, -2});
+  SC_CHECK(liftedI.hiddenCells == 4);
+  SC_CHECK(board.rowMask(-1) == 0x0078);
   SC_CHECK(board.rowMask(-2) == 0);
 
   // A T locked at y = 0 keeps all four cells inside the visible field.

@@ -15,13 +15,30 @@
 // fixed-step loop wiring, and the developer hooks together produced the
 // states the rules core prescribes.
 //
-// The two deliberate copies in this file are the point, not a shortcut:
+// The deliberate copies in this file are the point, not a shortcut:
 //
 //   * the script parser mirrors the grammar of src/main.cpp without sharing
 //     its code, so a parsing defect there cannot hide here;
 //   * the key and pad tables below are transcribed from specification
 //     section 5, not from src/input_sdl.cpp, so a wrong or missing mapping
-//     in the SDL layer shows up as a record mismatch.
+//     in the SDL layer shows up as a record mismatch;
+//   * the hold gate mirrors the platform half of the HOLD preference (task
+//     T044, specification section 5): the game binary drops every hold edge
+//     while that preference is off, before the round can see it, so this
+//     replay must drop the same edges to stay a mirror. The gate's state
+//     comes from the session's settings file - the one the harness passes
+//     next to the script - and from the same options-row select the game
+//     applies, so a relaunch that starts with HOLD off replays identically.
+//
+//   * the record persistence mirrors the platform half of the high score
+//     (task T052, specification sections 4.7 and 9): the game binary saves
+//     the running score the moment it passes the stored record and feeds
+//     the best record back into the session between rounds, so the `high`
+//     field of a checkpoint depends on both. This replay tracks the same
+//     saved record in memory, seeded from the record file the harness names
+//     with --high-score, and feeds it back at the same round boundaries. It
+//     never writes the file: the record belongs to the game process the
+//     harness runs after this one.
 //
 // Link target: stackfall_core only (CMake target stackfall_reference), so
 // this stays a headless rules tool on every machine that builds the tests.
@@ -30,6 +47,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <filesystem>
 #include <string>
 #include <vector>
 
@@ -39,6 +57,7 @@
 #include "stackfall/pieces.hpp"
 #include "stackfall/fixture.hpp"
 #include "stackfall/script.hpp"
+#include "stackfall/storage.hpp"
 
 namespace {
 
@@ -228,11 +247,23 @@ bool parseScriptLine(const std::string& raw, std::vector<Command>* commands,
 void printUsage() {
   std::printf(
       "Usage: stackfall_reference --seed N --script FILE [--out FILE]\n"
-      "                           [--fixture-dir DIR]\n"
+      "                           [--fixture-dir DIR] [--settings FILE]\n"
+      "                           [--high-score FILE]\n"
       "  Replays a session script through the rules core and writes one\n"
       "  checkpoint record per `check` command, in the format of the game\n"
-      "  binary's --observations file. Headless: no SDL.\n");
+      "  binary's --observations file. Headless: no SDL.\n"
+      "  --settings FILE reads the session's settings.dat for the hold\n"
+      "  preference the platform layer gates hold edges on; a missing file is\n"
+      "  the fresh-installation default of every preference.\n"
+      "  --high-score FILE reads the session's highscore.dat for the record\n"
+      "  the game binary loads, saves mid-round, and feeds back between\n"
+      "  rounds (task T052); a missing file is the record 0 of a fresh\n"
+      "  installation. The replay never writes it.\n");
 }
+
+// The options row of the HOLD preference (specification section 4.7): SOUND,
+// GHOST, GRID, HOLD, NEXT PIECES, GRAYSCALE.
+constexpr int kOptionsHoldRow = 3;
 
 }  // namespace
 
@@ -242,12 +273,16 @@ int main(int argc, char** argv) {
   const char* scriptPath = nullptr;
   const char* outPath = nullptr;
   const char* fixtureDir = nullptr;
+  const char* settingsPath = nullptr;
+  const char* highScorePath = nullptr;
   for (int i = 1; i < argc; ++i) {
     const char* arg = argv[i];
     const bool needsValue = std::strcmp(arg, "--seed") == 0 ||
                             std::strcmp(arg, "--script") == 0 ||
                             std::strcmp(arg, "--out") == 0 ||
-                            std::strcmp(arg, "--fixture-dir") == 0;
+                            std::strcmp(arg, "--fixture-dir") == 0 ||
+                            std::strcmp(arg, "--settings") == 0 ||
+                            std::strcmp(arg, "--high-score") == 0;
     if (needsValue) {
       if (i + 1 >= argc) {
         std::fprintf(stderr, "%s needs a value\n", arg);
@@ -265,6 +300,10 @@ int main(int argc, char** argv) {
         scriptPath = value;
       } else if (std::strcmp(arg, "--out") == 0) {
         outPath = value;
+      } else if (std::strcmp(arg, "--settings") == 0) {
+        settingsPath = value;
+      } else if (std::strcmp(arg, "--high-score") == 0) {
+        highScorePath = value;
       } else {
         fixtureDir = value;
       }
@@ -322,6 +361,46 @@ int main(int argc, char** argv) {
   game.openTitle(seed);
   stackfall::InputAdapter adapter;
   constexpr int kPadSource = 1;  // the one virtual pad a script may use
+
+  // The hold gate the platform layer owns (task T044, specification section
+  // 5): HOLD off drops every hold edge before the round sees it. Its starting
+  // state is the session's settings file, exactly as the game binary reads it
+  // at startup, and a select on the HOLD row of the options screen flips it,
+  // exactly as src/main.cpp's applyOptionsSelect does on the same edge.
+  bool holdEnabled = true;
+  if (settingsPath != nullptr) {
+    const stackfall::SettingsStore settings(settingsPath);
+    const stackfall::SettingsResult loaded = settings.load();
+    holdEnabled = loaded.holdOn;
+    std::fprintf(stderr, "reference: hold preference %s at startup (%s)\n",
+                 holdEnabled ? "on" : "off",
+                 stackfall::saveStatusName(loaded.status));
+  }
+
+  // The record persistence mirror of task T052 (specification sections 4.7
+  // and 9): `savedRecord` holds what the game binary's store holds, seeded
+  // from the record file the harness names and raised by every score that
+  // passes it, and the feedback below feeds it back between rounds exactly
+  // as src/main.cpp does. The round-boundary state walks the same rule: a
+  // round is in play across Playing, Paused, and the controls screen over a
+  // frozen round, and a round whose clock restarts while one is already in
+  // play was replaced by a restart. Nothing here writes: the record file
+  // belongs to the game process the harness runs after this replay.
+  std::uint64_t savedRecord = 0;
+  if (highScorePath != nullptr) {
+    const std::filesystem::path recordFile(highScorePath);
+    const stackfall::HighScoreStore records(
+        recordFile.has_parent_path() ? recordFile.parent_path().string()
+                                     : std::string());
+    const stackfall::LoadResult loaded = records.load();
+    game.setHighScore(loaded.highScore);
+    savedRecord = loaded.highScore;
+    std::fprintf(stderr, "reference: record %llu at startup (%s)\n",
+                 static_cast<unsigned long long>(loaded.highScore),
+                 stackfall::saveStatusName(loaded.status));
+  }
+  bool roundActive = false;
+  std::uint64_t roundTicks = 0;
 
   std::size_t index = 0;
   bool waiting = false;
@@ -427,8 +506,43 @@ int main(int argc, char** argv) {
 
     // One tick per pump, then the checkpoint records, mirroring the game
     // loop's poll-tick-render-flush order under --tick-per-frame.
-    const stackfall::TickInput tickInput = adapter.takeTickInput();
+    stackfall::TickInput tickInput = adapter.takeTickInput();
+    if (!holdEnabled) {
+      tickInput.game.holdPressed = false;  // the platform's HOLD gate
+    }
+    // The scene before the tick owns the select edge, so the press that opens
+    // the options screen never toggles a row - the same rule the game binary
+    // applies before it reads the highlighted row.
+    const stackfall::Scene sceneBeforeTick = game.scene();
     game.tick(tickInput);
+    if (sceneBeforeTick == stackfall::Scene::Options &&
+        tickInput.menu.selectPressed &&
+        game.optionsSelection() == kOptionsHoldRow) {
+      holdEnabled = !holdEnabled;
+      std::fprintf(stderr, "reference: hold preference %s (options row %d)\n",
+                   holdEnabled ? "on" : "off", kOptionsHoldRow);
+    }
+    // The persistence mirror, tick by tick: the saved record rises the
+    // moment the running score passes it (the game's save; this replay only
+    // tracks the value), and the round boundaries below feed it back into
+    // the session between rounds, never mid-round, so every checkpoint's
+    // `high` field names what the game binary must show.
+    if (game.score() > savedRecord) {
+      savedRecord = game.score();
+    }
+    const stackfall::Scene sceneAfterTick = game.scene();
+    if (roundActive && sceneAfterTick != stackfall::Scene::Playing &&
+        sceneAfterTick != stackfall::Scene::Paused &&
+        sceneAfterTick != stackfall::Scene::PauseControls) {
+      roundActive = false;  // game over or Quit to Title ended the round
+      game.setHighScore(savedRecord);
+    } else if (sceneAfterTick == stackfall::Scene::Playing && !roundActive) {
+      roundActive = true;  // Start Game or Play Again began a round
+    } else if (roundActive && sceneAfterTick == stackfall::Scene::Playing &&
+               game.tickCount() < roundTicks) {
+      game.setHighScore(savedRecord);  // Restart replaced the round
+    }
+    roundTicks = game.tickCount();
     ++ticks;
     for (const std::string& name : pendingChecks) {
       const std::string record =

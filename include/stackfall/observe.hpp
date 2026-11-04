@@ -34,7 +34,8 @@ namespace stackfall {
 // One checkpoint record of `game`, named `checkName`. Read-only.
 std::string observationLine(const std::string& checkName, const Game& game);
 
-// The `scene=` field of a record for `scene`.
+// The `scene=` field of a record for `scene`. The platform session log
+// (src/main.cpp) prints these same names on its scene-transition lines.
 const char* observationSceneName(Scene scene);
 
 }  // namespace stackfall

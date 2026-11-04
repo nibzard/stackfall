@@ -52,16 +52,43 @@ tests/harness/run.sh
 ```
 
 It builds `stackfall` and `stackfall_reference`, runs the headless `ctest`
-suites first, then drives six sessions through the real SDL application under
-`SDL_VIDEODRIVER=dummy` with the SDL dummy audio device, a fixed seed, an
-explicit save directory, a frame bound, and a process timeout:
+suites first, then drives fifteen sessions through the real SDL application
+under `SDL_VIDEODRIVER=dummy` with the SDL dummy audio device, a fixed seed,
+an explicit save directory, a frame bound, and a process timeout:
 
-- `scene-cycle-keyboard`: title, controls, play, pause, resume, restart,
-  game over, play again, game over, title, quit on the keyboard.
+- `scene-cycle-keyboard`: title, controls, play, pause, resume, a pause-menu
+  detour through the controls screen and back to the same frozen round,
+  restart, game over, play again, game over, title, quit on the keyboard.
 - `scene-cycle-pad`: the same cycle on the developer virtual controller,
   plus a mid-game detach while a direction is held.
 - `normal-game-clears`: a planned game from an empty board with rotations,
   taps, hold, soft drop, delayed auto-shift, one line clear, and a pause.
+- `options-ghost`: the options screen round trip. A first round runs with
+  the ghost at its on default, then the session opens OPTIONS, moves to the
+  GHOST row, selects it to turn the ghost off, returns to the title, and
+  plays a second round from the same empty board.
+- `options-six-keyboard`, `options-six-pad` (T045): the six-row options
+  screen on both inputs. Each session reaches every row, wraps past
+  GRAYSCALE back to SOUND, and changes the four settings of the expansion -
+  GRID off, HOLD off, NEXT PIECES cycled, GRAYSCALE on - and the pad session
+  then plays a round in which its own hold inputs, Y and the left shoulder,
+  change nothing while HOLD is off.
+- `hold-off` (T045): HOLD off, a round whose C and Left Shift presses move
+  nothing and spend no lock while the Hold group draws nothing at all, then
+  HOLD back on for a round that proves the once-per-piece rule survived.
+- `grayscale` (T045): GRAYSCALE on for a round with settled cells, a live
+  piece, a ghost, a stashed Hold piece, and five previews, then off for the
+  same shape of round in color.
+- `options-relaunch`, `options-legacy`, `next-count` (T045): the staged
+  sessions. See the next paragraph.
+- `record-abandon-save` (T052): the mid-round record persistence of
+  specification sections 4.7 and 9. A round scores through two hard drops,
+  pauses, and leaves through QUIT TO TITLE, so it never reaches a game over;
+  the checker requires the record file to hold the abandoned round's score,
+  the per-tick input log to carry each mid-round save (`record save=` lines)
+  on a tick that precedes the abandon, the log to carry no game-over save at
+  all, and the title after the abandon to show the persisted record while
+  the abandoned round's own counters reset.
 - `fixture-four-line`, `fixture-lockout`, `fixture-blockout`: labeled board
   fixtures for the four-line clear and both game-over rules.
 
@@ -72,11 +99,71 @@ compares the two streams field by field, so a difference names the field that
 diverged. On top of the comparison it asserts expectations pinned from
 `docs/SPEC.md` alone - the section 4.6 scoring table, hard-drop and soft-drop
 points per cell, the pause freeze, hold restriction, line-clear counts, scene
-sequences, and the saved record - so a defect shared by the game and the
-reference still fails. Screenshots are checked as 960x544 BMP files, the game
-must exit 0 with a clean shutdown, and the normal-game session must repeat
-byte-identically. A plain run without developer options proves the hooks
-change nothing about normal startup.
+sequences, the saved record, the options screen's menu cursors with the
+settings file its GHOST select writes, and a scan of the screenshot's board
+well that reads the BMP without an image library and requires zero pixels
+besides the well and grid-line colors once the ghost is off - so a defect
+shared by the game and the reference still fails. Screenshots are checked as
+960x544 BMP files, the game must exit 0 with a clean shutdown, and the
+normal-game session must repeat byte-identically. A plain run without
+developer options proves the hooks change nothing about normal startup.
+
+A session with a `tests/harness/scripts/<session>.stages.txt` manifest runs
+one game process per listed stage over one shared save directory, in the
+order the manifest lists, and a stage may carry `settings=<name>` to copy a
+file from `tests/harness/settings/` into that directory first. The driver
+snapshots the settings file before and after every stage, the reference
+replays each stage against the settings file it started from, and the checker
+compares every stage's records with its own reference stream. The three
+staged sessions are:
+
+- `options-relaunch`: four keyboard processes, each selecting one of the four
+  new rows once and quitting. The snapshot after every stage is one exact
+  canonical rendering of the six preferences, the snapshot before the next
+  stage is the same file a relaunch read, and every startup log line names
+  the values that process restored.
+- `options-legacy`: stage one starts from the three-line file of the
+  sound-and-ghost era (`sound=off`, `ghost=off`), keeps both saved values,
+  receives the four defaults, and upgrades the file to the six-line form on
+  its one GRID save; stage two starts from the two-line file of the
+  sound-only era (`sound=off`), receives every later preference at its
+  default, and changes nothing, so the file must still hold the exact legacy
+  bytes when the process ends.
+- `next-count`: five keyboard processes over one script that selects the
+  NEXT PIECES row once, so the ring walks 5 -> 1 -> 2 -> 3 -> 4 -> 5 across
+  the stages. Every stage plays the same round from the same title seed, so
+  the five observation streams are identical outside the loaded record - the
+  round each stage abandons persists its score mid-round (T052), and every
+  stage after the first loads that record - while the checker reads each
+  stage's screenshots and requires exactly its count of previews in queue
+  order, the first at full color and the rest dim.
+
+The T045 sessions add their own pixel and file proofs to the checker: the
+options page itself (heading, one text line per row with the accent marker on
+the highlighted row, footer, and nothing under the footer, so the six rows
+fit the canvas), the Hold group hidden to the last pixel while HOLD is off
+and drawn with the stashed piece's exact shape and shade while it is on, the
+preview slots' shapes and shades against the record's queue, the grayscale
+play scene (every piece pixel of the well gray, the text and the board frame
+in their color-mode colors, the ghost outline in its expected blend) with the
+color round as the positive control, the exact settings bytes after every
+staged change, and the hold-off proof that no mapped hold input moves the
+round, spends the lock, or reaches a tick of the input log as a hold edge.
+The reference replays the HOLD gate itself: it reads the session's settings
+file (`--settings`, the same default when the file is absent) and flips its
+own mirror on a select of the HOLD row, exactly as the platform layer does,
+so a session that starts or becomes HOLD-off compares against a reference
+that drops the same edges. It also mirrors the record persistence the
+platform layer owns since T052 (specification sections 4.7 and 9): it reads
+the session's record file (`--high-score`, record 0 when the file is
+absent), raises its own saved record the moment the running score passes it,
+and feeds the best record back into the session between rounds at the same
+round boundaries the application uses, so every checkpoint's `high` field
+still names what the game binary must show - including a title reached by
+abandoning a scoring round. The mirror never writes the record file; the
+`m3-highscore` reference of the T015 gate deliberately runs without
+`--high-score`, because it must mirror the first process of the four, whose
+save directory was still fresh.
 
 The harness exits nonzero on any failure and keeps the log, the input log,
 both observation streams, and every screenshot in
@@ -99,12 +186,26 @@ evidence.
 --input-log FILE      record one line per simulation tick
 --observations FILE   write one record per checkpoint command
 --screenshot-dir DIR  write one BMP per checkpoint command
+--screenshot-budget BYTES
+                      cap the checkpoint images one session writes at BYTES
+                      (default 268435456, 0 for no cap)
 --fixture-dir DIR     resolve `fixture` script commands here
 --virtual-controller  attach the developer virtual gamepad
 --tick-per-frame      one simulation tick per frame, pacing off
 --frame-times FILE    record one microsecond frame duration per frame of a
                       real-time paced run (the T025 measurement)
 ```
+
+Checkpoint BMPs are palettized (task T054): the game builds each frame's
+palette and writes an 8-bit BI_RLE8 BMP, roughly 30 to 80 KB per image at
+the 960x544 canvas instead of the 1.5 MB SDL_SaveBMP wrote. A frame with
+more than 256 colors, or one whose rows RLE would grow, falls back to an
+uncompressed BMP, so every image stays lossless. The budget bounds the
+bytes one session writes: once the next image would pass it, the session
+skips that image with one log line and records `shot=none`, exactly as when
+a save fails, while every observation record keeps coming. The checker
+reads every BMP form with no image library, and PIL reads RLE8 BMPs
+natively, so visual review keeps working.
 
 `--tick-per-frame` is what makes a scripted session exactly comparable: each
 frame runs one tick, so a checkpoint's tick number never depends on how the
@@ -165,8 +266,10 @@ inspect captured images. Pixel checks alone do not satisfy visual review.
    Include a smaller letterboxed window. Check clipping, text, contrast, and
    which preview comes next. Check whether unavailable hold is clear.
 4. Capture the first frame after each spawn and hold swap. Report any invisible
-   active piece or unclear shape. The current I spawn is fully hidden until
-   its first downward move. Measure that delay against the rules. Treat a
+   active piece or unclear shape. Since task T029 (approved 2026-11-03), every
+   spawn is visible on its first frame, including the I. The session
+   `tests/harness/scripts/t024-i-spawn.script.txt` pins the seed-777 I spawn,
+   its first visible frame, and the gravity tick it first falls. Treat a
    proposed spawn-rule change as a design decision; do not silently change it.
 5. Check input transitions: pause while moving, resume, restart while a button
    is held, title-to-play confirmation, focus loss, and controller removal.
@@ -231,12 +334,219 @@ header for every knob. The session scripts come from
 `tests/harness/frame_stats.py`, and the fuzz pass from
 `tests/harness/t025_fuzz.py`.
 
+### Running the T015 M3 desktop gate
+
+One command runs the complete round-M3 verification pass:
+
+```bash
+tests/harness/t015.sh
+```
+
+Phases, each writing into `build/agent-checks/<run-id>/`:
+
+- `builds`: a clean rebuild and the full `ctest` pass in Debug and in
+  Release, with the compile logs kept so the checker holds the
+  zero-warning gate.
+- `hashes`: `stackfall_tests --seed 987654321` in both configurations.
+  The gate requires byte-identical output and the five pinned scenario
+  hashes (section 11, item 18, desktop half; the ARM64 half stays with
+  T016).
+- `sessions`: seven M3 sessions through the real SDL application. Every
+  deterministic session runs through the headless reference, repeats
+  inside the run with byte-identical records, and replays in the Release
+  build against the same reference stream:
+  - `m3-das-arr` (seed 20261103): the move on the press tick, the
+    ten-tick DAS charge, the two-tick ARR cadence, repeats failing at
+    the wall, the immediate move on a direction switch, left plus right
+    canceling, and a pause mid-charge that freezes the charge instead of
+    resetting it.
+  - `m3-lock-delay` (seed 20261103): a soft-dropped piece locks exactly
+    on its 30th grounded tick, grounded moves reset the timer, the
+    budget is 15 resets, and a 16th grounded move still moves the piece
+    without resetting the timer.
+  - `m3-bag-20261103`, `m3-bag-31337`, `m3-bag-777`: 18 hard drops each
+    with spread placements; the checker rebuilds the piece stream from
+    the queue windows and proves every block of seven draws is a
+    permutation of I O T S Z J L. The 777 session adds the hold rules at
+    a bag boundary: the swap draws the queue head, a second press is a
+    no-op, a lock re-enables hold, and the return swap respawns the
+    stashed piece in orientation 0.
+  - `m3-restart` (seed 31337): pause-restart, quit-to-title, and
+    play-again each begin a fresh seeded round with reset counters, and
+    a direction held across a restart moves on the fresh round's first
+    ticks and stops on release.
+  - `m3-highscore`: one script, four game processes, one save directory.
+    A fresh save records 202 (seed 999); the same seed again replays the
+    round identically and does not save (a record is a strict
+    improvement); a better round replaces the file with 212 (seed 5150);
+    a damaged file recovers to 0 and the round saves 196 (seed 20261103).
+    The driver snapshots the record file after every process.
+- `regress`: the retained full-game suites at the same source identity:
+  `tests/harness/run.sh` and `tests/harness/t024.sh` in Debug and in
+  Release.
+- `stability`: the T025 phases `failures`, `restarts`, and `san` (the
+  restart phase is the 50-process record-carrying evidence).
+- `performance`: the T026 `verify` phase in Release.
+- `check`: `tests/harness/check_t015.py`, the independent gate checker.
+  It re-derives every pin above from the evidence directory, compares
+  every record stream against the reference, verifies the screenshots,
+  and also checks that the required reports exist: the T024 and T025
+  sections of `notes/agent-testing.md`, the T026 final gate with no
+  unresolved desktop target in `notes/performance.md`, and the T027 and
+  T028 sections of `notes/design-review.md`.
+
+Environment variables: `T015_BUILD_DIR` (default `build`),
+`T015_RELEASE_DIR` (default `build-rel`), `T015_RUN_ID`,
+`T015_TIMEOUT_S` (default 180), `T015_PHASES`, `T015_SKIP_X11=1` to skip
+the X11-dependent retained checks (recorded unavailable), and
+`T015_T025_PHASES` for the stability subset. A reused `T015_RUN_ID`
+removes that run directory before the run starts, so a rerun cannot
+inherit the earlier pass's evidence.
+
+### Running the T017 launcher and install-layout check
+
+One command reviews the PortMaster launcher and drives it against a stub
+PortMaster install:
+
+```bash
+tests/harness/t017.sh
+```
+
+Phases, each writing into `build/agent-checks/<run-id>/`:
+
+- `static`: `bash -n`, plus a review of `portmaster/Stackfall.sh` against
+  the current official template (the four control-folder candidates,
+  `control.txt`, the CFW modifier, `get_controls`, `conf/`, the `log.txt`
+  redirection, the environment exports, `pm_platform_helper`, the run, and
+  `pm_finish`) and against the specification (the `ports/stackfall` folder,
+  `XDG_DATA_HOME` and the explicit save directory at `conf/`, and no
+  button-mapping injection).
+- `stage`: `tools/portmaster/install-tree.sh` stages the section 10.3
+  layout, and the checker proves the staged tree is exactly `Stackfall.sh`
+  plus `stackfall/stackfall.<arch>` with no runtime `conf/` or `log.txt`.
+- `sandbox`: six launcher runs through a stub `control.txt`, a stub
+  `gptokeyb`, and a stub game binary that records its process environment:
+  a base run, argument forwarding, a repeat launch that replaces
+  `log.txt`, an install with no CFW modifier, an install that defines no
+  `GPTOKEYB`, and a port folder with no binary (which must fail with a
+  message and no game run).
+- `roms`: the same launcher at the literal `/roms/ports` paths. The driver
+  creates `/roms` through `sudo` only when the host has none, registers an
+  idempotent, marker-checked cleanup in `LOOPER_RESOURCE_CLEANUP_FILE`
+  before creating anything, and removes the tree when the run ends. Set
+  `T017_SKIP_ROMS=1` to skip the phase.
+- `game`: the real desktop binary, staged by the install tool, launched by
+  the script under the dummy video and audio drivers. The checker reads
+  the game's own startup log to prove the launcher's environment reached
+  it: the banner and renderer in both `log.txt` files, and the session log
+  resolving to `conf/log.txt`.
+- `check`: `tests/harness/check_t017.py`, the independent gate checker. It
+  re-derives every expectation from the template and the specification,
+  reads the evidence directory alone (so a pass can be re-verified after
+  the `/roms` tree is gone), and exits nonzero on any failure.
+
+The launcher is architecture-independent shell, so the stub binary and the
+x86-64 desktop build prove its behavior here. The AArch64 binary inside
+the ARM64 environment and the real device stay with T016's evidence and
+the blocked device task. Environment variables: `T017_BUILD_DIR` (default
+`build`), `T017_RUN_ID`, `T017_TIMEOUT_S` (default 60), `T017_SKIP_BUILD`,
+and `T017_SKIP_ROMS`.
+
+### Running the T019 release-package check
+
+One command assembles the distributable archive of specification section
+10.4 and drives it end to end:
+
+```bash
+tests/harness/t019.sh
+```
+
+Phases, each writing into `build/agent-checks/<run-id>/`:
+
+- `static`: the package sources exist, none uses the forbidden name or
+  trade dress of the game STACKFALL imitates, and the source identity is
+  recorded.
+- `arm64`: `build-arm64/stackfall.aarch64` when it is missing, built by
+  the documented command (`T019_SKIP_ARM64=1` requires it pre-built), and
+  its `file` report must say `ARM aarch64`.
+- `package`: `tools/portmaster/package.sh`, which captures the 4:3
+  gameplay screenshot from the desktop build under a virtual X server,
+  stages the port directory, and writes the deterministic
+  `build/portmaster-package/stackfall.zip`.
+- `unpack`: the archive is unpacked into a fake ports directory and every
+  CRC is checked.
+- `run`: the archive's own launcher, driven against a stub PortMaster
+  control folder, with the desktop binary staged beside the archived one
+  under the host architecture name, under the dummy video and audio
+  drivers. The ARM64 binary cannot run on an x86-64 host, so this proves
+  the launcher, the environment it exports, and the `conf/` and `log.txt`
+  layout of the unpacked archive.
+- `repro`: the documented clean-environment rebuild of the shipped
+  `BUILDING.md` in a fresh container from the pinned image; its SHA-256
+  must equal the archived binary's (`T019_SKIP_REPRO=1` skips).
+- `check`: `tests/harness/check_t019.py`, the independent gate checker.
+  It re-derives the expectations from the PortMaster packaging guide, the
+  format of its build system, and the specification: the archive entry
+  list, the metadata fields and genres, the section 10.3 install layout
+  after unpacking, the binary's machine and its documented hash, the
+  screenshot's 640x480 4:3 form with centered letterbox bars, settled
+  pieces, a piece in flight, and readable HUD columns, the launcher run,
+  the naming rule, and the byte-determinism of the archive.
+
+Environment variables: `T019_BUILD_DIR` (default `build`),
+`T019_ARM64_BINARY` (default `build-arm64/stackfall.aarch64`),
+`T019_RUN_ID`, `T019_TIMEOUT_S` (default 120), `T019_SKIP_BUILD`,
+`T019_SKIP_ARM64`, and `T019_SKIP_REPRO`. The package tool accepts the
+same options directly; see `tools/portmaster/README.md`.
+
+### Running the T035 release-version check
+
+One command proves the shipped version is one value everywhere a player, a
+package browser, or a test can read it:
+
+```bash
+tests/harness/t035.sh
+```
+
+It builds the desktop tree, runs the headless `ctest` suites, starts a
+bounded headless session so the startup banner lands on stdout and in the
+session `log.txt`, and then runs `tests/harness/check_t035.py`. The
+checker re-derives its expectations from the sources alone:
+
+- The three constants of `include/stackfall/version.hpp` compose to
+  `kVersionString`, and `src/version.cpp` hands out that constant without
+  stating a literal of its own, so the value has exactly one home.
+- The `project(... VERSION ...)` of `CMakeLists.txt` equals
+  `kVersionString`, as the header's own comment requires.
+- Every location that names a version - the header, `CMakeLists.txt`, the
+  `tests/test_sanity.cpp` pin, and `portmaster/release-notes.md` - states
+  exactly the shipped version and no other dotted value, and no file that
+  ships in the archive states one that contradicts it.
+- The state hash of `tests/test_regression.cpp` still folds
+  `kVersionString`, so a later bump again breaks the five pinned replay
+  hashes instead of passing silently, and `check_t015.py` holds the same
+  pin set as the suite it double-checks.
+- The release notes headline the shipped version with its date,
+  `gameinfo.xml` carries the same release date, and the banner run exits 0
+  with a clean shutdown while both the stdout banner and the session
+  `log.txt` report `STACKFALL <version>`.
+
+The version bump of the first release landed inside the T019 package
+assembly, so this check closes T035 over work that already exists. The
+assembled archive, its launcher banner, and the ARM64 binary stay with the
+T019 package check, which reads the same header.
+
+Environment variables: `T035_BUILD_DIR` (default `build`), `T035_RUN_ID`
+(default `t035-version-<date>`), `T035_TIMEOUT_S` (default 120), and
+`T035_SKIP_BUILD=1` to reuse the desktop build.
+
 ## Final handoff
 
 After T024, run T027 and T028 from `docs/DESIGN_REVIEW.md`.
 These tasks add an independent screenshot review and verify required fixes.
 After T025, run the T026 optimization loop in `docs/PERFORMANCE.md`.
-Then finish the desktop gate, native build, launcher, and local archive. Include one
+Then finish the desktop gate (`tests/harness/t015.sh`), native build,
+launcher, and local archive. Include one
 report with agent results, unresolved questions, reproduction commands, and
 the exact package identity. Then request the final human and device pass.
 Do not describe the release as device-validated until that pass succeeds.

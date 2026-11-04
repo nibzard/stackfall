@@ -1,0 +1,131 @@
+# Options-ghost session (T041, docs/AGENT_TESTING.md): the options screen
+# round trip and the ghost preference it persists, seed 20261103, keyboard.
+# A first round runs with the ghost at its on default, so the checker's well
+# scan has a positive control beside the zero proof. The options screen then
+# turns the GHOST row off, the title returns with its cursor still on OPTIONS,
+# and a second round proves no outline draws while the record still names a
+# visible landing row. A `wait` follows every check, so no record carries the
+# tick of the input that comes after it.
+check title-start
+wait 1
+key enter down
+wait 2
+key enter up
+wait 2
+check ghost-on-first
+wait 1
+key esc down
+wait 2
+key esc up
+wait 2
+key down down
+wait 2
+key down up
+wait 2
+key down down
+wait 2
+key down up
+wait 2
+key down down
+wait 2
+key down up
+wait 2
+key enter down
+wait 2
+key enter up
+wait 2
+check title-returned
+wait 1
+key down down
+wait 2
+key down up
+wait 2
+key down down
+wait 2
+key down up
+wait 2
+check title-at-options
+wait 1
+key enter down
+wait 2
+key enter up
+wait 2
+check options-open
+wait 1
+key down down
+wait 2
+key down up
+wait 2
+check options-ghost-row
+wait 1
+key enter down
+wait 2
+key enter up
+wait 2
+check options-toggled
+wait 1
+key esc down
+wait 2
+key esc up
+wait 2
+check title-back
+wait 1
+key up down
+wait 2
+key up up
+wait 2
+key up down
+wait 2
+key up up
+wait 2
+check title-at-start
+wait 1
+key enter down
+wait 2
+key enter up
+wait 2
+check ghost-off-first
+wait 1
+key esc down
+wait 2
+key esc up
+wait 2
+key down down
+wait 2
+key down up
+wait 2
+key down down
+wait 2
+key down up
+wait 2
+key down down
+wait 2
+key down up
+wait 2
+key enter down
+wait 2
+key enter up
+wait 2
+check title-after-round
+wait 1
+key down down
+wait 2
+key down up
+wait 2
+key down down
+wait 2
+key down up
+wait 2
+key down down
+wait 2
+key down up
+wait 2
+check title-at-quit
+wait 1
+# the checkpoint rides the same frame as the confirm, because the quit ends
+# the loop right after that frame's tick, render, and flush
+check quit-confirmed
+key enter down
+wait 2
+key enter up
+wait 2

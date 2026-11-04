@@ -94,6 +94,17 @@ int bindingActions(const Binding& binding, GameAction* actions) {
 // The name of the virtual pad, stable storage for the SDL descriptor.
 constexpr char kVirtualPadName[] = "STACKFALL Virtual Pad";
 
+// Fictional USB IDs of the virtual pad, chosen so no real device shares
+// them. When these are zero, SDL packs the pad name into the device GUID,
+// and SDL 2.26 then refuses the exact-GUID mapping this file adds right
+// after attaching (SDL_GameControllerOpen fails with "Couldn't find
+// mapping for device"). Explicit IDs give every SDL version the same
+// stable GUID, free of name bytes. The PortMaster-aligned Ubuntu 22.04
+// environment of SPEC section 10.2 builds against SDL 2.26.2; the desktop
+// SDL 2.30 accepts either form.
+constexpr Uint16 kVirtualPadVendorId = 0xFAC7;
+constexpr Uint16 kVirtualPadProductId = 0xFA11;
+
 }  // namespace
 
 // ---------------------------------------------------------------------------
@@ -222,6 +233,8 @@ int attachVirtualJoystick() {
   // test needs as its starting point. The layout itself is a gamepad: the
   // ten buttons of the section 5 table.
   desc.type = SDL_JOYSTICK_TYPE_UNKNOWN;
+  desc.vendor_id = kVirtualPadVendorId;
+  desc.product_id = kVirtualPadProductId;
   desc.naxes = 0;
   desc.nbuttons = kVirtualButtonCount;
   desc.nhats = 0;

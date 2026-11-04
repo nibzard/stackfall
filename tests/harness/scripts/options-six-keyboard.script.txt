@@ -1,0 +1,102 @@
+# Options-six-keyboard session (T045, docs/AGENT_TESTING.md): the six-row
+# options screen on the keyboard, seed 20261103. The cursor reaches all six
+# rows from SOUND down to GRAYSCALE and wraps past GRAYSCALE back to SOUND,
+# one select changes each of the four new preferences (GRID off, HOLD off,
+# NEXT PIECES 5 -> 1, GRAYSCALE on), and the session quits through the title
+# menu with the settings file holding every new value. A `wait` follows every
+# check, so no record carries the tick of the input that comes after it.
+check title-start
+wait 1
+key down down
+wait 2
+key down up
+wait 2
+key down down
+wait 2
+key down up
+wait 2
+check title-at-options
+wait 1
+key enter down
+wait 2
+key enter up
+wait 2
+check options-sound-row
+wait 1
+key down down
+wait 2
+key down up
+wait 2
+check options-ghost-row
+wait 1
+key down down
+wait 2
+key down up
+wait 2
+check options-grid-row
+wait 1
+key enter down
+wait 2
+key enter up
+wait 2
+check grid-toggled
+wait 1
+key down down
+wait 2
+key down up
+wait 2
+check options-hold-row
+wait 1
+key enter down
+wait 2
+key enter up
+wait 2
+check hold-toggled
+wait 1
+key down down
+wait 2
+key down up
+wait 2
+check options-next-row
+wait 1
+key enter down
+wait 2
+key enter up
+wait 2
+check next-cycled
+wait 1
+key down down
+wait 2
+key down up
+wait 2
+check options-grayscale-row
+wait 1
+key enter down
+wait 2
+key enter up
+wait 2
+check grayscale-toggled
+wait 1
+key down down
+wait 2
+key down up
+wait 2
+check options-wrapped-to-sound
+wait 1
+key esc down
+wait 2
+key esc up
+wait 2
+check title-back
+wait 1
+key down down
+wait 2
+key down up
+wait 2
+check title-at-quit
+wait 1
+check quit-confirmed
+key enter down
+wait 2
+key enter up
+wait 2

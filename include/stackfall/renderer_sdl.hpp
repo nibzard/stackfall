@@ -97,24 +97,48 @@ constexpr SDL_Rect boardFrame() {
 // (specification section 6.1).
 inline constexpr int kPreviewCellSize = 15;
 
-// The side panels: hold and control hints on the left, next queue and the
-// score fields on the right (specification section 6.1).
-inline constexpr int kLeftPanelX = 52;
-inline constexpr int kLeftPanelWidth = 272;  // x = 52..324
-inline constexpr int kRightPanelX = 630;
-inline constexpr int kRightPanelWidth = 280;  // x = 630..910
+// ---------------------------------------------------------------------------
+// The focused gameplay HUD of the approved composition (task T037,
+// specification section 6.1, design review finding focused-gameplay-hud).
+//
+// Two narrow columns flank the board, each one anchored to its near board
+// edge with about 24 pixels of quiet gap, and the outer regions of the canvas
+// stay empty. The left column carries the round's statistics - Hold, score,
+// lines, and level; the right column carries the five Next previews. The
+// suggested 128-pixel column width is a starting point, not a clipping rule:
+// the numbers below hold the geometry, and the one rule that cannot bend is
+// that no HUD pixel reaches the board or the other column. Ordinary gameplay
+// draws no permanent control legend; the mappings live on the controls
+// screen, reachable from the title and from the pause overlay.
+// ---------------------------------------------------------------------------
+inline constexpr int kHudGap = 24;          // quiet columns beside the frame
+inline constexpr int kHudColumnWidth = 128; // the suggested starting width
+
+// The left statistics column ends at the gap before the board frame, so it
+// grows leftward from x=319; the right preview column starts at the gap
+// after the frame. Both stay symmetric about the board center (480).
+inline constexpr int kLeftPanelX =
+    boardFrame().x - kHudGap - kHudColumnWidth;          // 192
+inline constexpr int kLeftPanelWidth = kHudColumnWidth;  // x = 192..319
+inline constexpr int kRightPanelX =
+    boardFrame().x + boardFrame().w + kHudGap;           // 640
+inline constexpr int kRightPanelWidth = kHudColumnWidth; // x = 640..767
 
 // One preview box: four cells at the preview size plus breathing room. Five
-// slots plus their padding and the three score fields fit between the board
-// top and bottom rows (y = 2..541).
+// slots plus their padding fit beside the board rows (y = 2..541).
 inline constexpr int kPreviewBoxWidth = 120;
 inline constexpr int kPreviewBoxHeight = 56;
 inline constexpr int kHoldBoxHeight = 60;
 inline constexpr int kNextPanelHeight = kPreviewCount * kPreviewBoxHeight + 10;
 
-// The panel headings sit just above their boxes, clear of the box outline.
+// The group headings sit just above their boxes, at the board's top edge.
 inline constexpr int kPanelHeadingY = kBoardOriginY + 2;
 inline constexpr int kPanelBoxY = kBoardOriginY + 28;
+
+// The statistics fields of the left column, below the hold box: one label
+// over one value per field, fifty pixels per field.
+inline constexpr int kStatsFirstLabelY = kPanelBoxY + kHoldBoxHeight + 20;
+inline constexpr int kStatsFieldStride = 50;
 
 // The hold box and the five next slots, in canvas coordinates. The tests and
 // the renderer share these functions, so an asserted pixel position and a
@@ -150,7 +174,7 @@ inline constexpr int kMenuMarkerSize = 12;
 inline constexpr int kMenuMarkerGap = 20;
 
 // The title page: logo, the seven pieces as a decorative preview row, the
-// three-item menu, the high score, and one hint line.
+// four-item menu, the high score, and one hint line.
 inline constexpr int kTitleLogoY = 56;
 inline constexpr int kTitleLogoScale = 8;
 inline constexpr int kTitlePreviewY = 124;
@@ -181,11 +205,23 @@ inline constexpr int kControlsGamepadX = 110;
 inline constexpr int kControlsKeyboardX = 410;
 inline constexpr int kControlsActionX = 710;
 
+// The options page (tasks T040 and T044): one heading, the six setting rows
+// at the shared menu metrics, one footer. The rows read their value from the
+// renderer's preference settings, because the rules core holds the cursor
+// alone and the values are platform state (specification section 7). Six rows
+// at the 44 px menu height span y = 144..385, so the heading moves up and the
+// footer moves down from the two-row layout; everything stays inside the
+// 960x544 canvas with the hint glyphs at their 14 px scale (task T037).
+inline constexpr int kOptionsHeadingY = 64;
+inline constexpr int kOptionsHeadingScale = 4;
+inline constexpr int kOptionsMenuY = 144;
+inline constexpr int kOptionsFooterY = 456;
+
 // The overlays: a translucent veil over the frozen play scene plus one solid
 // panel that carries the text. Offsets are panel-relative.
 inline constexpr int kOverlayVeilAlpha = 176;  // 0..255 dim of the play scene
 inline constexpr int kPauseHeadingOffsetY = 36;
-inline constexpr int kPauseMenuOffsetY = 128;
+inline constexpr int kPauseMenuOffsetY = 112;
 inline constexpr int kPauseHintOffsetY = 300;
 inline constexpr int kOverHeadingOffsetY = 32;
 inline constexpr int kOverStatsOffsetY = 104;
@@ -194,8 +230,13 @@ inline constexpr int kOverRecordOffsetY = 240;
 inline constexpr int kOverMenuOffsetY = 296;
 inline constexpr int kOverHintOffsetY = 404;
 
+// The pause panel nests between the two HUD columns (x = 320..639, task
+// T037): the frozen round's statistics and previews stay visible beside it
+// under the veil, so the HUD reads continuously even while paused. The
+// game-over panel may span the columns; the round it reports is over.
 constexpr SDL_Rect pausePanel() {
-  return SDL_Rect{260, 92, 440, 360};
+  return SDL_Rect{320, 92, kRightPanelX - kLeftPanelX - kLeftPanelWidth,
+                  360};
 }
 
 constexpr SDL_Rect gameoverPanel() {
@@ -211,7 +252,6 @@ inline constexpr SDL_Color kBackground{16, 18, 26, 255};
 inline constexpr SDL_Color kBoardWell{10, 12, 19, 255};
 inline constexpr SDL_Color kGridLine{26, 30, 42, 255};
 inline constexpr SDL_Color kFrame{78, 88, 116, 255};
-inline constexpr SDL_Color kPanelLine{44, 50, 70, 255};
 inline constexpr SDL_Color kText{232, 236, 246, 255};
 inline constexpr SDL_Color kTextDim{138, 148, 172, 255};
 inline constexpr SDL_Color kCellEdge{8, 9, 14, 255};
@@ -280,6 +320,43 @@ inline constexpr std::array<CellPalette, kPieceCount> kPiecePalettesDim = {{
     cellPaletteOf(mixToward(kPieceFills[6], kBackground, 1, 2)),
 }};
 
+// The grayscale play scene of the options screen (task T044). Grayscale on
+// swaps the piece colors - settled cells, the active piece, the ghost, and
+// the Hold and Next previews - for seven distinct grays while the text, the
+// outlines, the board, and every other UI color stay as they are, so shapes
+// and labels keep their contrast. The shades follow the luminance order of
+// the seven color fills (O brightest, J darkest) and never drop below 130:
+// the ghost blend of one quarter toward the well then holds the same 3:1
+// outline contrast floor as the color mode for every piece, and the darkest
+// live shade stays clearly brighter than its ghost (J reaches 3.35:1 against
+// the well and 1.52:1 against its fill).
+inline constexpr std::array<SDL_Color, kPieceCount> kGrayscaleFills = {{
+    {205, 205, 205, 255},  // I: cyan, luminance 0.49
+    {235, 235, 235, 255},  // O: amber, the brightest fill
+    {150, 150, 150, 255},  // T: violet
+    {190, 190, 190, 255},  // S: green
+    {140, 140, 140, 255},  // Z: crimson
+    {130, 130, 130, 255},  // J: blue, the darkest fill
+    {170, 170, 170, 255},  // L: orange
+}};
+
+inline constexpr std::array<CellPalette, kPieceCount> kGrayscalePalettes = {{
+    cellPaletteOf(kGrayscaleFills[0]), cellPaletteOf(kGrayscaleFills[1]),
+    cellPaletteOf(kGrayscaleFills[2]), cellPaletteOf(kGrayscaleFills[3]),
+    cellPaletteOf(kGrayscaleFills[4]), cellPaletteOf(kGrayscaleFills[5]),
+    cellPaletteOf(kGrayscaleFills[6]),
+}};
+
+inline constexpr std::array<CellPalette, kPieceCount> kGrayscalePalettesDim = {{
+    cellPaletteOf(mixToward(kGrayscaleFills[0], kBackground, 1, 2)),
+    cellPaletteOf(mixToward(kGrayscaleFills[1], kBackground, 1, 2)),
+    cellPaletteOf(mixToward(kGrayscaleFills[2], kBackground, 1, 2)),
+    cellPaletteOf(mixToward(kGrayscaleFills[3], kBackground, 1, 2)),
+    cellPaletteOf(mixToward(kGrayscaleFills[4], kBackground, 1, 2)),
+    cellPaletteOf(mixToward(kGrayscaleFills[5], kBackground, 1, 2)),
+    cellPaletteOf(mixToward(kGrayscaleFills[6], kBackground, 1, 2)),
+}};
+
 // Piece index 0..6 from a PieceId, for the palette arrays above.
 constexpr int pieceIndex(PieceId id) { return static_cast<int>(id) - 1; }
 
@@ -293,6 +370,34 @@ constexpr const CellPalette& dimCellPalette(PieceId id) {
   return kPiecePalettesDim[pieceIndex(id) < 0 || pieceIndex(id) >= kPieceCount
                                ? 0
                                : pieceIndex(id)];
+}
+
+// The grayscale counterparts of the four color lookups above, same defensive
+// index rule.
+constexpr SDL_Color grayscaleFill(PieceId id) {
+  return kGrayscaleFills[pieceIndex(id) < 0 || pieceIndex(id) >= kPieceCount
+                             ? 0
+                             : pieceIndex(id)];
+}
+
+constexpr const CellPalette& grayscalePalette(PieceId id) {
+  return kGrayscalePalettes[pieceIndex(id) < 0 || pieceIndex(id) >= kPieceCount
+                                ? 0
+                                : pieceIndex(id)];
+}
+
+constexpr const CellPalette& grayscaleDimPalette(PieceId id) {
+  return kGrayscalePalettesDim[pieceIndex(id) < 0 ||
+                                       pieceIndex(id) >= kPieceCount
+                                   ? 0
+                                   : pieceIndex(id)];
+}
+
+// The ghost blend of one quarter toward the well, applied to the gray fill,
+// so the grayscale landing preview holds the same 3:1 outline contrast floor
+// as the color one (task T044).
+constexpr SDL_Color grayscaleGhostColor(PieceId id) {
+  return mixToward(grayscaleFill(id), kBoardWell, 1, 4);
 }
 
 // The ghost reads as the same piece at a fraction of its color, so it stays
@@ -317,17 +422,20 @@ constexpr SDL_Color pieceFill(PieceId id) {
 
 // ---------------------------------------------------------------------------
 // The renderer. One instance wraps one SDL_Renderer for the whole process and
-// keeps no game state of its own beyond the grid setting.
+// keeps no game state of its own beyond the platform settings it mirrors: the
+// grid, the ghost, the sound, the hold preview, the Next preview count, and
+// the grayscale mode (task T044).
 // ---------------------------------------------------------------------------
 class Renderer {
  public:
   // Does not take ownership of `renderer`, which must outlive this object.
   explicit Renderer(SDL_Renderer* renderer) noexcept;
 
-  // Draws one complete frame of the scene the game is in: the title or
-  // controls page, the play scene of section 6.2, or that scene under the
-  // pause or game-over overlay of section 4.7. Reads the game through the
-  // const queries of Game only.
+  // Draws one complete frame of the scene the game is in: the title,
+  // controls, or options page, the play scene of section 6.2, that scene
+  // under the pause or game-over overlay of section 4.7, or the mappings
+  // page the pause overlay opens over its frozen round (task T037). Reads
+  // the game through the const queries of Game only.
   void draw(const Game& game);
 
   // Draws `text` with one filled rectangle per font pixel, `scale` canvas
@@ -341,10 +449,35 @@ class Renderer {
   void drawTextCentered(int centerX, int y, int scale, SDL_Color color,
                         const char* text) const;
 
-  // The faint board grid of section 6.2, an optional setting until a settings
-  // file arrives in milestone M3. It is on by default.
+  // The player preferences the platform layer owns and this renderer mirrors,
+  // so the options screen can show each row's current value and the play
+  // scene can gate its drawing on it (tasks T040 and T044, specification
+  // section 6.3): the faint board grid of section 6.2, the ghost landing
+  // preview, the sound, the Hold preview, the count of visible Next previews,
+  // and the grayscale play scene. Each defaults to on (five previews for
+  // NEXT, off for grayscale), and the settings file supplies the starting
+  // values.
   void setShowGrid(bool show) noexcept;
   bool showGrid() const noexcept;
+  void setShowGhost(bool show) noexcept;
+  bool showGhost() const noexcept;
+  void setSoundOn(bool on) noexcept;
+  bool soundOn() const noexcept;
+  void setShowHold(bool show) noexcept;
+  bool showHold() const noexcept;
+  // `count` clamps to the preview range 1..kPreviewCount, so a stray value
+  // can never read past the queue.
+  void setNextPreviews(int count) noexcept;
+  int nextPreviews() const noexcept;
+  void setGrayscale(bool on) noexcept;
+  bool grayscale() const noexcept;
+
+  // The glyph scale one statistics value draws at: the full value scale while
+  // the number fits the statistics column, one step smaller when it does not,
+  // so the longest value the saturating counters can hold stays inside the
+  // column (task T037). Public because the pixel suite pins the rule beside
+  // the pixels it produces.
+  int statValueScale(const char* value) const;
 
  private:
   void drawBackground() const;
@@ -356,13 +489,13 @@ class Renderer {
   void drawActivePiece(const Game& game) const;
   void drawHoldPanel(const Game& game) const;
   void drawNextPanel(const Game& game) const;
-  void drawScorePanel(const Game& game) const;
-  void drawHintsPanel() const;
+  void drawStatsPanel(const Game& game) const;
 
   // The section 4.7 screens of task T011.
   void drawPlayScene(const Game& game) const;
   void drawTitleScreen(const Game& game) const;
-  void drawControlsScreen() const;
+  void drawControlsScreen(const char* footer) const;
+  void drawOptionsScreen(const Game& game) const;
   void drawPauseOverlay(const Game& game) const;
   void drawGameOverOverlay(const Game& game) const;
   void drawOverlayPanel(const SDL_Rect& panel) const;
@@ -376,8 +509,19 @@ class Renderer {
   void drawGhostCell(int x, int y, int size, SDL_Color color) const;
   void drawPreviewPiece(PieceId id, const SDL_Rect& box, bool dimmed) const;
 
+  // The palette of one piece under the current settings: grayscale on swaps
+  // the color palettes for the gray ones everywhere the play scene draws a
+  // piece, and off restores the color ones exactly (task T044).
+  const CellPalette& piecePalette(PieceId id, bool dimmed) const;
+  SDL_Color pieceGhostColor(PieceId id) const;
+
   SDL_Renderer* renderer_;
   bool showGrid_ = true;
+  bool showGhost_ = true;
+  bool soundOn_ = true;
+  bool showHold_ = true;
+  int nextPreviews_ = kPreviewCount;
+  bool grayscale_ = false;
 };
 
 }  // namespace stackfall

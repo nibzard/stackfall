@@ -25,8 +25,11 @@
 //   * hold and the five next previews draw at the preview cell size, and an
 //     unavailable hold reads dimmer than an available one;
 //   * every glyph draws exactly the pixels of the 5x7 table, at scale;
-//   * the control hints and the footer hint lines draw at the label glyph
-//     height and no hint text leaves the left panel;
+//   * the focused HUD of task T037 holds the approved composition: two 128 px
+//     columns 24 px from the board frame, statistics left (Hold, score,
+//     lines, level), the five Next previews right with the first at full
+//     color and the rest quieter, the longest supported values inside the
+//     column, no permanent control legend, and no decorative panel outlines;
 //   * draw() changes no byte of the game state (specification section 7);
 //   * the same logical frame scales and letterboxes onto larger canvases;
 //   * a window that is not the canvas letterboxes with black slack bars that
@@ -34,12 +37,23 @@
 //     native canvas keeps its exact pixels (task T032).
 //
 // Coverage of the task T011 screens (section 4.7):
-//   * the title page draws its logo, preview strip, three-item menu with an
+//   * the title page draws its logo, preview strip, four-item menu with an
 //     accent marker on the selected item, and the high score;
 //   * the controls page draws its three columns and follows the layout
-//     constants;
-//   * the pause overlay veils the frozen round, draws its panel exactly, and
-//     navigation under it leaves the round byte-identical;
+//     constants, with the footer of whichever route opened it;
+//   * the options page of tasks T040 and T044 draws its heading, footer, and
+//     the six setting rows with every value combination, and the ghost
+//     setting really gates the ghost outline of the play scene;
+//   * the grid setting of task T044 gates the grid lines without touching a
+//     piece pixel, the hold setting hides the Hold preview, the next setting
+//     draws exactly its count of previews in queue order at the unchanged
+//     composition, and the grayscale setting recolors the pieces of the play
+//     scene while it holds the ghost contrast floor and restores the normal
+//     palette exactly on off;
+//   * the pause overlay veils the frozen round, draws its four-item panel
+//     between the HUD columns, and navigation under it leaves the round
+//     byte-identical; its Controls item opens the mappings page and returns
+//     to the same frozen round (task T037);
 //   * the game-over overlay draws the final values, the accent record note
 //     exactly when the round set one, and its two-item menu.
 
@@ -206,6 +220,25 @@ double contrastRatio(const SDL_Color& a, const SDL_Color& b) {
 // colors fail the suite before any packet measures 2.44:1 again.
 constexpr int ghostChannel(int fill, int well) { return fill + (well - fill) / 4; }
 
+// The number of lit font pixels of `text`, so a text row's bright or dim
+// pixel count can be pinned to the exact glyphs of the 5x7 table: a row that
+// drew one wrong glyph, ON for OFF say, fails even when every other measure
+// matches.
+int glyphPixelCount(const char* text) {
+  int count = 0;
+  for (int index = 0; text[index] != '\0'; ++index) {
+    const Glyph& glyph = glyphFor(text[index]);
+    for (int row = 0; row < kGlyphRows; ++row) {
+      for (int column = 0; column < kGlyphColumns; ++column) {
+        if (glyphPixel(glyph, column, row)) {
+          ++count;
+        }
+      }
+    }
+  }
+  return count;
+}
+
 constexpr SDL_Color expectedGhostColor(PieceId id) {
   return SDL_Color{
       static_cast<Uint8>(ghostChannel(pieceFill(id).r, kBoardWell.r)),
@@ -272,7 +305,6 @@ constexpr int kLabelScale = 2;
 constexpr int kValueScale = 2;
 constexpr int kHintScale = 2;
 constexpr int kControlRowCount = 10;
-constexpr int kHintRowCount = 7;
 
 // How many cells of the active piece lie inside the visible field.
 int visibleActiveCells(const Game& game) {
@@ -367,6 +399,17 @@ void run_board_and_grid_checks() {
   SC_CHECK(sameColor(
       pixelAt(canvas, kBoardOriginX + 7, kBoardOriginY + 3 * kBoardCellSize),
       kGridLine));
+
+  // A settled piece rides through the toggle unchanged: grid off removes the
+  // lines and the cell keeps every pixel of its color, and grid on restores
+  // the lines without touching the piece (task T044).
+  SC_CHECK(stackfall::GameTestPeer::board(game).settleCell(4, 10, PieceId::T));
+  renderer.draw(game);
+  const SDL_Rect cellRect{cellCornerX(4), cellCornerY(10), kBoardCellSize,
+                          kBoardCellSize};
+  const int colorPixelsBefore =
+      countColor(canvas, cellRect, pieceFill(PieceId::T));
+  SC_CHECK(colorPixelsBefore > 0);
   renderer.setShowGrid(false);
   SC_CHECK(renderer.showGrid() == false);
   renderer.draw(game);
@@ -375,8 +418,16 @@ void run_board_and_grid_checks() {
                      kBoardWell));
   SC_CHECK(sameColor(pixelAt(canvas, kBoardOriginX + 9 * kBoardCellSize, 400),
                      kBoardWell));
+  SC_CHECK(countColor(canvas, cellRect, pieceFill(PieceId::T)) ==
+           colorPixelsBefore);
   renderer.setShowGrid(true);
   SC_CHECK(renderer.showGrid() == true);
+  renderer.draw(game);
+  SC_CHECK(sameColor(pixelAt(canvas, kBoardOriginX + kBoardCellSize,
+                             kBoardOriginY + 7),
+                     kGridLine));
+  SC_CHECK(countColor(canvas, cellRect, pieceFill(PieceId::T)) ==
+           colorPixelsBefore);
 }
 
 // The board-cells-27px geometry of specification section 6.1 (task T038),
@@ -502,17 +553,11 @@ void run_cells_and_ghost_checks() {
   SC_CHECK(subject.scene() == Scene::Playing);
   SC_CHECK(subject.hasActivePiece());
 
-  // A freshly spawned piece can sit entirely in the hidden rows (the I piece
-  // does until its first fall). Soft-drop it into view so the check covers
-  // drawn cells; both games tick in step.
-  InputFrame bringIntoView = InputFrame::idle();
-  bringIntoView.downHeld = true;
-  for (int i = 0; i < kBoardHeight + 4 && visibleActiveCells(subject) == 0;
-       ++i) {
-    subject.tick(bringIntoView);
-    reference.tick(bringIntoView);
-  }
-  SC_CHECK(visibleActiveCells(subject) > 0);
+  // A freshly spawned piece draws at once under the immediate-spawn rule of
+  // task T029: its top cells sit in visible row 0, so no soft drop is needed
+  // to bring it into view. Both games stay in step because neither ticks.
+  SC_CHECK(visibleActiveCells(subject) ==
+           static_cast<int>(stackfall::kCellsPerPiece));
 
   renderer.draw(subject);
 
@@ -622,6 +667,309 @@ void run_cells_and_ghost_checks() {
     SC_CHECK(sameColor(pixelAt(canvas, cellCenterX(cell.x), cellCenterY(cell.y)),
                        pieceFill(groundedId)));
   }
+
+  // The ghost setting of the options screen really gates the outline (task
+  // T040): with the preview off (and the grid off, so the well reads plain),
+  // every pixel of each landing cell that no settled or live cell covers is
+  // the well color where the ghost drew its outline, while the active piece
+  // above still draws in full color.
+  renderer.setShowGrid(false);
+  renderer.setShowGhost(false);
+  SC_CHECK(renderer.showGhost() == false);
+  renderer.draw(subject);
+  const Piece ghostOff = subject.ghostPiece();
+  SC_CHECK(ghostOff.y > subject.activePiece().y);
+  for (const Cell& cell : boardCells(ghostOff)) {
+    if (cell.y < 0) {
+      continue;  // hidden rows never draw
+    }
+    bool covered = false;
+    for (const Cell& live : boardCells(subject.activePiece())) {
+      covered = covered || (live.x == cell.x && live.y == cell.y);
+    }
+    covered = covered ||
+              reference.board().cellTypes()[boardRowIndex(cell.y)][cell.x] != 0;
+    if (covered) {
+      continue;
+    }
+    const SDL_Rect cellRect{cellCornerX(cell.x), cellCornerY(cell.y),
+                            kBoardCellSize, kBoardCellSize};
+    SC_CHECK(areaIsOnly(canvas, cellRect, kBoardWell));
+  }
+  for (const Cell& cell : boardCells(subject.activePiece())) {
+    if (cell.y < 0) {
+      continue;
+    }
+    SC_CHECK(sameColor(pixelAt(canvas, cellCenterX(cell.x), cellCenterY(cell.y)),
+                       pieceFill(activeId)));
+  }
+  renderer.setShowGrid(true);
+  renderer.setShowGhost(true);
+  SC_CHECK(renderer.showGhost() == true);
+}
+
+// ---------------------------------------------------------------------------
+// The preference gates of task T044: the Next preview count draws exactly N
+// previews in queue order at the unchanged composition, and hold off hides
+// the whole Hold group.
+// ---------------------------------------------------------------------------
+
+// True when no pixel of `area` holds any piece color, full or dimmed, color
+// or gray: an empty preview slot.
+bool areaHoldsNoPieceColor(const Canvas& canvas, const SDL_Rect& area) {
+  for (int index = 0; index < kPieceCount; ++index) {
+    const PieceId id = kAllPieceIds[index];
+    if (countColor(canvas, area, pieceFill(id)) != 0 ||
+        countColor(canvas, area, dimCellPalette(id).fill) != 0 ||
+        countColor(canvas, area, grayscaleFill(id)) != 0 ||
+        countColor(canvas, area, grayscaleDimPalette(id).fill) != 0) {
+      return false;
+    }
+  }
+  return true;
+}
+
+void run_next_and_hold_checks() {
+  Canvas canvas = makeCanvas(kCanvasWidth, kCanvasHeight);
+  SC_CHECK(canvas.ok);
+  Renderer renderer(canvas.renderer);
+
+  Game game;
+  game.start(4242);
+  const auto& queue = game.queue();
+
+  // Exactly N previews draw, in queue order, for every N = 1..5: the drawn
+  // slots carry their queued piece at the unchanged contrast hierarchy (the
+  // first at full color, the rest dim), and every slot past N stays empty.
+  // The queue itself is the renderer's input, so the count changes nothing
+  // about the randomizer (task T044).
+  for (int count = 1; count <= kPreviewCount; ++count) {
+    renderer.setNextPreviews(count);
+    SC_CHECK(renderer.nextPreviews() == count);
+    renderer.draw(game);
+    for (int index = 0; index < kPreviewCount; ++index) {
+      const SDL_Rect slot = nextSlotBox(index);
+      if (index < count) {
+        const CellPalette& palette =
+            index == 0 ? cellPalette(queue[index])
+                       : dimCellPalette(queue[index]);
+        for (const Cell& cell :
+             pieceCells(queue[index], Rotation::Spawn)) {
+          const SDL_Point center =
+              previewCellCenter(queue[index], slot, cell);
+          SC_CHECK(sameColor(pixelAt(canvas, center.x, center.y),
+                             palette.fill));
+        }
+      } else {
+        SC_CHECK(areaHoldsNoPieceColor(canvas, slot));
+      }
+    }
+    // The panel padding below the last slot stays background at every count.
+    const SDL_Rect panelPadding{nextPanelBox().x,
+                                nextPanelBox().y + nextPanelBox().h - 5,
+                                nextPanelBox().w, 5};
+    SC_CHECK(areaIsOnly(canvas, panelPadding, kBackground));
+  }
+
+  // A stray count clamps into the preference range instead of reading past
+  // the queue.
+  renderer.setNextPreviews(0);
+  SC_CHECK(renderer.nextPreviews() == 1);
+  renderer.setNextPreviews(9);
+  SC_CHECK(renderer.nextPreviews() == kPreviewCount);
+  renderer.setNextPreviews(kPreviewCount);
+
+  // The default count of 5 renders exactly the T037 composition: five
+  // identifiable previews, the first at full color and the four behind it
+  // dim, anchored at the unchanged slots.
+  renderer.draw(game);
+  for (int index = 0; index < kPreviewCount; ++index) {
+    const SDL_Rect slot = nextSlotBox(index);
+    const CellPalette& palette =
+        index == 0 ? cellPalette(queue[index]) : dimCellPalette(queue[index]);
+    for (const Cell& cell : pieceCells(queue[index], Rotation::Spawn)) {
+      const SDL_Point center = previewCellCenter(queue[index], slot, cell);
+      SC_CHECK(sameColor(pixelAt(canvas, center.x, center.y), palette.fill));
+    }
+  }
+
+  // Hold off hides the whole Hold group, label and piece alike, even while a
+  // piece sits in the slot: the band above the statistics carries no text and
+  // no piece color, while the statistics below keep drawing (task T044).
+  stackfall::GameTestPeer::setHoldSlot(game, PieceId::T);
+  stackfall::GameTestPeer::setHoldLocked(game, false);
+  SC_CHECK(game.hasHoldPiece());
+  renderer.setShowHold(false);
+  SC_CHECK(renderer.showHold() == false);
+  renderer.draw(game);
+  const SDL_Rect holdBand{kLeftPanelX, kPanelHeadingY, kLeftPanelWidth,
+                          kHoldBoxHeight + kPanelBoxY - kPanelHeadingY};
+  SC_CHECK(areaHoldsNoPieceColor(canvas, holdBand));
+  SC_CHECK(countColor(canvas, holdBand, kTextDim) == 0);  // no HOLD label
+  const SDL_Rect statsBand{kLeftPanelX, kStatsFirstLabelY, kLeftPanelWidth,
+                           2 * kStatsFieldStride};
+  SC_CHECK(countColor(canvas, statsBand, kTextDim) > 50);
+  SC_CHECK(countColor(canvas, statsBand, kText) > 50);
+
+  // Hold on restores the group exactly: the label returns and the stored
+  // piece draws at full color.
+  renderer.setShowHold(true);
+  SC_CHECK(renderer.showHold() == true);
+  renderer.draw(game);
+  SC_CHECK(countColor(canvas, holdBand, kTextDim) > 20);
+  for (const Cell& cell : pieceCells(PieceId::T, Rotation::Spawn)) {
+    const SDL_Point center =
+        previewCellCenter(PieceId::T, holdBox(), cell);
+    SC_CHECK(sameColor(pixelAt(canvas, center.x, center.y),
+                       pieceFill(PieceId::T)));
+  }
+}
+
+// ---------------------------------------------------------------------------
+// The grayscale play scene of task T044: on swaps the piece colors for seven
+// grays while the text, the outlines, and the board stay as they are, the
+// ghost keeps the 3:1 contrast floor, and off restores the normal palette
+// byte for byte.
+// ---------------------------------------------------------------------------
+
+void run_grayscale_checks() {
+  Canvas canvas = makeCanvas(kCanvasWidth, kCanvasHeight);
+  SC_CHECK(canvas.ok);
+  Renderer renderer(canvas.renderer);
+
+  Game subject;
+  Game reference;
+  subject.start(30);
+  reference.start(30);
+  playRounds(subject, 8);
+  playRounds(reference, 8);
+  SC_CHECK(subject.scene() == Scene::Playing);
+  SC_CHECK(subject.hasActivePiece());
+  SC_CHECK(reference.board().settledCellCount() > 0);
+  // A stored, available hold piece, so the Hold preview is part of every
+  // frame this check draws.
+  stackfall::GameTestPeer::setHoldSlot(subject, subject.activePiece().id);
+  stackfall::GameTestPeer::setHoldLocked(subject, false);
+  SC_CHECK(subject.hasHoldPiece());
+
+  // The palette contract: every fill is achromatic, the seven shades are
+  // distinct, and the ghost blend of one quarter toward the well holds the
+  // 3:1 outline contrast floor of the color mode while every live shade
+  // stays clearly brighter than its ghost.
+  for (int index = 0; index < kPieceCount; ++index) {
+    const PieceId id = kAllPieceIds[index];
+    const SDL_Color fill = grayscaleFill(id);
+    SC_CHECK(fill.r == fill.g);
+    SC_CHECK(fill.g == fill.b);
+    for (int other = index + 1; other < kPieceCount; ++other) {
+      SC_CHECK(sameColor(fill, grayscaleFill(kAllPieceIds[other])) == false);
+    }
+    SC_CHECK(contrastRatio(grayscaleGhostColor(id), kBoardWell) >= 3.0);
+    SC_CHECK(contrastRatio(grayscaleFill(id), grayscaleGhostColor(id)) >=
+             1.5);
+    SC_CHECK(sameColor(grayscaleFill(id), grayscaleGhostColor(id)) == false);
+  }
+
+  // The full color frame, kept byte for byte: grayscale off after an on pass
+  // must restore it exactly.
+  renderer.draw(subject);
+  std::vector<std::uint8_t> colorFrame(
+      static_cast<const std::uint8_t*>(canvas.surface->pixels),
+      static_cast<const std::uint8_t*>(canvas.surface->pixels) +
+          static_cast<std::size_t>(canvas.surface->pitch) * canvas.surface->h);
+
+  renderer.setGrayscale(true);
+  SC_CHECK(renderer.grayscale() == true);
+  renderer.draw(subject);
+
+  // Settled cells draw in their grayscale fill, and only where the board has
+  // them; the active piece and the ghost keep their own shades.
+  const PieceId activeId = subject.activePiece().id;
+  const Piece ghost = subject.ghostPiece();
+  SC_CHECK(ghost.y > subject.activePiece().y);
+  for (int y = 0; y < kBoardHeight; ++y) {
+    for (int x = 0; x < kBoardWidth; ++x) {
+      const std::uint8_t code =
+          reference.board().cellTypes()[boardRowIndex(y)][x];
+      bool covered = false;
+      for (const Cell& cell : boardCells(subject.activePiece())) {
+        covered = covered || (cell.x == x && cell.y == y);
+      }
+      for (const Cell& cell : boardCells(ghost)) {
+        covered = covered || (cell.x == x && cell.y == y);
+      }
+      if (covered) {
+        continue;
+      }
+      const SDL_Color expected =
+          code == 0 ? kBoardWell : grayscaleFill(static_cast<PieceId>(code));
+      SC_CHECK(sameColor(pixelAt(canvas, cellCenterX(x), cellCenterY(y)),
+                         expected));
+    }
+  }
+  for (const Cell& cell : boardCells(subject.activePiece())) {
+    if (cell.y < 0) {
+      continue;
+    }
+    SC_CHECK(sameColor(pixelAt(canvas, cellCenterX(cell.x), cellCenterY(cell.y)),
+                       grayscaleFill(activeId)));
+  }
+  for (const Cell& cell : boardCells(ghost)) {
+    if (cell.y < 0) {
+      continue;
+    }
+    SC_CHECK(sameColor(pixelAt(canvas, cellCornerX(cell.x), cellCornerY(cell.y)),
+                       grayscaleGhostColor(activeId)));
+    SC_CHECK(sameColor(pixelAt(canvas, cellCornerX(cell.x) + 1,
+                               cellCornerY(cell.y) + 1),
+                       kBoardWell));
+  }
+
+  // The Hold and Next previews draw in their grayscale palettes, full for the
+  // available hold and the first Next, dim behind it.
+  renderer.draw(subject);
+  for (const Cell& cell :
+       pieceCells(subject.holdPieceId(), Rotation::Spawn)) {
+    const SDL_Point center =
+        previewCellCenter(subject.holdPieceId(), holdBox(), cell);
+    SC_CHECK(sameColor(pixelAt(canvas, center.x, center.y),
+                       grayscaleFill(subject.holdPieceId())));
+  }
+  const auto& queue = subject.queue();
+  for (int index = 0; index < kPreviewCount; ++index) {
+    const CellPalette& palette = index == 0 ? grayscalePalette(queue[index])
+                                            : grayscaleDimPalette(queue[index]);
+    for (const Cell& cell : pieceCells(queue[index], Rotation::Spawn)) {
+      const SDL_Point center = previewCellCenter(queue[index],
+                                                 nextSlotBox(index), cell);
+      SC_CHECK(sameColor(pixelAt(canvas, center.x, center.y), palette.fill));
+    }
+  }
+
+  // The text, the outlines, and the board keep their colors: the statistics
+  // labels stay dim text, the frame stays the frame color, and the well
+  // stays the well.
+  const SDL_Rect statsBand{kLeftPanelX, kStatsFirstLabelY, kLeftPanelWidth,
+                           2 * kStatsFieldStride};
+  SC_CHECK(countColor(canvas, statsBand, kTextDim) > 50);
+  SC_CHECK(countColor(canvas, statsBand, kText) > 50);
+  SC_CHECK(sameColor(pixelAt(canvas, kBoardOriginX - 1, 271), kFrame));
+  SC_CHECK(sameColor(pixelAt(canvas, cellCenterX(9), cellCenterY(0)),
+                     kBoardWell));
+
+  // Off restores the normal palette exactly: the very bytes of the color
+  // frame come back, settled pieces, active piece, ghost, and previews
+  // together.
+  renderer.setGrayscale(false);
+  SC_CHECK(renderer.grayscale() == false);
+  renderer.draw(subject);
+  const std::uint8_t* pixels =
+      static_cast<const std::uint8_t*>(canvas.surface->pixels);
+  const std::vector<std::uint8_t> restored(
+      pixels, pixels + static_cast<std::size_t>(canvas.surface->pitch) *
+                           canvas.surface->h);
+  SC_CHECK(restored.size() == colorFrame.size());
+  SC_CHECK(restored == colorFrame);
 }
 
 void run_preview_checks() {
@@ -633,22 +981,31 @@ void run_preview_checks() {
   game.start(4242);
   renderer.draw(game);
 
-  // An unused hold slot shows no piece color at all.
+  // An unused hold slot shows no piece color at all: the empty hold of the
+  // focused HUD is one quiet label and empty space (task T037).
   SC_CHECK(game.hasHoldPiece() == false);
   const SDL_Rect hold = holdBox();
   for (const SDL_Color& fill : kPieceFills) {
     SC_CHECK(countColor(canvas, hold, fill) == 0);
   }
+  for (int index = 0; index < kPieceCount; ++index) {
+    SC_CHECK(countColor(canvas, hold, dimCellPalette(kAllPieceIds[index]).fill) ==
+             0);
+  }
 
   // The five next previews draw the queued pieces in order at the preview
-  // cell size, and the gap between two slots stays empty background.
+  // cell size. The first draws at full color and the rest dimmer, so the
+  // piece that lands next stays readable while the far queue reads quieter
+  // (task T037 contrast hierarchy), and the gap between the panel padding
+  // stays empty background.
   const auto& queue = game.queue();
   for (int index = 0; index < kPreviewCount; ++index) {
     const SDL_Rect slot = nextSlotBox(index);
+    const CellPalette& palette =
+        index == 0 ? cellPalette(queue[index]) : dimCellPalette(queue[index]);
     for (const Cell& cell : pieceCells(queue[index], Rotation::Spawn)) {
       const SDL_Point center = previewCellCenter(queue[index], slot, cell);
-      SC_CHECK(sameColor(pixelAt(canvas, center.x, center.y),
-                         pieceFill(queue[index])));
+      SC_CHECK(sameColor(pixelAt(canvas, center.x, center.y), palette.fill));
     }
   }
   const SDL_Rect panelPadding{nextPanelBox().x,
@@ -656,29 +1013,86 @@ void run_preview_checks() {
                               nextPanelBox().w, 5};
   SC_CHECK(areaIsOnly(canvas, panelPadding, kBackground));
 
+  // Every hold shape draws in its own color, available and locked: the test
+  // peer places each of the seven pieces in the slot and the box must show
+  // exactly that palette, so one missing or wrong hold shape fails (task
+  // T037: all Hold shapes, empty Hold above).
+  for (int index = 0; index < kPieceCount; ++index) {
+    const PieceId id = kAllPieceIds[index];
+    stackfall::GameTestPeer::setHoldSlot(game, id);
+    stackfall::GameTestPeer::setHoldLocked(game, false);
+    renderer.draw(game);
+    for (const Cell& cell : pieceCells(id, Rotation::Spawn)) {
+      const SDL_Point center = previewCellCenter(id, hold, cell);
+      SC_CHECK(sameColor(pixelAt(canvas, center.x, center.y), pieceFill(id)));
+    }
+    stackfall::GameTestPeer::setHoldLocked(game, true);
+    renderer.draw(game);
+    for (const Cell& cell : pieceCells(id, Rotation::Spawn)) {
+      const SDL_Point center = previewCellCenter(id, hold, cell);
+      SC_CHECK(sameColor(pixelAt(canvas, center.x, center.y),
+                         dimCellPalette(id).fill));
+    }
+  }
+
+  // Every next shape draws somewhere in the queue: across these seeds each of
+  // the seven pieces appears in some slot, full color in the first slot and
+  // dim behind it.
+  bool seenFull[kPieceCount] = {false, false, false, false, false, false, false};
+  bool seenDim[kPieceCount] = {false, false, false, false, false, false, false};
+  for (int seed = 1; seed < 60; ++seed) {
+    Game scan;
+    scan.start(static_cast<std::uint64_t>(seed));
+    renderer.draw(scan);
+    const auto& scanQueue = scan.queue();
+    for (int index = 0; index < kPreviewCount; ++index) {
+      const SDL_Rect slot = nextSlotBox(index);
+      const CellPalette& palette = index == 0 ? cellPalette(scanQueue[index])
+                                              : dimCellPalette(scanQueue[index]);
+      const Cell& first = pieceCells(scanQueue[index], Rotation::Spawn)[0];
+      const SDL_Point center = previewCellCenter(scanQueue[index], slot, first);
+      const int which = pieceIndex(scanQueue[index]);
+      if (sameColor(pixelAt(canvas, center.x, center.y), palette.fill)) {
+        if (index == 0) {
+          seenFull[which] = true;
+        } else {
+          seenDim[which] = true;
+        }
+      }
+    }
+  }
+  for (int index = 0; index < kPieceCount; ++index) {
+    SC_CHECK(seenFull[index]);
+    SC_CHECK(seenDim[index]);
+  }
+
   // One hold stores the piece; the slot is spent, so it draws dimmed.
+  Game holdGame;
+  holdGame.start(4242);
   InputFrame holdPress = InputFrame::idle();
   holdPress.holdPressed = true;
-  game.tick(holdPress);
-  SC_CHECK(game.hasHoldPiece());
-  SC_CHECK(game.holdLocked());
-  renderer.draw(game);
-  for (const Cell& cell : pieceCells(game.holdPieceId(), Rotation::Spawn)) {
-    const SDL_Point center = previewCellCenter(game.holdPieceId(), hold, cell);
+  holdGame.tick(holdPress);
+  SC_CHECK(holdGame.hasHoldPiece());
+  SC_CHECK(holdGame.holdLocked());
+  renderer.draw(holdGame);
+  for (const Cell& cell : pieceCells(holdGame.holdPieceId(), Rotation::Spawn)) {
+    const SDL_Point center =
+        previewCellCenter(holdGame.holdPieceId(), hold, cell);
     SC_CHECK(sameColor(pixelAt(canvas, center.x, center.y),
-                       dimCellPalette(game.holdPieceId()).fill));
+                       dimCellPalette(holdGame.holdPieceId()).fill));
   }
 
   // A lock re-enables hold, and the stored piece draws at full color.
   InputFrame drop = InputFrame::idle();
   drop.hardDropPressed = true;
-  game.tick(drop);
-  SC_CHECK(game.holdLocked() == false);
-  renderer.draw(game);
-  for (const Cell& cell : pieceCells(game.holdPieceId(), Rotation::Spawn)) {
-    const SDL_Point center = previewCellCenter(game.holdPieceId(), hold, cell);
+  holdGame.tick(drop);
+  SC_CHECK(holdGame.holdLocked() == false);
+  renderer.draw(holdGame);
+  for (const Cell& cell : pieceCells(holdGame.holdPieceId(), Rotation::Spawn)) {
+    const SDL_Point center =
+        previewCellCenter(holdGame.holdPieceId(), hold, cell);
     SC_CHECK(sameColor(pixelAt(canvas, center.x, center.y),
-                       pieceFill(game.holdPieceId())));
+                       pieceFill(holdGame.holdPieceId())));
   }
 }
 
@@ -719,38 +1133,133 @@ void run_text_checks() {
     }
   }
 
-  // A whole play frame carries the score fields and the control hints.
+  // A whole play frame carries the statistics of the left column: the HOLD
+  // label and the three label-over-value fields, every row at the full label
+  // glyph height, and no second text line anywhere else in the column - the
+  // permanent control legend is gone from ordinary gameplay (task T037).
   Game game;
   game.start(4242);
   playRounds(game, 4);
   renderer.draw(game);
-  const int scoreAreaY = kPanelBoxY + kNextPanelHeight + 8;
-  const SDL_Rect scoreArea{kRightPanelX, scoreAreaY, kRightPanelWidth,
-                           kCanvasHeight - scoreAreaY};
-  SC_CHECK(countColor(canvas, scoreArea, kText) > 50);     // values
-  SC_CHECK(countColor(canvas, scoreArea, kTextDim) > 50);  // labels
-  const SDL_Rect hintArea{kLeftPanelX, holdBox().y + holdBox().h + 24,
-                          kLeftPanelWidth, 160};
-  SC_CHECK(countColor(canvas, hintArea, kTextDim) > 50);
-  SC_CHECK(countColor(canvas, hintArea, kText) > 20);
-
-  // Every hint line measures the full label height, and no hint text leaves
-  // the left panel for the board (design review finding
-  // control-hint-glyph-scale).
-  const int hintBandY = holdBox().y + holdBox().h + 20;
-  const SDL_Rect hintBand{kLeftPanelX, hintBandY, kLeftPanelWidth,
-                          kCanvasHeight - hintBandY};
-  const std::vector<int> hintRuns = textRowRuns(canvas, hintBand);
-  SC_CHECK(hintRuns.size() == kHintRowCount + 1);  // the heading plus the rows
-  for (const int height : hintRuns) {
-    SC_CHECK(height == kGlyphRows * kHintScale);
+  const SDL_Rect leftColumn{kLeftPanelX, 0, kLeftPanelWidth, kCanvasHeight};
+  const std::vector<int> leftRuns = textRowRuns(canvas, leftColumn);
+  SC_CHECK(leftRuns.size() == 7);  // HOLD, SCORE, LINES, LEVEL, three values
+  for (const int height : leftRuns) {
+    SC_CHECK(height == kGlyphRows * kLabelScale);
   }
-  const SDL_Rect pastPanelEdge{
-      kLeftPanelX + kLeftPanelWidth, hintBandY,
-      kBoardOriginX - 1 - (kLeftPanelX + kLeftPanelWidth),
-      kCanvasHeight - hintBandY};
-  SC_CHECK(countColor(canvas, pastPanelEdge, kText) == 0);
-  SC_CHECK(countColor(canvas, pastPanelEdge, kTextDim) == 0);
+  SC_CHECK(countColor(canvas, leftColumn, kText) > 50);     // the values
+  SC_CHECK(countColor(canvas, leftColumn, kTextDim) > 50);  // the labels
+
+  // The right column carries the NEXT heading alone: the score fields moved
+  // to the left group, so no bright value text remains on that side.
+  const SDL_Rect rightColumn{kRightPanelX, 0, kRightPanelWidth, kCanvasHeight};
+  const std::vector<int> rightRuns = textRowRuns(canvas, rightColumn);
+  SC_CHECK(rightRuns.size() == 1);  // NEXT
+  SC_CHECK(countColor(canvas, rightColumn, kText) == 0);
+}
+
+// ---------------------------------------------------------------------------
+// The focused gameplay HUD of the approved composition (task T037, design
+// review finding focused-gameplay-hud). The numbers are restated here on
+// purpose like the board geometry above, so a constant that drifts from the
+// specification fails before any capture records it:
+//   * two 128 px columns at x=192..319 and x=640..767, each 24 px of quiet
+//     gap from the board frame at x=344..615;
+//   * statistics left (Hold, score, lines, level), five Next previews right;
+//   * nothing the HUD draws reaches the board, crosses a gap, or leaves the
+//     canvas - including the longest score and lines values the saturating
+//     counters can hold;
+//   * no permanent control legend below the statistics.
+// ---------------------------------------------------------------------------
+void run_focused_hud_checks() {
+  Canvas canvas = makeCanvas(kCanvasWidth, kCanvasHeight);
+  SC_CHECK(canvas.ok);
+  Renderer renderer(canvas.renderer);
+
+  // The geometry contract of the two groups.
+  SC_CHECK(kHudGap == 24);
+  SC_CHECK(kHudColumnWidth == 128);
+  SC_CHECK(kLeftPanelX == 192);
+  SC_CHECK(kLeftPanelWidth == 128);
+  SC_CHECK(kLeftPanelX + kLeftPanelWidth - 1 == 319);
+  SC_CHECK(kRightPanelX == 640);
+  SC_CHECK(kRightPanelWidth == 128);
+  SC_CHECK(kRightPanelX + kRightPanelWidth - 1 == 767);
+  SC_CHECK(boardFrame().x - (kLeftPanelX + kLeftPanelWidth) == kHudGap);
+  SC_CHECK(kRightPanelX - (boardFrame().x + boardFrame().w) == kHudGap);
+  // The two columns sit symmetric about the board center.
+  SC_CHECK(kLeftPanelX + kLeftPanelWidth / 2 == kCanvasWidth / 2 - 224);
+  SC_CHECK(kRightPanelX + kRightPanelWidth / 2 == kCanvasWidth / 2 + 224);
+
+  Game game;
+  game.start(4242);
+  playRounds(game, 6);
+  SC_CHECK(game.scene() == Scene::Playing);
+  SC_CHECK(game.score() > 0);
+  renderer.draw(game);
+
+  // The quiet gaps beside the frame hold nothing but background, full height:
+  // no HUD pixel reaches the board from either group.
+  const SDL_Rect leftGap{kLeftPanelX + kLeftPanelWidth, 0,
+                         boardFrame().x - (kLeftPanelX + kLeftPanelWidth),
+                         kCanvasHeight};
+  const SDL_Rect rightGap{boardFrame().x + boardFrame().w, 0,
+                          kRightPanelX - (boardFrame().x + boardFrame().w),
+                          kCanvasHeight};
+  SC_CHECK(leftGap.w == kHudGap);
+  SC_CHECK(rightGap.w == kHudGap);
+  SC_CHECK(areaIsOnly(canvas, leftGap, kBackground));
+  SC_CHECK(areaIsOnly(canvas, rightGap, kBackground));
+
+  // The outer regions of the canvas stay quiet as well.
+  const SDL_Rect outerLeft{0, 0, kLeftPanelX, kCanvasHeight};
+  const SDL_Rect outerRight{kRightPanelX + kRightPanelWidth, 0,
+                            kCanvasWidth - (kRightPanelX + kRightPanelWidth),
+                            kCanvasHeight};
+  SC_CHECK(areaIsOnly(canvas, outerLeft, kBackground));
+  SC_CHECK(areaIsOnly(canvas, outerRight, kBackground));
+
+  // The decorative panel outlines are gone: the column bands hold no frame
+  // or panel line color anywhere, so the only outline of the play scene is
+  // the board frame itself.
+  const SDL_Rect leftBand{kLeftPanelX, 0, kLeftPanelWidth, kCanvasHeight};
+  const SDL_Rect rightBand{kRightPanelX, 0, kRightPanelWidth, kCanvasHeight};
+  SC_CHECK(countColor(canvas, leftBand, kFrame) == 0);
+  SC_CHECK(countColor(canvas, rightBand, kFrame) == 0);
+
+  // The statistics group ends at the LEVEL value; below it the column holds
+  // no text pixel at all, which is the removed permanent control legend.
+  const int belowStats =
+      kStatsFirstLabelY + 2 * kStatsFieldStride + kGlyphRows * kLabelScale + 4 +
+      kGlyphRows * kValueScale + 8;
+  const SDL_Rect legendBand{kLeftPanelX, belowStats, kLeftPanelWidth,
+                            kCanvasHeight - belowStats};
+  SC_CHECK(countColor(canvas, legendBand, kText) == 0);
+  SC_CHECK(countColor(canvas, legendBand, kTextDim) == 0);
+
+  // The longest values the counters can hold: the peer sets the saturating
+  // maximum of score and lines, and both values must stay inside the column.
+  // At twenty digits a value drops one scale step (239 px at the value scale
+  // would cross into the board; 119 px at scale 1 fits with room), so every
+  // supported number renders whole.
+  stackfall::GameTestPeer::setScore(game, ~std::uint64_t{0});
+  stackfall::GameTestPeer::setLines(game, ~std::uint64_t{0});
+  SC_CHECK(game.level() == 20);
+  renderer.draw(game);
+  char text[24];
+  std::snprintf(text, sizeof(text), "%llu",
+                static_cast<unsigned long long>(~std::uint64_t{0}));
+  SC_CHECK(textWidth(kValueScale, text) > kLeftPanelWidth);
+  SC_CHECK(textWidth(1, text) <= kLeftPanelWidth);
+  SC_CHECK(renderer.statValueScale(text) == 1);
+  SC_CHECK(renderer.statValueScale("123456") == kValueScale);
+  // Text pixels of the long values stay inside the column: the gaps and the
+  // outer regions still hold pure background, and the column keeps text.
+  SC_CHECK(areaIsOnly(canvas, leftGap, kBackground));
+  SC_CHECK(areaIsOnly(canvas, outerLeft, kBackground));
+  const SDL_Rect statsColumn{kLeftPanelX, kStatsFirstLabelY, kLeftPanelWidth,
+                             3 * kStatsFieldStride};
+  SC_CHECK(countColor(canvas, statsColumn, kText) > 0);
 }
 
 void run_read_only_and_scaling_checks() {
@@ -982,11 +1491,13 @@ SDL_Rect menuRow(int y, int scale) {
 
 // Ends the round deterministically (see tests/test_screens.cpp): fill the
 // spawn area except the active piece's own cells and column 9, then hard-drop.
+// The spawn cells sit in rows 0 and 1 under the immediate-spawn rule of task
+// T029, so the band covers both.
 void forceGameOver(Game& game) {
   Board& board = stackfall::GameTestPeer::board(game);
   const std::array<Cell, kCellsPerPiece> cells =
       boardCells(game.activePiece());
-  for (int y = -kHiddenRows; y <= 0; ++y) {
+  for (int y = -kHiddenRows; y <= 1; ++y) {
     for (int x = 0; x < kBoardWidth - 1; ++x) {
       bool pieceCell = false;
       for (const Cell& cell : cells) {
@@ -1032,7 +1543,7 @@ void run_title_screen_checks() {
   // The menu: the selected item is bright with an accent marker left of its
   // text; the others are dim with no marker. Marker and text positions come
   // from the same constants the renderer uses.
-  const char* items[] = {"START GAME", "CONTROLS", "QUIT"};
+  const char* items[] = {"START GAME", "CONTROLS", "OPTIONS", "QUIT"};
   for (int index = 0; index < kTitleItemCount; ++index) {
     const int y = kTitleMenuY + index * kMenuItemHeight;
     const SDL_Rect row = menuRow(y, kMenuScale);
@@ -1132,6 +1643,180 @@ void run_controls_screen_checks() {
   SC_CHECK(game.scene() == Scene::Title);
 }
 
+// The options page of tasks T040 and T044: the heading, the six setting rows
+// with every value combination, the accent marker on the highlighted row, and
+// the footer band. The core moves the cursor alone; the values come from the
+// renderer settings, so all 160 combinations of the five toggles and the next
+// count are drawn, and the exact glyph count of the 5x7 table pins each row's
+// string - ON cannot stand in for OFF, and NEXT PIECES 3 cannot stand in for
+// NEXT PIECES 5.
+void run_options_screen_checks() {
+  Canvas canvas = makeCanvas(kCanvasWidth, kCanvasHeight);
+  SC_CHECK(canvas.ok);
+  Renderer renderer(canvas.renderer);
+  Game game;
+  game.openTitle(20261103);
+
+  // The defaults mirror a session that loaded no settings file: every toggle
+  // on, five Next previews, grayscale off (task T044).
+  SC_CHECK(kOptionsItemCount == 6);
+  SC_CHECK(renderer.soundOn() == true);
+  SC_CHECK(renderer.showGhost() == true);
+  SC_CHECK(renderer.showGrid() == true);
+  SC_CHECK(renderer.showHold() == true);
+  SC_CHECK(renderer.nextPreviews() == kPreviewCount);
+  SC_CHECK(renderer.grayscale() == false);
+
+  // Two downs from Start Game reach OPTIONS, and A opens the screen.
+  menuDown(game);
+  menuDown(game);
+  SC_CHECK(game.titleSelection() == 2);
+  TickInput select;
+  select.menu.selectPressed = true;
+  game.tick(select);
+  SC_CHECK(game.scene() == Scene::Options);
+  SC_CHECK(game.optionsSelection() == 0);  // SOUND is the opening row
+
+  // Plain background and a bright heading at the options constants.
+  renderer.draw(game);
+  SC_CHECK(sameColor(pixelAt(canvas, 5, 5), kBackground));
+  SC_CHECK(sameColor(pixelAt(canvas, kBoardOriginX + 3, kBoardOriginY + 3),
+                     kBackground));
+  const SDL_Rect heading{0, kOptionsHeadingY, kCanvasWidth,
+                         kGlyphRows * kOptionsHeadingScale};
+  SC_CHECK(countColor(canvas, heading, kText) > 400);
+
+  // Every value combination draws: each row reads its label plus the value of
+  // its renderer setting - ON or OFF for the five toggles, the digit for
+  // NEXT PIECES - and nothing else in a row band is bright or dim, so the
+  // exact glyph count pins the string.
+  for (int booleans = 0; booleans < 32; ++booleans) {
+    for (int next = 1; next <= kPreviewCount; ++next) {
+      renderer.setSoundOn((booleans & 1) != 0);
+      renderer.setShowGhost((booleans & 2) != 0);
+      renderer.setShowGrid((booleans & 4) != 0);
+      renderer.setShowHold((booleans & 8) != 0);
+      renderer.setGrayscale((booleans & 16) != 0);
+      renderer.setNextPreviews(next);
+      renderer.draw(game);
+      char nextRow[24];
+      std::snprintf(nextRow, sizeof(nextRow), "NEXT PIECES %d", next);
+      const char* rows[kOptionsItemCount] = {
+          (booleans & 1) ? "SOUND ON" : "SOUND OFF",
+          (booleans & 2) ? "GHOST ON" : "GHOST OFF",
+          (booleans & 4) ? "GRID ON" : "GRID OFF",
+          (booleans & 8) ? "HOLD ON" : "HOLD OFF",
+          nextRow,
+          (booleans & 16) ? "GRAYSCALE ON" : "GRAYSCALE OFF",
+      };
+      for (int index = 0; index < kOptionsItemCount; ++index) {
+        const int y = kOptionsMenuY + index * kMenuItemHeight;
+        const SDL_Rect row = menuRow(y, kMenuScale);
+        const int pixels =
+            glyphPixelCount(rows[index]) * kMenuScale * kMenuScale;
+        if (index == game.optionsSelection()) {
+          SC_CHECK(countColor(canvas, row, kText) == pixels);
+          SC_CHECK(countColor(canvas, row, kTextDim) == 0);
+        } else {
+          SC_CHECK(countColor(canvas, row, kTextDim) == pixels);
+          SC_CHECK(countColor(canvas, row, kText) == 0);
+          SC_CHECK(countColor(canvas, row, kAccent) == 0);
+        }
+      }
+    }
+  }
+
+  // Back to the defaults before the marker and navigation checks.
+  renderer.setSoundOn(true);
+  renderer.setShowGhost(true);
+  renderer.setShowGrid(true);
+  renderer.setShowHold(true);
+  renderer.setGrayscale(false);
+  renderer.setNextPreviews(kPreviewCount);
+
+  // The marker sits left of the selected row's text: bright at the opening
+  // SOUND row, gone from the row below it.
+  renderer.draw(game);
+  {
+    const int y = kOptionsMenuY;
+    const int textLeft =
+        kCanvasWidth / 2 - textWidth(kMenuScale, "SOUND ON") / 2;
+    const int markerX = textLeft - kMenuMarkerGap - kMenuMarkerSize;
+    const int markerY = y + (kGlyphRows * kMenuScale - kMenuMarkerSize) / 2;
+    SC_CHECK(areaIsOnly(canvas,
+                        SDL_Rect{markerX, markerY, kMenuMarkerSize,
+                                 kMenuMarkerSize},
+                        kAccent));
+    const SDL_Rect rowBelow = menuRow(y + kMenuItemHeight, kMenuScale);
+    SC_CHECK(countColor(canvas, rowBelow, kAccent) == 0);
+  }
+
+  // Five downs walk the cursor to the last row, and the marker follows: the
+  // first row goes dim and GRAYSCALE goes bright.
+  for (int step = 0; step < kOptionsItemCount - 1; ++step) {
+    menuDown(game);
+  }
+  SC_CHECK(game.optionsSelection() == kOptionsItemCount - 1);
+  renderer.draw(game);
+  SC_CHECK(countColor(canvas, menuRow(kOptionsMenuY, kMenuScale), kText) == 0);
+  SC_CHECK(countColor(canvas,
+                      menuRow(kOptionsMenuY +
+                                  (kOptionsItemCount - 1) * kMenuItemHeight,
+                              kMenuScale),
+                      kText) > 100);
+  // The sixth wrap down stays inside the screen: one more down wraps to the
+  // SOUND row, whose band turns bright again.
+  menuDown(game);
+  SC_CHECK(game.optionsSelection() == 0);
+  renderer.draw(game);
+  SC_CHECK(countColor(canvas, menuRow(kOptionsMenuY, kMenuScale), kText) > 100);
+
+  // The footer band holds one hint-scale line of the full label height and
+  // exactly the glyphs of the footer text, and every row and the footer sit
+  // inside the canvas with nothing clipped (task T044).
+  const SDL_Rect footerBand{0, kOptionsFooterY - 6, kCanvasWidth,
+                            kGlyphRows * kHintScale + 12};
+  const std::vector<int> footerRuns = textRowRuns(canvas, footerBand);
+  SC_CHECK(footerRuns.size() == 1);
+  SC_CHECK(footerRuns[0] == kGlyphRows * kHintScale);
+  SC_CHECK(countColor(canvas, footerBand, kTextDim) ==
+           glyphPixelCount("UP/DOWN CHOOSE - A CHANGE - B BACK") * kHintScale *
+               kHintScale);
+  SC_CHECK(kOptionsHeadingY + kGlyphRows * kOptionsHeadingScale <
+           kOptionsMenuY);
+  SC_CHECK(kOptionsMenuY + (kOptionsItemCount - 1) * kMenuItemHeight +
+               kGlyphRows * kMenuScale <
+           kOptionsFooterY);
+  SC_CHECK(kOptionsFooterY + kGlyphRows * kHintScale < kCanvasHeight);
+  // The last row's text and marker never reach the canvas edge: the widest
+  // row keeps its whole text and marker on the canvas.
+  {
+    const int lastY =
+        kOptionsMenuY + (kOptionsItemCount - 1) * kMenuItemHeight;
+    const int textLeft =
+        kCanvasWidth / 2 - textWidth(kMenuScale, "GRAYSCALE OFF") / 2;
+    SC_CHECK(textLeft - kMenuMarkerGap - kMenuMarkerSize >= 0);
+    SC_CHECK(textLeft + textWidth(kMenuScale, "GRAYSCALE OFF") <=
+             kCanvasWidth);
+    SC_CHECK(lastY + kGlyphRows * kMenuScale <= kCanvasHeight);
+  }
+
+  // B returns to the title with the cursor still on the OPTIONS item, so the
+  // four-item menu shows OPTIONS selected above a dim QUIT.
+  TickInput back;
+  back.menu.backPressed = true;
+  game.tick(back);
+  SC_CHECK(game.scene() == Scene::Title);
+  SC_CHECK(game.titleSelection() == 2);
+  renderer.draw(game);
+  SC_CHECK(countColor(canvas,
+                      menuRow(kTitleMenuY + 2 * kMenuItemHeight, kMenuScale),
+                      kText) > 100);
+  SC_CHECK(countColor(canvas,
+                      menuRow(kTitleMenuY + 3 * kMenuItemHeight, kMenuScale),
+                      kTextDim) > 100);
+}
+
 void run_pause_overlay_checks() {
   Canvas canvas = makeCanvas(kCanvasWidth, kCanvasHeight);
   SC_CHECK(canvas.ok);
@@ -1188,15 +1873,23 @@ void run_pause_overlay_checks() {
   SC_CHECK(sameColor(pixelAt(canvas, frameCornerX, frameCornerY), kFrame) ==
            false);
 
-  // The panel is an opaque card: its corner holds the exact panel fill.
+  // The panel is an opaque card that nests between the HUD columns: its
+  // corner holds the exact panel fill, and the columns beside it stay free
+  // of the panel fill, so the frozen statistics and previews remain visible
+  // around the modal (task T037).
   const SDL_Rect panel = pausePanel();
   SC_CHECK(sameColor(pixelAt(canvas, panel.x + 6, panel.y + 6), kPanelFill));
+  const SDL_Rect leftColumnBand{kLeftPanelX, 0, kLeftPanelWidth, kCanvasHeight};
+  const SDL_Rect rightColumnBand{kRightPanelX, 0, kRightPanelWidth,
+                                 kCanvasHeight};
+  SC_CHECK(countColor(canvas, leftColumnBand, kPanelFill) == 0);
+  SC_CHECK(countColor(canvas, rightColumnBand, kPanelFill) == 0);
 
-  // The heading, the three items, and the marker follow the layout constants.
+  // The heading, the four items, and the marker follow the layout constants.
   const SDL_Rect heading{panel.x, panel.y + kPauseHeadingOffsetY, panel.w,
                          kGlyphRows * kControlsHeadingScale};
   SC_CHECK(countColor(canvas, heading, kText) > 400);
-  const char* items[] = {"RESUME", "RESTART", "QUIT TO TITLE"};
+  const char* items[] = {"RESUME", "RESTART", "CONTROLS", "QUIT TO TITLE"};
   for (int index = 0; index < kPauseItemCount; ++index) {
     const int y = panel.y + kPauseMenuOffsetY + index * kMenuItemHeight;
     const SDL_Rect row = menuRow(y, kMenuScale);
@@ -1233,6 +1926,45 @@ void run_pause_overlay_checks() {
   const SDL_Color again = pixelAt(canvas, veiled.x, veiled.y);
   SC_CHECK(sameColor(again, after));
   SC_CHECK(game.scene() == Scene::Paused);
+
+  // The Controls item opens the mappings page over the frozen round: the
+  // same three columns of the title route, a footer that names the pause
+  // return, and a round that no tick of the visit touches (task T037).
+  menuDown(game);  // cursor lands on Controls
+  SC_CHECK(game.pauseSelection() == 2);
+  const std::uint64_t frozenTicks = game.tickCount();
+  const std::uint64_t frozenScore = game.score();
+  const auto frozenBoard = game.board().occupancy();
+  TickInput select;
+  select.menu.selectPressed = true;
+  game.tick(select);
+  SC_CHECK(game.scene() == Scene::PauseControls);
+  renderer.draw(game);
+  const SDL_Rect pauseControlsHeading{0, kControlsHeadingY, kCanvasWidth,
+                                      kGlyphRows * kControlsHeadingScale};
+  SC_CHECK(countColor(canvas, pauseControlsHeading, kText) > 500);
+  const SDL_Rect rows{kControlsGamepadX, kControlsFirstRowY,
+                      kCanvasWidth - kControlsGamepadX,
+                      kControlRowCount * kControlsRowHeight};
+  SC_CHECK(countColor(canvas, rows, kText) > 2000);
+  const SDL_Rect pauseControlsFooter = menuRow(kControlsFooterY, kLabelScale);
+  SC_CHECK(countColor(canvas, pauseControlsFooter, kText) ==
+           glyphPixelCount("A OR B BACK TO PAUSE") * kLabelScale * kLabelScale);
+  const std::vector<std::uint8_t> visitBefore = snapshotOf(game);
+  menuDown(game);  // the page ignores cursor moves
+  InputFrame wild = InputFrame::idle();
+  wild.hardDropPressed = true;
+  game.tick(wild);
+  SC_CHECK(game.scene() == Scene::PauseControls);
+  SC_CHECK(snapshotOf(game) == visitBefore);
+  TickInput back;
+  back.menu.backPressed = true;
+  game.tick(back);
+  SC_CHECK(game.scene() == Scene::Paused);
+  SC_CHECK(game.pauseSelection() == 2);
+  SC_CHECK(game.tickCount() == frozenTicks);
+  SC_CHECK(game.score() == frozenScore);
+  SC_CHECK(game.board().occupancy() == frozenBoard);
 }
 
 void run_gameover_overlay_checks() {
@@ -1323,12 +2055,16 @@ int main() {
   run_board_and_grid_checks();
   run_board_boundary_checks();
   run_cells_and_ghost_checks();
+  run_next_and_hold_checks();
+  run_grayscale_checks();
   run_preview_checks();
   run_text_checks();
+  run_focused_hud_checks();
   run_read_only_and_scaling_checks();
   run_letterbox_canvas_checks();
   run_title_screen_checks();
   run_controls_screen_checks();
+  run_options_screen_checks();
   run_pause_overlay_checks();
   run_gameover_overlay_checks();
 

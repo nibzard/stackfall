@@ -623,32 +623,241 @@ void testFailedWrites() {
 }
 
 // ---------------------------------------------------------------------------
-// The settings file of the sound toggle (task T013, specification section
-// 6.3). A damaged settings file may cost the preference, never the game: every
-// outcome except a valid `sound=off` leaves the sound on.
+// The settings file of the player preferences (tasks T013, T039, and T044,
+// specification section 6.3). A damaged settings file may cost the
+// preferences, never the game: every outcome except a valid value leaves each
+// preference at its default (sound, ghost, grid, and hold on, five previews,
+// grayscale off).
 // ---------------------------------------------------------------------------
 
+// True when `values` holds exactly the five expected preference states.
+bool valuesAre(const stackfall::SettingsValues& values, bool soundOn,
+               bool ghostOn, bool gridOn, bool holdOn, int nextPreviews,
+               bool grayscaleOn) {
+  return values.soundOn == soundOn && values.ghostOn == ghostOn &&
+         values.gridOn == gridOn && values.holdOn == holdOn &&
+         values.nextPreviews == nextPreviews &&
+         values.grayscaleOn == grayscaleOn;
+}
+
+// ---------------------------------------------------------------------------
+// The one shared bounded read of the two loads (task T046,
+// notes/refactor-review.md item 1). Whatever stops the read, both files
+// report the same status and recover to their own values: high score 0 for
+// the record, every preference at its default for the settings. Each parser
+// stays in its store, so a valid record and a valid settings file - legacy
+// settings included - still load through the shared path.
+// ---------------------------------------------------------------------------
+
+// Both stores rooted at `directory` report `expected` and keep their own
+// recovery values.
+void checkSharedLoadStatus(const std::string& directory,
+                           SaveStatus expected) {
+  const LoadResult record = HighScoreStore(directory).load();
+  SC_CHECK(record.status == expected);
+  SC_CHECK(record.highScore == 0);
+  SC_CHECK(!record.ok());
+  const stackfall::SettingsResult settings =
+      stackfall::SettingsStore(directory).load();
+  SC_CHECK(settings.status == expected);
+  SC_CHECK(valuesAre(settings, true, true, true, true, 5, false));
+}
+
+void testSharedFileLoading() {
+  // A store without a directory is off, alike for both files.
+  checkSharedLoadStatus(std::string(), SaveStatus::NoSaveDirectory);
+
+  // A fresh installation: no file yet, and nothing is created by looking.
+  {
+    TempDir dir;
+    checkSharedLoadStatus(dir.path(), SaveStatus::NotFound);
+    SC_CHECK(entryNames(dir.path()).empty());
+  }
+
+  // A directory that carries a file's name is not that file.
+  {
+    TempDir dir;
+    std::error_code ec;
+    std::filesystem::create_directories(
+        dir.path() + "/" + std::string(stackfall::kSettingsFileName), ec);
+    SC_CHECK(!ec);
+    // The settings name is a directory and the record name is missing, so
+    // each file reports its own condition from the one shared read.
+    const stackfall::SettingsResult settings =
+        stackfall::SettingsStore(dir.path()).load();
+    SC_CHECK(settings.status == SaveStatus::Invalid);
+    SC_CHECK(valuesAre(settings, true, true, true, true, 5, false));
+    SC_CHECK(HighScoreStore(dir.path()).load().status == SaveStatus::NotFound);
+    std::filesystem::create_directories(dir.path() + "/" + kSaveFileName, ec);
+    SC_CHECK(!ec);
+    checkSharedLoadStatus(dir.path(), SaveStatus::Invalid);
+  }
+
+  // A file the process cannot read exists but is invalid, not missing, and
+  // the read failure changes nothing on disk.
+  if (runningPrivileged()) {
+    std::printf("storage: skipping the unreadable file case (root)\n");
+  } else {
+    TempDir dir;
+    const std::string recordPath = dir.path() + "/" + kSaveFileName;
+    const std::string settingsPath =
+        dir.path() + "/" + std::string(stackfall::kSettingsFileName);
+    writeRawFile(recordPath, formatSaveFile(4242));
+    writeRawFile(settingsPath,
+                 stackfall::formatSettingsFile(stackfall::SettingsValues{}));
+    std::error_code ec;
+    std::filesystem::permissions(recordPath, std::filesystem::perms::owner_read,
+                                 std::filesystem::perm_options::remove, ec);
+    SC_CHECK(!ec);
+    std::filesystem::permissions(settingsPath,
+                                 std::filesystem::perms::owner_read,
+                                 std::filesystem::perm_options::remove, ec);
+    SC_CHECK(!ec);
+    checkSharedLoadStatus(dir.path(), SaveStatus::Invalid);
+    // Read access back, and both files load again through the same path.
+    std::filesystem::permissions(recordPath, std::filesystem::perms::owner_read,
+                                 std::filesystem::perm_options::add, ec);
+    SC_CHECK(!ec);
+    std::filesystem::permissions(settingsPath,
+                                 std::filesystem::perms::owner_read,
+                                 std::filesystem::perm_options::add, ec);
+    SC_CHECK(!ec);
+    const LoadResult record = HighScoreStore(dir.path()).load();
+    SC_CHECK(record.ok());
+    SC_CHECK(record.highScore == 4242);
+    const stackfall::SettingsResult settings =
+        stackfall::SettingsStore(dir.path()).load();
+    SC_CHECK(settings.ok());
+    SC_CHECK(valuesAre(settings, true, true, true, true, 5, false));
+  }
+
+  // A file above the size cap is invalid for both, without reading past it.
+  {
+    TempDir dir;
+    const std::string oversized(stackfall::kMaxSaveFileBytes + 1, 'x');
+    writeRawFile(dir.path() + "/" + kSaveFileName, oversized);
+    writeRawFile(dir.path() + "/" + std::string(stackfall::kSettingsFileName),
+                 oversized);
+    checkSharedLoadStatus(dir.path(), SaveStatus::Invalid);
+  }
+
+  // A good record, a good settings file, and the legacy settings files all
+  // load through the shared read, so sharing it changed no valid path.
+  {
+    TempDir dir;
+    const HighScoreStore recordStore(dir.path());
+    const stackfall::SettingsStore settingsStore(dir.path());
+    SC_CHECK(recordStore.save(777) == SaveStatus::Ok);
+    stackfall::SettingsValues values;
+    values.soundOn = false;
+    values.nextPreviews = 2;
+    SC_CHECK(settingsStore.save(values) == SaveStatus::Ok);
+    const LoadResult record = recordStore.load();
+    SC_CHECK(record.ok());
+    SC_CHECK(record.highScore == 777);
+    const stackfall::SettingsResult settings = settingsStore.load();
+    SC_CHECK(settings.ok());
+    SC_CHECK(valuesAre(settings, false, true, true, true, 2, false));
+
+    writeRawFile(settingsStore.filePath(), "version=1\nsound=off\n");
+    const stackfall::SettingsResult legacy =
+        stackfall::SettingsStore(dir.path()).load();
+    SC_CHECK(legacy.ok());
+    SC_CHECK(valuesAre(legacy, false, true, true, true, 5, false));
+    // The record beside the legacy settings is untouched by that read.
+    SC_CHECK(HighScoreStore(dir.path()).load().highScore == 777);
+  }
+}
+
 void testSettingsFormatAndParse() {
+  using stackfall::SettingsValues;
   using stackfall::formatSettingsFile;
+  using stackfall::kSettingsNextMax;
+  using stackfall::kSettingsNextMin;
   using stackfall::parseSettingsFile;
 
-  SC_CHECK(formatSettingsFile(true) == "version=1\nsound=on\n");
-  SC_CHECK(formatSettingsFile(false) == "version=1\nsound=off\n");
+  SC_CHECK(kSettingsNextMin == 1);
+  SC_CHECK(kSettingsNextMax == 5);
 
-  bool soundOn = false;
-  SC_CHECK(parseSettingsFile("version=1\nsound=on\n", &soundOn));
-  SC_CHECK(soundOn);
-  SC_CHECK(parseSettingsFile("version=1\nsound=off\n", &soundOn));
-  SC_CHECK(!soundOn);
-  // A parse that fails leaves the caller's value alone.
-  soundOn = true;
-  SC_CHECK(!parseSettingsFile("version=1\nsound=maybe\n", &soundOn));
-  SC_CHECK(soundOn);
+  // The canonical rendering of specification sections 6.3 and 9: one line per
+  // preference, grid, hold, next, and grayscale after the sound and ghost of
+  // the earlier eras (task T044).
+  SC_CHECK(formatSettingsFile(SettingsValues{}) ==
+           "version=1\nsound=on\nghost=on\ngrid=on\nhold=on\nnext=5\n"
+           "grayscale=off\n");
+  {
+    SettingsValues all;
+    all.soundOn = false;
+    all.ghostOn = false;
+    all.gridOn = false;
+    all.holdOn = false;
+    all.nextPreviews = 1;
+    all.grayscaleOn = true;
+    SC_CHECK(formatSettingsFile(all) ==
+             "version=1\nsound=off\nghost=off\ngrid=off\nhold=off\nnext=1\n"
+             "grayscale=on\n");
+  }
 
-  // Everything that is not one of the two canonical renderings is a damaged
-  // preference: a lost final newline, a padded or edited value, a wrong key, a
-  // future version, a second record, a carriage return, a NUL byte, or an
-  // empty file.
+  // Every canonical combination parses with the values it carries and
+  // renders back to exactly the same bytes: the five toggles (sound, ghost,
+  // grid, hold, grayscale) cross every next count 1..5.
+  for (int booleans = 0; booleans < 32; ++booleans) {
+    for (int next = kSettingsNextMin; next <= kSettingsNextMax; ++next) {
+      const SettingsValues written{(booleans & 1) != 0, (booleans & 2) != 0,
+                                   (booleans & 4) != 0, (booleans & 8) != 0,
+                                   next, (booleans & 16) != 0};
+      const std::string bytes = formatSettingsFile(written);
+      SettingsValues read{false, true, false, true, 3, true};  // sentinels
+      SC_CHECK(parseSettingsFile(bytes, &read));
+      SC_CHECK(valuesAre(read, written.soundOn, written.ghostOn,
+                         written.gridOn, written.holdOn, written.nextPreviews,
+                         written.grayscaleOn));
+      SC_CHECK(formatSettingsFile(read) == bytes);
+    }
+  }
+
+  // The four legacy three-line files of the sound-and-ghost era (T039) keep
+  // their saved values and receive the four new defaults (task T044).
+  {
+    SettingsValues read{false, false, false, false, 1, true};  // sentinels
+    SC_CHECK(parseSettingsFile("version=1\nsound=on\nghost=on\n", &read));
+    SC_CHECK(valuesAre(read, true, true, true, true, kSettingsNextMax, false));
+    SC_CHECK(parseSettingsFile("version=1\nsound=on\nghost=off\n", &read));
+    SC_CHECK(valuesAre(read, true, false, true, true, kSettingsNextMax, false));
+    SC_CHECK(parseSettingsFile("version=1\nsound=off\nghost=on\n", &read));
+    SC_CHECK(valuesAre(read, false, true, true, true, kSettingsNextMax, false));
+    SC_CHECK(parseSettingsFile("version=1\nsound=off\nghost=off\n", &read));
+    SC_CHECK(valuesAre(read, false, false, true, true, kSettingsNextMax,
+                       false));
+  }
+
+  // The two legacy two-line files of the sound-only era (T013) still parse,
+  // with the ghost on, so an upgrade never loses a saved sound choice.
+  {
+    SettingsValues read{false, false, false, false, 1, true};  // sentinels
+    SC_CHECK(parseSettingsFile("version=1\nsound=on\n", &read));
+    SC_CHECK(valuesAre(read, true, true, true, true, kSettingsNextMax, false));
+    SC_CHECK(parseSettingsFile("version=1\nsound=off\n", &read));
+    SC_CHECK(valuesAre(read, false, true, true, true, kSettingsNextMax, false));
+  }
+
+  // A parse that fails leaves the caller values untouched.
+  {
+    SettingsValues read{true, false, true, false, 2, true};  // sentinels
+    SC_CHECK(!parseSettingsFile("version=1\nsound=maybe\n", &read));
+    SC_CHECK(valuesAre(read, true, false, true, false, 2, true));
+    SC_CHECK(!parseSettingsFile(
+        "version=1\nsound=on\nghost=on\ngrid=on\nhold=on\nnext=9\n"
+        "grayscale=off\n",
+        &read));
+    SC_CHECK(valuesAre(read, true, false, true, false, 2, true));
+  }
+
+  // Everything that is not one of the readable renderings is a damaged
+  // preference: a lost final newline, a padded or edited value, a wrong or
+  // missing key, a future version, a doubled line, a carriage return, a NUL
+  // byte, or an empty file. The sound-era rejections stay, the ghost-era
+  // ones stay, and the four new lines carry their own.
   const char* damaged[] = {
       "",
       "version=1\nsound=on",
@@ -668,33 +877,129 @@ void testSettingsFormatAndParse() {
       "version=1\nsound=off\nsound=on\n",
       "version=1\r\nsound=off\r\n",
       "version=1\nsound=of",
+      // The ghost line's own damage, beside the sound rejections above.
+      "version=1\nsound=on\nghost=on",
+      "version=1\nsound=on\nghost=off",
+      "version=1\nsound=on\nghost=maybe\n",
+      "version=1\nsound=on\nghost=On\n",
+      "version=1\nsound=on\nghost=ON\n",
+      "version=1\nsound=on\nghost=1\n",
+      "version=1\nsound=on\nghost=true\n",
+      "version=1\nsound=on\nghost=off \n",
+      "version=1\nsound=on\nghost=\n",
+      "version=1\nsound=on\nghost=on\n\n",
+      "version=1\nsound=on\nghost=on\nghost=on\n",
+      "version=1\nsound=on\nsound=off\nghost=on\n",
+      "version=1\nghost=on\n",
+      "version=1\nghost=off\n",
+      "ghost=on\n",
+      "version=1\nsound=on\nhigh_score=5\n",
+      "version=1\r\nsound=on\r\nghost=on\r\n",
+      "version=2\nsound=on\nghost=off\n",
+      // The grid, hold, next, and grayscale lines of task T044: the same
+      // damage shapes the two earlier lines already reject, plus the count
+      // range of the next preference.
+      "version=1\nsound=on\nghost=on\ngrid=on\nhold=on\nnext=5\ngrayscale=off",
+      "version=1\nsound=on\nghost=on\ngrid=on\nhold=on\nnext=5\ngrayscale=off"
+      "\n\n",
+      "version=1\nsound=on\nghost=on\ngrid=on\nhold=on\nnext=5\ngrayscale=off"
+      "\ngrayscale=off\n",
+      "version=1\nsound=on\nghost=on\ngrid=maybe\nhold=on\nnext=5\n"
+      "grayscale=off\n",
+      "version=1\nsound=on\nghost=on\ngrid=On\nhold=on\nnext=5\n"
+      "grayscale=off\n",
+      "version=1\nsound=on\nghost=on\ngrid=on\ngrid=on\nhold=on\nnext=5\n"
+      "grayscale=off\n",
+      "version=1\nsound=on\nghost=on\ngrid=1\nhold=on\nnext=5\n"
+      "grayscale=off\n",
+      "version=1\nsound=on\nghost=on\ngrid=\nhold=on\nnext=5\n"
+      "grayscale=off\n",
+      "version=1\nsound=on\nghost=on\nhold=maybe\nnext=5\ngrayscale=off\n",
+      "version=1\nsound=on\nghost=on\ngrid=on\nhold=Off\nnext=5\n"
+      "grayscale=off\n",
+      "version=1\nsound=on\nghost=on\ngrid=on\nhold=true\nnext=5\n"
+      "grayscale=off\n",
+      "version=1\nsound=on\nghost=on\ngrid=on\nnext=maybe\ngrayscale=off\n",
+      "version=1\nsound=on\nghost=on\ngrid=on\nhold=on\nnext=0\n"
+      "grayscale=off\n",
+      "version=1\nsound=on\nghost=on\ngrid=on\nhold=on\nnext=6\n"
+      "grayscale=off\n",
+      "version=1\nsound=on\nghost=on\ngrid=on\nhold=on\nnext=05\n"
+      "grayscale=off\n",
+      "version=1\nsound=on\nghost=on\ngrid=on\nhold=on\nnext=5x\n"
+      "grayscale=off\n",
+      "version=1\nsound=on\nghost=on\ngrid=on\nhold=on\nnext=\n"
+      "grayscale=off\n",
+      "version=1\nsound=on\nghost=on\ngrid=on\nhold=on\nnext=5\n"
+      "grayscale=maybe\n",
+      "version=1\nsound=on\nghost=on\ngrid=on\nhold=on\nnext=5\n"
+      "grayscale=On\n",
+      "version=1\nsound=on\nghost=on\ngrid=on\nhold=on\nnext=5\n"
+      "grayscale=1\n",
+      "version=1\nsound=on\nghost=on\ngrid=on\nhold=on\nnext=5\n"
+      "grayscale=\n",
+      // Reordered, missing, and extra lines of the new form.
+      "version=1\ngrid=on\nsound=on\nghost=on\nhold=on\nnext=5\n"
+      "grayscale=off\n",
+      "version=1\nsound=on\nghost=on\ngrid=on\nhold=on\nnext=5\n",
+      "version=1\nsound=on\nghost=on\ngrid=on\nhold=on\ngrayscale=off\n",
+      "version=1\nsound=on\nghost=on\ngrid=on\nnext=5\ngrayscale=off\n",
+      "version=1\nsound=on\ngrid=on\nhold=on\nnext=5\ngrayscale=off\n",
+      "version=1\nsound=on\nghost=on\ngrid=on\nhold=on\nnext=5\n"
+      "grayscale=off\nhigh_score=5\n",
+      "version=1\r\nsound=on\r\nghost=on\r\ngrid=on\r\nhold=on\r\nnext=5\r\n"
+      "grayscale=off\r\n",
+      "version=2\nsound=on\nghost=on\ngrid=on\nhold=on\nnext=5\n"
+      "grayscale=off\n",
   };
-  for (const char* bytes : damaged) {
-    SC_CHECK(!parseSettingsFile(bytes, &soundOn));
+  {
+    SettingsValues read;  // any state; a rejection must not touch it
+    for (const char* bytes : damaged) {
+      SC_CHECK(!parseSettingsFile(bytes, &read));
+    }
   }
+  SC_CHECK(!parseSettingsFile(
+      std::string("version=1\nsound=on\nghost=on\ngrid=on\nhold=on\nnext=5\n"
+                  "grayscale=off\n\0",
+                  66),
+      nullptr));
   SC_CHECK(!parseSettingsFile(std::string("version=1\nsound=on\n\0", 20),
-                              &soundOn));
+                              nullptr));
+  SC_CHECK(!parseSettingsFile(
+      std::string("version=1\nsound=on\nghost=on\n\0", 29), nullptr));
   // The size cap of the record applies here too.
-  SC_CHECK(!parseSettingsFile(std::string(stackfall::kMaxSaveFileBytes + 1, 'a'),
-                              &soundOn));
+  SC_CHECK(!parseSettingsFile(
+      std::string(stackfall::kMaxSaveFileBytes + 1, 'a'), nullptr));
+  // A null out-pointer is allowed; the caller may only want the verdict.
+  SC_CHECK(parseSettingsFile(
+      "version=1\nsound=off\nghost=off\ngrid=off\nhold=off\nnext=1\n"
+      "grayscale=on\n",
+      nullptr));
+  SC_CHECK(!parseSettingsFile(
+      "version=1\nsound=off\nghost=off\ngrid=off\nhold=off\nnext=1\n"
+      "grayscale=on",
+      nullptr));
 }
 
 void testSettingsStores() {
   using stackfall::SettingsResult;
   using stackfall::SettingsStore;
+  using stackfall::SettingsValues;
 
-  // A default-constructed store has nothing to load, and the sound stays on.
+  // A default-constructed store has nothing to load, and every preference
+  // stays at its default.
   {
     const SettingsStore store;
     SC_CHECK(!store.hasDirectory());
     SC_CHECK(store.filePath().empty());
     const SettingsResult result = store.load();
     SC_CHECK(result.status == SaveStatus::NoSaveDirectory);
-    SC_CHECK(result.soundOn);
-    SC_CHECK(store.save(false) == SaveStatus::NoSaveDirectory);
+    SC_CHECK(valuesAre(result, true, true, true, true, 5, false));
+    SC_CHECK(store.save(SettingsValues{}) == SaveStatus::NoSaveDirectory);
   }
 
-  // A missing file is a fresh installation: sound on, status not found.
+  // A missing file is a fresh installation: every preference at its default,
+  // status not found.
   {
     TempDir dir;
     const SettingsStore store(dir.path());
@@ -702,22 +1007,99 @@ void testSettingsStores() {
                                      std::string(stackfall::kSettingsFileName));
     const SettingsResult result = store.load();
     SC_CHECK(result.status == SaveStatus::NotFound);
-    SC_CHECK(result.soundOn);
+    SC_CHECK(valuesAre(result, true, true, true, true, 5, false));
   }
 
-  // Both states round-trip through a second store, as a relaunch does.
+  // The preferences round-trip through a second store, as a relaunch does,
+  // and the file on disk is exactly the canonical form: one value changed at
+  // a time, then the whole set at once.
   {
     TempDir dir;
     const SettingsStore store(dir.path());
-    SC_CHECK(store.save(false) == SaveStatus::Ok);
+    SettingsValues values;
+    values.soundOn = false;
+    SC_CHECK(store.save(values) == SaveStatus::Ok);
+    SC_CHECK(readRawFile(store.filePath()) ==
+             "version=1\nsound=off\nghost=on\ngrid=on\nhold=on\nnext=5\n"
+             "grayscale=off\n");
     SettingsResult result = SettingsStore(dir.path()).load();
     SC_CHECK(result.ok());
-    SC_CHECK(!result.soundOn);
-    SC_CHECK(store.save(true) == SaveStatus::Ok);
+    SC_CHECK(valuesAre(result, false, true, true, true, 5, false));
+
+    values.ghostOn = false;
+    SC_CHECK(store.save(values) == SaveStatus::Ok);
+    values.gridOn = false;
+    SC_CHECK(store.save(values) == SaveStatus::Ok);
+    values.holdOn = false;
+    SC_CHECK(store.save(values) == SaveStatus::Ok);
+    values.nextPreviews = 2;
+    SC_CHECK(store.save(values) == SaveStatus::Ok);
+    values.grayscaleOn = true;
+    SC_CHECK(store.save(values) == SaveStatus::Ok);
     result = SettingsStore(dir.path()).load();
     SC_CHECK(result.ok());
-    SC_CHECK(result.soundOn);
+    SC_CHECK(valuesAre(result, false, false, false, false, 2, true));
+    SC_CHECK(readRawFile(store.filePath()) ==
+             "version=1\nsound=off\nghost=off\ngrid=off\nhold=off\nnext=2\n"
+             "grayscale=on\n");
+
+    values = SettingsValues{};
+    values.nextPreviews = 1;
+    SC_CHECK(store.save(values) == SaveStatus::Ok);
+    result = SettingsStore(dir.path()).load();
+    SC_CHECK(result.ok());
+    SC_CHECK(valuesAre(result, true, true, true, true, 1, false));
     SC_CHECK(entryNames(dir.path()).size() == 1);
+  }
+
+  // A legacy three-line file loads with its saved sound and ghost choices and
+  // the four new defaults (the acceptance case of task T044:
+  // version=1/sound=off/ghost=off), and the next save upgrades it to the
+  // current canonical form.
+  {
+    TempDir dir;
+    const SettingsStore store(dir.path());
+    writeRawFile(store.filePath(), "version=1\nsound=off\nghost=off\n");
+    SettingsResult result = store.load();
+    SC_CHECK(result.ok());
+    SC_CHECK(valuesAre(result, false, false, true, true, 5, false));
+    SC_CHECK(store.save(SettingsValues{}) == SaveStatus::Ok);
+    SC_CHECK(readRawFile(store.filePath()) ==
+             "version=1\nsound=on\nghost=on\ngrid=on\nhold=on\nnext=5\n"
+             "grayscale=off\n");
+    result = SettingsStore(dir.path()).load();
+    SC_CHECK(result.ok());
+    SC_CHECK(valuesAre(result, true, true, true, true, 5, false));
+
+    writeRawFile(store.filePath(), "version=1\nsound=on\nghost=off\n");
+    result = store.load();
+    SC_CHECK(result.ok());
+    SC_CHECK(valuesAre(result, true, false, true, true, 5, false));
+  }
+
+  // A legacy two-line file loads with its saved sound choice and the ghost on
+  // plus the four new defaults, and the next save upgrades it too.
+  {
+    TempDir dir;
+    const SettingsStore store(dir.path());
+    writeRawFile(store.filePath(), "version=1\nsound=off\n");
+    SettingsResult result = store.load();
+    SC_CHECK(result.ok());
+    SC_CHECK(valuesAre(result, false, true, true, true, 5, false));
+    SettingsValues kept = result;
+    kept.grayscaleOn = true;
+    SC_CHECK(store.save(kept) == SaveStatus::Ok);
+    SC_CHECK(readRawFile(store.filePath()) ==
+             "version=1\nsound=off\nghost=on\ngrid=on\nhold=on\nnext=5\n"
+             "grayscale=on\n");
+    result = SettingsStore(dir.path()).load();
+    SC_CHECK(result.ok());
+    SC_CHECK(valuesAre(result, false, true, true, true, 5, true));
+
+    writeRawFile(store.filePath(), "version=1\nsound=on\n");
+    result = store.load();
+    SC_CHECK(result.ok());
+    SC_CHECK(valuesAre(result, true, true, true, true, 5, false));
   }
 
   // The record and the settings live side by side in one save directory.
@@ -726,14 +1108,17 @@ void testSettingsStores() {
     const HighScoreStore record(dir.path());
     const SettingsStore settings(dir.path());
     SC_CHECK(record.save(1234) == SaveStatus::Ok);
-    SC_CHECK(settings.save(false) == SaveStatus::Ok);
+    SettingsValues values;
+    values.soundOn = false;
+    SC_CHECK(settings.save(values) == SaveStatus::Ok);
     const std::vector<std::string> names = entryNames(dir.path());
     SC_CHECK(names.size() == 2);
     SC_CHECK(std::find(names.begin(), names.end(), kSaveFileName) != names.end());
     SC_CHECK(std::find(names.begin(), names.end(),
                        stackfall::kSettingsFileName) != names.end());
     SC_CHECK(record.load().ok());
-    SC_CHECK(!SettingsStore(dir.path()).load().soundOn);
+    const SettingsResult both = SettingsStore(dir.path()).load();
+    SC_CHECK(valuesAre(both, false, true, true, true, 5, false));
   }
 
   // fromEnvironment() resolves the same directory the record store uses, so
@@ -743,15 +1128,19 @@ void testSettingsStores() {
     const EnvGuard saveDir(stackfall::kSaveDirEnv, dir.path());
     const SettingsStore store = SettingsStore::fromEnvironment();
     SC_CHECK(store.hasDirectory());
-    SC_CHECK(store.save(false) == SaveStatus::Ok);
+    SettingsValues values;
+    values.soundOn = false;
+    values.ghostOn = false;
+    SC_CHECK(store.save(values) == SaveStatus::Ok);
     const SettingsResult result = SettingsStore::fromEnvironment().load();
     SC_CHECK(result.ok());
-    SC_CHECK(!result.soundOn);
+    SC_CHECK(valuesAre(result, false, false, true, true, 5, false));
   }
 
-  // Damage of every kind keeps the sound on and never throws: text garbage, a
-  // foreign version, a partial file, a NUL byte, a binary blob, an oversized
-  // file, and a directory at the file's path.
+  // Damage of every kind keeps every preference at its default and never
+  // throws: text garbage, a foreign version, a partial file, a damaged
+  // preference value, a NUL byte, a binary blob, an oversized file, and a
+  // directory at the file's path.
   {
     TempDir dir;
     const SettingsStore store(dir.path());
@@ -760,6 +1149,14 @@ void testSettingsStores() {
         "hello",
         "version=2\nsound=off\n",
         "version=1\nsound=of",
+        "version=1\nsound=on\nghost=maybe\n",
+        "version=1\nsound=on\nghost=on\nghost=on\n",
+        "version=1\nghost=off\n",
+        "version=1\nsound=on\nghost=on\ngrid=on\nhold=on\nnext=5\n",
+        "version=1\nsound=on\nghost=on\ngrid=on\nhold=on\nnext=9\n"
+        "grayscale=off\n",
+        "version=1\nsound=on\nghost=on\ngrid=on\nhold=on\nnext=5\n"
+        "grayscale=off\ngrayscale=off\n",
         std::string("version=1\nsound=off\n\0extra", 23),
         std::string(64, '\x7f'),
         std::string(stackfall::kMaxSaveFileBytes + 1, 'x'),
@@ -768,15 +1165,15 @@ void testSettingsStores() {
       writeRawFile(store.filePath(), bytes);
       const SettingsResult result = store.load();
       SC_CHECK(result.status == SaveStatus::Invalid);
-      SC_CHECK(result.soundOn);
+      SC_CHECK(valuesAre(result, true, true, true, true, 5, false));
     }
     std::error_code ec;
     std::filesystem::create_directories(store.filePath(), ec);
     const SettingsResult result = store.load();
     SC_CHECK(result.status == SaveStatus::Invalid);
-    SC_CHECK(result.soundOn);
+    SC_CHECK(valuesAre(result, true, true, true, true, 5, false));
     // The next save repairs the file.
-    SC_CHECK(store.save(true) == SaveStatus::Ok);
+    SC_CHECK(store.save(SettingsValues{}) == SaveStatus::Ok);
     SC_CHECK(SettingsStore(dir.path()).load().ok());
   }
 }
@@ -793,7 +1190,9 @@ void run_storage_tests() {
   testCorruptAndPartialFiles();
   testDirectoryCreation();
   testFailedWrites();
-  std::printf("test_storage: settings file of the sound toggle\n");
+  std::printf("test_storage: settings file of the player preferences\n");
   testSettingsFormatAndParse();
   testSettingsStores();
+  std::printf("test_storage: shared bounded file loading\n");
+  testSharedFileLoading();
 }

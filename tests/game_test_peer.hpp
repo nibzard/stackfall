@@ -41,6 +41,10 @@ struct GameTestPeer {
     g.level_ = levelForLines(lines);
   }
 
+  // Sets the round score, so a renderer check can draw the longest values
+  // the saturating counter can hold (task T037).
+  static void setScore(Game& g, std::uint64_t score) { g.score_ = score; }
+
   // Sets the private tick counters of section 4.5 in one call, so the
   // regression suite can prove that the state hash folds them in.
   static void setTickCounters(Game& g, int gravityTimer, int groundedTicks,

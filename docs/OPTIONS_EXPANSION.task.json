@@ -1,0 +1,19 @@
+{
+  "id": "T050",
+  "title": "Add gameplay settings to the Options screen",
+  "priority": 2,
+  "details": "# Options screen expansion\n\nRequested on 2026-11-04.\n\nAdd the following settings to the existing Options screen. Keep the Sound\nand Ghost settings available. Use the existing keyboard and controller\nmenu controls.\n\n- **Grid:** On or Off. Show or hide the board grid. Default to On.\n- **Hold:** On or Off. Default to On. When Off, ignore all hold inputs and\n  hide the Hold preview. When On, keep the existing hold rules.\n- **Next pieces:** An integer from 1 through 5. Default to 5. Show exactly\n  that number of upcoming pieces, in queue order. Change only the visible\n  preview count; keep the randomizer and piece sequence unchanged.\n- **Grayscale:** On or Off. Default to Off. When On, render the play scene\n  in grayscale, including settled pieces, the active piece, the ghost,\n  Hold, and Next previews. Keep shapes, outlines, text, and contrast readable.\n  When Off, restore the normal colors.\n\nSave each preference when it changes. Restore the preferences on the next\nlaunch. Load older settings files without losing their Sound or Ghost\nvalues. Use the defaults above for missing new values. Follow the existing\nrecovery behavior for invalid settings files.\n\nFit all six settings and the navigation hints inside the 960 by 544 canvas.\nShow the current value for each setting. Allow the player to reach every\nrow with both keyboard and controller input. Selecting Next pieces cycles\nthrough 1, 2, 3, 4, 5, then 1.\n\n## Acceptance criteria\n\n1. Both input methods can change all four new settings and return to the\n   title screen. Existing Sound and Ghost behavior still works.\n2. Grid Off removes the grid. Grid On restores it without changing pieces.\n3. Hold Off prevents every mapped hold input from consuming or swapping a\n   piece. Hold On retains the existing once-per-piece restriction.\n4. Each Next pieces value shows exactly the selected number of previews.\n   The same seed and inputs produce the same piece sequence at every value.\n5. Grayscale On removes color from the play scene while retaining readable\n   pieces, previews, text, and the ghost. Off restores the normal palette.\n6. All preferences survive a restart. Legacy settings keep their saved\n   Sound and Ghost values and receive the new defaults.\n7. Automated checks cover menu input, persistence, hold behavior, preview\n   counts, and grayscale rendering. Update the specification and user\n   documentation to describe the settings. Relevant existing tests pass.\n\n## Project context\n\nUse `docs/SPEC.md` for the existing rules, menu behavior, rendering, and\npersistence requirements. Use `docs/AGENT_TESTING.md` for desktop checks.\nThis request extends the two-row Options screen described in the current\nspecification. Coordinate with pending preference refactoring where needed.\n",
+  "depends_on": [
+    "T041"
+  ],
+  "steps": [
+    "Implement Grid, Hold, Next pieces (1\u20135), and Grayscale settings.",
+    "Persist preferences and load legacy settings with defaults.",
+    "Update documentation and run menu, storage, gameplay, and rendering checks."
+  ],
+  "tags": [
+    "options",
+    "gameplay",
+    "user-request"
+  ]
+}

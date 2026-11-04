@@ -4,12 +4,14 @@
 // platform layer does: openTitle() opens a session and tick(TickInput) feeds
 // each tick both halves of the input, the menu edges and the gameplay frame.
 // Every screen, cursor, and transition of section 4.7 is checked without SDL:
-// TITLE (Start Game / Controls / Quit over the high score), CONTROLS, PLAYING,
-// the PAUSED overlay (Resume / Restart / Quit to Title with every counter
-// frozen exactly), and GAME_OVER (final values, record note, Play Again /
-// Title). The session seed stream and the screen determinism of specification
-// section 7 are checked here too, because the pinned replay hashes of the
-// regression suite cover tick(InputFrame) alone.
+// TITLE (Start Game / Controls / Options / Quit over the high score),
+// CONTROLS, OPTIONS (SOUND / GHOST / GRID / HOLD / NEXT PIECES / GRAYSCALE,
+// cursor only; the values are platform state), PLAYING, the PAUSED overlay
+// (Resume / Restart / Quit to Title with
+// every counter frozen exactly), and GAME_OVER (final values, record note,
+// Play Again / Title). The session seed stream and the screen determinism of
+// specification section 7 are checked here too, because the pinned replay
+// hashes of the regression suite cover tick(InputFrame) alone.
 
 #include <cstdint>
 
@@ -30,6 +32,7 @@ using stackfall::Game;
 using stackfall::GameTestPeer;
 using stackfall::InputFrame;
 using stackfall::MenuFrame;
+using stackfall::kOptionsItemCount;
 using stackfall::PieceId;
 using stackfall::Scene;
 using stackfall::TickInput;
@@ -103,13 +106,15 @@ InputFrame holdLeft() {
 // Ends the round deterministically from any piece position: the spawn area is
 // filled except the active piece's own cells and column 9, which keeps every
 // row incomplete so no clear rescues the board, and then the piece hard-drops.
-// The piece either locks in the hidden rows (lock-out) or lands visibly and
-// the next spawn is blocked (block-out); both end the round.
+// Under the immediate-spawn rule of task T029 the spawn cells sit in rows 0
+// and 1, so the band runs one row lower than the hidden rows. The piece
+// either locks in the hidden rows (lock-out) or lands somewhere below and the
+// next spawn is blocked (block-out); both end the round on that tick.
 void forceGameOver(Game& g) {
   Board& board = GameTestPeer::board(g);
   const std::array<Cell, stackfall::kCellsPerPiece> cells =
       stackfall::boardCells(g.activePiece());
-  for (int y = -stackfall::kHiddenRows; y <= 0; ++y) {
+  for (int y = -stackfall::kHiddenRows; y <= 1; ++y) {
     for (int x = 0; x < stackfall::kBoardWidth - 1; ++x) {
       bool pieceCell = false;
       for (const Cell& cell : cells) {
@@ -175,9 +180,13 @@ void test_title_navigation_wraps() {
   g.tick(session(menuDown()));
   SC_CHECK(g.titleSelection() == 2);
   g.tick(session(menuDown()));
+  SC_CHECK(g.titleSelection() == 3);
+  g.tick(session(menuDown()));
   SC_CHECK(g.titleSelection() == 0);  // wraps past Quit
   g.tick(session(menuUp()));
-  SC_CHECK(g.titleSelection() == 2);  // wraps back up
+  SC_CHECK(g.titleSelection() == 3);  // wraps back up
+  g.tick(session(menuUp()));
+  SC_CHECK(g.titleSelection() == 2);
   g.tick(session(menuUp()));
   SC_CHECK(g.titleSelection() == 1);
   g.tick(session(menuUp()));
@@ -213,7 +222,8 @@ void test_title_quit() {
   g.openTitle(1);
   g.tick(session(menuDown()));
   g.tick(session(menuDown()));
-  SC_CHECK(g.titleSelection() == 2);
+  g.tick(session(menuDown()));
+  SC_CHECK(g.titleSelection() == 3);  // Quit sits below Options
   g.tick(session(menuSelect()));
   SC_CHECK(g.quitRequested());
   SC_CHECK(g.scene() == Scene::Title);  // the exit itself is the platform's
@@ -221,6 +231,57 @@ void test_title_quit() {
   // A fresh session clears the request.
   g.openTitle(2);
   SC_CHECK(!g.quitRequested());
+}
+
+void test_title_options_round_trip() {
+  Game g;
+  g.openTitle(1);
+  g.tick(session(menuDown()));
+  g.tick(session(menuDown()));
+  SC_CHECK(g.titleSelection() == 2);  // OPTIONS sits between Controls and Quit
+  g.tick(session(menuSelect()));
+  SC_CHECK(g.scene() == Scene::Options);
+  SC_CHECK(g.optionsSelection() == 0);  // SOUND is the opening row
+
+  // The screen takes no gameplay input; only the menu half arrives.
+  g.tick(gameplay(pressPause()));
+  SC_CHECK(g.scene() == Scene::Options);
+
+  // The cursor walks every one of the six rows and wraps at both ends: down
+  // reaches GHOST, GRID, HOLD, NEXT PIECES, and GRAYSCALE, down again wraps
+  // back to SOUND, and up wraps from SOUND straight to GRAYSCALE (task T044).
+  for (int row = 1; row < kOptionsItemCount; ++row) {
+    g.tick(session(menuDown()));
+    SC_CHECK(g.optionsSelection() == row);
+  }
+  SC_CHECK(kOptionsItemCount == 6);
+  g.tick(session(menuDown()));
+  SC_CHECK(g.optionsSelection() == 0);  // wraps past GRAYSCALE
+  g.tick(session(menuUp()));
+  SC_CHECK(g.optionsSelection() == 5);  // wraps back up past SOUND
+
+  // Select changes nothing in the core: the row values are platform state
+  // (specification section 7), so the screen stays put and the cursor holds.
+  g.tick(session(menuSelect()));
+  SC_CHECK(g.scene() == Scene::Options);
+  SC_CHECK(g.optionsSelection() == 5);
+
+  // Back returns to the title with the cursor still on the OPTIONS item, so
+  // A reopens the screen.
+  g.tick(session(menuBack()));
+  SC_CHECK(g.scene() == Scene::Title);
+  SC_CHECK(g.titleSelection() == 2);
+  g.tick(session(menuSelect()));
+  SC_CHECK(g.scene() == Scene::Options);
+  SC_CHECK(g.optionsSelection() == 5);  // the row survived the round trip
+
+  // A fresh session opens the screen on the SOUND row again.
+  g.openTitle(2);
+  g.tick(session(menuDown()));
+  g.tick(session(menuDown()));
+  g.tick(session(menuSelect()));
+  SC_CHECK(g.scene() == Scene::Options);
+  SC_CHECK(g.optionsSelection() == 0);
 }
 
 // ---------------------------------------------------------------------------
@@ -310,7 +371,8 @@ void test_pause_overlay_restart_and_quit_to_title() {
   // Quit to Title abandons the round; the next Start does not replay it.
   g.tick(gameplay(pressPause()));
   g.tick(session(menuDown()));
-  g.tick(session(menuDown()));  // cursor on Quit to Title
+  g.tick(session(menuDown()));
+  g.tick(session(menuDown()));  // cursor on Quit to Title, past Controls
   g.tick(session(menuSelect()));
   SC_CHECK(g.scene() == Scene::Title);
   SC_CHECK(!g.hasActivePiece());
@@ -320,6 +382,66 @@ void test_pause_overlay_restart_and_quit_to_title() {
   SC_CHECK(g.scene() == Scene::Playing);
   SC_CHECK(g.seed() != 9);
   SC_CHECK(g.seed() != secondSeed);
+}
+
+// The pause overlay's Controls item opens the mappings screen over the frozen
+// round and back returns to the same overlay without advancing a counter or
+// losing state (task T037).
+void test_pause_controls_round_trip() {
+  Game g;
+  g.openTitle(9);
+  g.tick(session(menuSelect()));  // Start Game
+  g.tick(gameplay(holdDown()));
+  g.tick(gameplay(holdDown()));
+  const std::uint64_t ticksBefore = g.tickCount();
+  const std::uint64_t scoreBefore = g.score();
+  const auto boardBefore = g.board().occupancy();
+
+  g.tick(gameplay(pressPause()));
+  SC_CHECK(g.scene() == Scene::Paused);
+  g.tick(session(menuDown()));
+  g.tick(session(menuDown()));  // cursor on Controls
+  SC_CHECK(g.pauseSelection() == 2);
+  g.tick(session(menuSelect()));
+  SC_CHECK(g.scene() == Scene::PauseControls);
+
+  // The mappings screen ignores gameplay input and cursor moves; the round
+  // below every one of its ticks stays frozen exactly.
+  InputFrame wild = holdDown();
+  wild.hardDropPressed = true;
+  wild.holdPressed = true;
+  g.tick(gameplay(wild));
+  g.tick(session(menuDown()));
+  SC_CHECK(g.scene() == Scene::PauseControls);
+  SC_CHECK(g.pauseSelection() == 2);  // the pause cursor waits on Controls
+  SC_CHECK(g.tickCount() == ticksBefore);
+  SC_CHECK(g.score() == scoreBefore);
+  SC_CHECK(g.board().occupancy() == boardBefore);
+
+  // Back returns to the overlay on the same item, still frozen, and a second
+  // select reopens the mappings screen.
+  g.tick(session(menuBack()));
+  SC_CHECK(g.scene() == Scene::Paused);
+  SC_CHECK(g.pauseSelection() == 2);
+  SC_CHECK(g.tickCount() == ticksBefore);
+  g.tick(session(menuSelect()));
+  SC_CHECK(g.scene() == Scene::PauseControls);
+  g.tick(session(menuSelect()));  // confirm returns as well
+  SC_CHECK(g.scene() == Scene::Paused);
+
+  // One more down lands on Quit to Title, so the four-item order holds.
+  g.tick(session(menuDown()));
+  SC_CHECK(g.pauseSelection() == 3);
+
+  // Back on the overlay resumes the frozen round, which then continues.
+  g.tick(session(menuUp()));
+  g.tick(session(menuUp()));
+  g.tick(session(menuUp()));  // back to Resume
+  g.tick(session(menuBack()));
+  SC_CHECK(g.scene() == Scene::Playing);
+  g.tick(gameplay(InputFrame::idle()));
+  SC_CHECK(g.tickCount() == ticksBefore + 1);
+  SC_CHECK(g.score() == scoreBefore);
 }
 
 void test_restart_with_a_held_direction() {
@@ -504,8 +626,10 @@ void run_screens_tests() {
   test_title_navigation_wraps();
   test_title_controls_round_trip();
   test_title_quit();
+  test_title_options_round_trip();
   test_pause_overlay_resume_paths();
   test_pause_overlay_restart_and_quit_to_title();
+  test_pause_controls_round_trip();
   test_restart_with_a_held_direction();
   test_game_over_menu_and_record();
   test_high_score_loaded_from_outside();

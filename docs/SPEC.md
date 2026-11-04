@@ -3,8 +3,14 @@
 **Version:** 1.0 (implementation baseline)  
 **Target:** Anbernic RG503 / ROCKNIX / PortMaster  
 **Category:** Original single-player tetromino block-stacking game  
-**Status:** M3 in progress; the platform layer, the rules core, the desktop build,  
-high-score persistence, and synthesized sound are integrated and tested headless
+**Status:** M4 in progress; the platform layer, the rules core, the desktop build,  
+high-score persistence, synthesized sound, the options screen, the desktop  
+verification passes (harness, play and design reviews, stability, performance,  
+the 27-px board layout, and the focused gameplay HUD), and the pause route to  
+the controls screen are integrated and tested headless; the M3 desktop gate  
+passed (T015), the AArch64 binary builds in the PortMaster-aligned environment  
+with hash parity (T016), and the PortMaster launcher and install layout are  
+written and checked (T017); device validation and release packaging remain
 
 Development runs unattended with AI coding agents. Agents run all available
 software checks and inspect the desktop game throughout development. Defer
@@ -78,7 +84,7 @@ IIII   .OO.   TTT.   SS..   .ZZ.   JJJ.   LLL.
 ```
 
 - Spawn horizontally centered at matrix `originX=3`. This places the I at columns 3..6 and O at 4..5.
-- Spawn such that the topmost occupied cell has `y=-1`; for the I above, matrix origin is `y=-2` because its first occupied row is local row 1; all other pieces begin at `originY=-1`.
+- Spawn such that the topmost occupied cell is visible at row `y=0`. The I above first occupies its local row 1, so its matrix origin is `y=-1`; all other pieces begin at `originY=0`. Every piece is on screen the tick it appears; no gravity tick is needed to reveal it. Approved 2026-11-03 (task T029; see `notes/stackfall-visible-spawn-decision-2026-11-03.md`).
 - A piece is *active*, not written to `occupancy`, until it locks.
 - A move or rotation is valid only if every occupied candidate cell is inside the 10 columns and `y=-2..19` and does not intersect a settled occupancy bit. Reject otherwise, leaving the piece unchanged.
 - Preview and ghost are render-only representations of active/queued pieces.
@@ -108,6 +114,7 @@ All values are in **60 Hz simulation ticks** and are not dependent on render FPS
 | Initial move on D-pad/key press | Immediately on next tick |
 | Delayed auto-shift (DAS) | 10 ticks before horizontal repeating |
 | Auto-repeat rate (ARR) | 2 ticks between repeated horizontal steps |
+| Held direction across a lock | Carries with its DAS/ARR charge into the piece the lock spawns: a charged carry slides that piece by ARR with no new press, within two ticks of spawn; a fresh press or a reversal still restarts the charge, and both directions held park it |
 | Soft drop | 1 attempted cell per tick while held (takes priority over natural gravity) |
 | Hard drop | Move to lowest valid y and lock instantly |
 | Lock delay | 30 consecutive grounded ticks before lock |
@@ -124,7 +131,7 @@ Ticks: 48 43 38 33 28 23 18 13  8  6  5  5  4  4  3  3  2  2  1  1
 - Gravity timer increments on unpaused ticks without soft drop. When its threshold is reached, attempt one downward cell and reset the gravity timer. When soft-drop is held, attempt one downward cell per tick and reset natural gravity timer; award manual-drop points only on successful downward movement.
 - Grounded means a one-cell downward move is invalid. Grounded ticks accrue while grounded. A successful lateral move/rotation made while grounded may reset the lock timer, up to 15 times per active piece; a valid move/rotation that becomes airborne sets grounded ticks to zero but does not replenish the reset budget. Failed inputs never reset it.
 - Gravity blocked at the bottom does not instantly lock: only hard drop or expiry of lock delay does. Lock commits the four active cells to the board, clears rows, updates score and level, then spawns the next piece and resets the per-piece hold restriction.
-- If the just-locked piece has any occupied cell in a hidden row (`y<0`), game ends due to **lock-out**; no new piece spawns. This is a deliberate, simple v1 rule.
+- If the just-locked piece has any occupied cell in a hidden row (`y<0`), game ends due to **lock-out**; no new piece spawns. This is a deliberate, simple v1 rule. Because every spawn puts its top cells at row 0, a lock-out needs an upward SRS kick (for example the T `0→R` kick of `-1,-1`) to lift a cell into a hidden row; a plain spawn followed by drops can never lock out.
 
 ### 4.6 Clearing and scoring
 
@@ -154,11 +161,18 @@ BOOT -> TITLE -> PLAYING -> GAME_OVER -> TITLE
                 PAUSED
 ```
 
-- **TITLE:** Start Game / Controls / Quit; display saved high score.
+- **TITLE:** Start Game / Controls / Options / Quit; display saved high score.
 - **CONTROLS:** display mappings, confirm/back to title.
+- **OPTIONS:** six rows, SOUND, GHOST, GRID, HOLD, NEXT PIECES, and GRAYSCALE.
+  Menu up/down moves the row and wraps at both ends, select changes that row's
+  value - ON or OFF, or the count 1, 2, 3, 4, 5 that cycles back to 1 for NEXT
+  PIECES - and back returns to the title with the cursor still on Options.
+  Each row shows its current value. All six preferences persist in the
+  settings file; see sections 6.3 and 9.
 - **PLAYING:** game logic updates, piece input is active.
-- **PAUSED:** overlay with Resume / Restart / Quit to Title; entire game state and clocks remain frozen. Restart begins a fresh seeded game; Quit to Title abandons the current round.
+- **PAUSED:** overlay with Resume / Restart / Controls / Quit to Title; entire game state and clocks remain frozen. Controls opens the mappings screen over the frozen round, and confirm or back returns to the overlay on the same item without moving a counter; Restart begins a fresh seeded game; Quit to Title abandons the current round.
 - **GAME_OVER:** final score, total lines, level, new-record indication, Play Again / Title. Save the high score when it improves.
+- **Record persistence timing:** the platform layer loads the saved record before the title screen draws it, saves it the moment a running score passes the stored best, and saves it at game over when the round improves it. Between rounds only - at game over, Quit to Title, or Restart - the best persisted record returns to the session high score, so the title screen and Play Again compare against the best so far, while a running round always compares against the record it began with and the new-record indication never moves mid-round. See section 9 for the write.
 - **EXIT:** cleanly stop audio, controller, renderer, SDL subsystems; return to ROCKNIX cleanly.
 
 ## 5. Controls
@@ -180,6 +194,7 @@ SDL2 GameController mapping must be loaded from the PortMaster environment (`SDL
 
 - D-pad left+right held simultaneously causes no horizontal movement. Pressing a new opposite direction resets DAS/ARR state and moves immediately if the opposite key is no longer down.
 - Rotation, hold, hard drop, pause and menu actions are **edge-triggered**. Holding them does not fire repeatedly; horizontal movement uses the tick-based repeat system.
+- The options screen uses the same menu edges and adds no key bindings: menu up/down moves its six rows, select changes the highlighted value, and back returns to the title. GRID, NEXT PIECES, and GRAYSCALE change no input handling at all. HOLD off makes the platform layer drop every mapped hold edge before the round sees it, so no hold swap happens and no hold lock is spent; HOLD on leaves the once-per-lock rule of section 4.3 untouched.
 - Input processing order within a gameplay tick: pause command; hold (if used, ignore other gameplay actions this tick); rotation; horizontal move/repeat; hard drop (immediately end piece actions for tick); otherwise soft drop or natural gravity; then ground/lock bookkeeping. Process SDL events before simulation, and consume press edges at most once even when the main loop catches up multiple simulation ticks.
 - Let PortMaster handle its platform-wide exit chord; do not capture or override it. Keyboard and gamepad disconnection must not crash the game.
 
@@ -190,24 +205,49 @@ SDL2 GameController mapping must be loaded from the PortMaster environment (`SDL
 - Logical canvas: 960 × 544. Use `SDL_RenderSetLogicalSize` or equivalent letterboxing to handle a non-native desktop window.
 - Board cell: **27 × 27 logical pixels**. The 10 × 20 field is `270 × 540`, from **x=345..614**, **y=2..541**, centered on the canvas.
 - Board frame: one-pixel rectangular outline around the field at **x=344..615**, **y=1..542**, so nothing clips on the canvas. No texture, no image.
-- Left panel: Hold preview and control hints in approx. x=52..324.
-- Right panel: Next five pieces plus score, lines and level in approx. x=630..910.
+- The focused gameplay HUD (approved 2026-11-03, task T037) holds two narrow
+  columns beside the board, each anchored to the near board edge with about
+  **24 pixels of quiet gap**: the **left column (x=192..319)** carries Hold,
+  score, lines, and level; the **right column (x=640..767)** carries the Next
+  previews, five by default and exactly the NEXT PIECES count of section 4.7
+  when the player lowers it. The suggested 128-pixel column width is a
+  starting point,
+  not a clipping rule: content may adjust it while nothing the HUD draws
+  reaches the board, crosses a gap, or leaves the canvas. A statistics value
+  too wide for the column at the value scale draws one scale smaller, so the
+  longest value the counters can hold still fits. The outer regions of the
+  canvas stay quiet, and the pause panel nests between the two columns so
+  the frozen round stays readable while paused.
+- Ordinary gameplay draws **no permanent control legend**. The complete
+  mappings live on the controls screen, which the title and the pause
+  overlay both reach; the title, pause, and game-over footer hints stay at
+  the 14-pixel label glyph height.
 - Full visible grid always fits without scrolling; preview shapes are drawn from the same shape cell coordinates at smaller cell size (e.g. 15 px).
 
 ### 6.2 Draw order
 
 1. Solid background color, then faint grid lines (optional user setting).
 2. Board border and settled cells, using their stored piece colors.
-3. Ghost (same piece outline or dim fill), only when below the live piece.
+3. Ghost (same piece outline or dim fill), only when below the live piece. The player switches it on the options screen; it is on by default.
 4. Active piece.
-5. Hold and Next previews.
-6. Score/line/level fields, title, overlays, menus.
+5. Hold and Next previews. The first Next preview draws at full color and the
+   later four quieter, so the piece that lands next stays readable while the
+   far queue stays identifiable. Neither preview column carries a decorative
+   outline; the board frame is the only outline of the play scene. Three
+   player preferences gate this step (task T044): HOLD off hides the whole
+   Hold group, NEXT PIECES draws exactly its count of previews in queue order
+   without touching the queue or the randomizer behind it, and GRAYSCALE on
+   draws the pieces of the whole play scene - settled cells, the active
+   piece, the ghost, and both preview groups - in seven distinct grays while
+   the text, the outlines, and the ghost's 3:1 contrast keep their color-mode
+   readability; GRAYSCALE off restores the normal palette exactly.
+6. Score/line/level fields of the left column, title, overlays, menus.
 
 All geometry is generated at runtime from integer coordinates, color values and piece masks. No calls to texture/image loading are allowed. UI glyphs use a source-defined **5×7 integer bitmask font**, rendered by filled rectangles (so there are no font files). Draw from a seven-color custom palette with high-contrast outlines, and include a monochrome fallback mode in a later release if needed.
 
 ### 6.3 Sound
 
-Sound is secondary to device compatibility. If enabled, synthesize short PCM tones from mathematical waveforms at initialization for rotation, move/land, clear, four-line clear, and game-over. Do not use `.wav` or `.ogg` assets. A missing audio device must not prevent the game from starting. Add an on/off toggle; initialize mute state from a settings file if that feature is implemented. **Sound may be disabled for an early device bring-up, but a complete v1 release should include basic synthesized cues.**
+Sound is secondary to device compatibility. If enabled, synthesize short PCM tones from mathematical waveforms at initialization for rotation, move/land, clear, four-line clear, and game-over. Do not use `.wav` or `.ogg` assets. A missing audio device must not prevent the game from starting. The options screen carries the on/off toggle, and the settings file of section 9 initializes all six preferences: sound, ghost, grid, hold, next preview count, and grayscale. **Sound may be disabled for an early device bring-up, but a complete v1 release should include basic synthesized cues.**
 
 ## 7. Deterministic simulation contract
 
@@ -286,7 +326,8 @@ public:
 
 - In PortMaster, launcher creates `$GAMEDIR/conf`, exports `XDG_DATA_HOME="$GAMEDIR/conf"`, and optionally passes an explicit save-directory environment variable to avoid ambiguity.
 - High score file uses UTF-8 ASCII, a version field and a decimal score. Example: `version=1\nhigh_score=12345\n`. No JSON library required.
-- On successful new record, write a temporary file in the same directory, flush/close, then rename into place. Detect invalid/partial files and safely recover to high score 0; do not crash.
+- The record saves at two moments: the moment a running round's score passes the stored best, and at game over when the round improves it. Every save writes a temporary file in the same directory, flushes and closes it, then renames it into place, so each save is complete on disk before the next tick runs - an abandoned round, a closed window, or a power loss keeps every point up to the piece in play instead of losing a finished best. Detect invalid/partial files and safely recover to high score 0; do not crash.
+- The settings file of the player preferences sits beside the record as `settings.dat` and carries all six values with the same atomic write: `version=1\nsound=on\nghost=on\ngrid=on\nhold=on\nnext=5\ngrayscale=off\n`. The keys are `sound`, `ghost`, `grid`, and `hold` with `on` or `off`, `next` with `1` through `5`, and `grayscale` with `on` or `off`. The platform layer writes the whole file each time a preference changes and applies all six at startup; a read never rewrites it. A missing, partial, or damaged file recovers to every preference at its default (sound, ghost, grid, and hold on, five previews, grayscale off), so a broken file costs only the settings. A file from before a line existed parses with that preference at its default while keeping its saved sound and ghost values: the two-line file of the sound-only era (`version=1` and `sound`) and the three-line file of the sound-and-ghost era (`version=1`, `sound`, and `ghost`) both load that way, and the next save upgrades the file to the six-line form without losing either saved value.
 - Log startup version, architecture, SDL init failures, selected renderer and controller, any save failure and orderly shutdown to `log.txt` through launcher redirection.
 - If controller is absent, keep keyboard playable. If accelerated renderer creation fails, try a basic SDL renderer; if all renderer creation fails, print an actionable error and terminate cleanly.
 - No network permission required, and no telemetry.
@@ -323,8 +364,8 @@ Official environment guide: https://portmaster.games/build-environments.html
     └── log.txt                # created at runtime
 ```
 
-- Build a launcher from the **current** official PortMaster template; discover `controlfolder`, `source control.txt`, source CFW modifier if present, call `get_controls`, use `/$directory/ports/stackfall` for the game folder, export `SDL_GAMECONTROLLERCONFIG="$sdl_controllerconfig"`, set save and library paths, call `pm_platform_helper` on the executable, run it, and call `pm_finish` afterward.
-- The PortMaster default exit chord may rely on a background `gptokeyb` process even when SDL input is native. Launch it in exit-hotkey-only mode as appropriate to the installed version and test that it exits/cleans up. Avoid keyboard mapping injection when direct SDL controller input works.
+- Build a launcher from the **current** official PortMaster template; discover `controlfolder`, `source control.txt`, source CFW modifier if present, call `get_controls`, use `/$directory/ports/stackfall` for the game folder, export `SDL_GAMECONTROLLERCONFIG="$sdl_controllerconfig"`, set save and library paths, call `pm_platform_helper` on the executable, run it, and call `pm_finish` afterward. The launcher is `portmaster/Stackfall.sh`; `tools/portmaster/install-tree.sh` stages the layout above from a built binary.
+- The PortMaster default exit chord may rely on a background `gptokeyb` process even when SDL input is native. Launch it in exit-hotkey-only mode as appropriate to the installed version and test that it exits/cleans up. Avoid keyboard mapping injection when direct SDL controller input works. Implemented as: the launcher starts `gptokeyb` with the process name and no mapping file, so it watches the chord and injects no keys, and only when the installed PortMaster defines `$GPTOKEYB` and ships its `gptokeyb` binary; `pm_finish` cleans it up. Confirm this on the device at final acceptance.
 - Launch from the ROCKNIX Ports menu, test controls, leave/reenter the game, and review `stackfall/log.txt`.
 
 Official packaging guide: https://portmaster.games/packaging.html
@@ -332,6 +373,41 @@ Official packaging guide: https://portmaster.games/packaging.html
 ### 10.4 Distributable PortMaster archive
 
 For publishing, use the current PortMaster directory structure and add `port.json`, `README.md`, `gameinfo.xml`, required 4:3 gameplay `screenshot.png`, any licenses and the actual native executable. The packaging metadata is **not required for early local binary smoke tests** but is required for a PortMaster-ready public release.
+
+The release archive is `stackfall.zip`, assembled by `tools/portmaster/package.sh`
+from the ARM64 binary, the package sources in `portmaster/`, and a captured
+screenshot. Its entry list follows the current PortMaster build system, which
+places the launch script and the game folder at the archive root and the
+metadata the installer reads inside the game folder:
+
+```text
+stackfall.zip
+├── Stackfall.sh              <- portmaster/Stackfall.sh
+└── stackfall/
+    ├── stackfall.aarch64     <- tools/arm64/build-arm64.sh output
+    ├── port.json             <- package metadata, port.json format version 4
+    ├── gameinfo.xml          <- the Ports menu entry
+    ├── screenshot.png        <- a 640x480 (4:3) gameplay frame
+    ├── stackfall.md          <- portmaster/README.md, renamed as upstream does
+    ├── release-notes.md      <- the changes of this release
+    ├── BUILDING.md           <- the reproducible ARM64 build steps and hashes
+    └── licenses/             <- the MIT license and the SDL2 license
+```
+
+Unpacking the archive into a ports directory reproduces the section 10.3
+install layout exactly, so the launcher it ships works unchanged. The
+screenshot comes from the desktop build: `tools/portmaster/capture-screenshot.sh`
+runs the application under a virtual X server, resizes the window to
+640x480 so the 960x544 canvas letterboxes the way a 4:3 handheld presents
+it, and takes the game's own checkpoint capture of that frame. The archive
+is written deterministically (sorted entries, pinned timestamps, fixed
+modes), and `portmaster/BUILDING.md`, which ships inside it, records the
+SHA-256 of the binary and the commands that reproduce it from a clean
+ARM64 environment. `tests/harness/t019.sh` assembles the archive, unpacks
+it, drives its launcher, and checks every item.
+
+Publication to the public PortMaster index is a separate, later step; the
+archive is a local artifact until then.
 
 ## 11. Automated verification
 

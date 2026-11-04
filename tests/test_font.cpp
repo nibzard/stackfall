@@ -57,7 +57,8 @@ void run_coverage_checks() {
     }
     if (code == 32) {
       SC_CHECK(pixels == 0);
-    } else if (c >= '0' && c <= '9' || c >= 'A' && c <= 'Z' || c >= 'a' && c <= 'z') {
+    } else if ((c >= '0' && c <= '9') || (c >= 'A' && c <= 'Z') ||
+               (c >= 'a' && c <= 'z')) {
       SC_CHECK(pixels >= 8);
     } else {
       SC_CHECK(pixels >= 2);

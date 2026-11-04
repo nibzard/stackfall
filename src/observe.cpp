@@ -36,10 +36,14 @@ const char* observationSceneName(Scene scene) {
       return "title";
     case Scene::Controls:
       return "controls";
+    case Scene::Options:
+      return "options";
     case Scene::Playing:
       return "playing";
     case Scene::Paused:
       return "paused";
+    case Scene::PauseControls:
+      return "pausecontrols";
     case Scene::GameOver:
       return "gameover";
   }
@@ -108,7 +112,15 @@ std::string observationLine(const std::string& checkName, const Game& game) {
       text += "title:";
       text += std::to_string(game.titleSelection());
       break;
+    case Scene::Options:
+      text += "options:";
+      text += std::to_string(game.optionsSelection());
+      break;
     case Scene::Paused:
+    case Scene::PauseControls:
+      // The pause cursor stays in charge while the mappings page is open, so
+      // a record taken there still names the item the overlay returns to
+      // (task T037).
       text += "pause:";
       text += std::to_string(game.pauseSelection());
       break;

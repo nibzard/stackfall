@@ -11,7 +11,8 @@
     "docs/SPEC.md",
     "docs/AGENT_TESTING.md",
     "docs/PERFORMANCE.md",
-    "docs/DESIGN_REVIEW.md"
+    "docs/DESIGN_REVIEW.md",
+    "notes/refactor-review.md"
   ],
   "goal": "Deliver STACKFALL v1.0: an original, offline, deterministic 2D tetromino block-stacking game for the Anbernic RG503 handheld (ROCKNIX/PortMaster), written in C++17 with an SDL2 platform layer and a pure headless rules core, procedural graphics drawn only from rectangles/lines and a 5x7 glyph table, synthesized sound, persistent high scores, complete automated rule and regression tests, a native AArch64 binary with a PortMaster launcher and package, and release acceptance on the physical device at about 60 FPS.",
   "tasks": [
@@ -363,8 +364,8 @@
       "id": "T015",
       "title": "Verify M3 gate with full desktop regression",
       "priority": 2,
-      "status": "blocked",
-      "details": "Round M3 gate. Run the complete verification pass: ctest in Debug and Release configurations, every section 11 check that does not need the physical device (all 20 items except the ARM64 hash comparison and on-device parts), and repeated full-game desktop sessions covering DAS/ARR tuning, lock-delay edge cases, seven-bag edge cases, and restart behavior. Acceptance (M3 gate): no known rule or state bugs after repeated full-game desktop sessions; deterministic hashes match pinned values; high scores survive restarts; Release build performs smoothly on desktop.\n\nUnattended verification policy: Agents run all desktop sessions. Require the T024 visual report and T025 stability report under docs/AGENT_TESTING.md. Preserve seeds, commands, screenshots, logs, and source identity. No human or physical device test is required to pass this software gate.\n\nPerformance gate: Require T026 and its notes/performance.md evidence. Verify every retained optimization against independent benchmarks and behavior checks. Do not claim desktop performance passes while the report lists an unresolved target failure. No human or physical device test is required.\n\nIndependent design gate: Require T027 screenshot review and T028 verification of required fixes. Findings must route into real, deduplicated Looper tasks with linked evidence. Preserve final-only human and device acceptance.\n\nResume correction (2026-11-03): The depends_on list gates scheduling. T014 evidence is supplied by an agent. No separate operator evidence or manual deferral removal is required for this desktop software gate.",
+      "status": "done",
+      "details": "Round M3 gate. Run the complete verification pass: ctest in Debug and Release configurations, every section 11 check that does not need the physical device (all 20 items except the ARM64 hash comparison and on-device parts), and repeated full-game desktop sessions covering DAS/ARR tuning, lock-delay edge cases, seven-bag edge cases, and restart behavior. Acceptance (M3 gate): no known rule or state bugs after repeated full-game desktop sessions; deterministic hashes match pinned values; high scores survive restarts; Release build performs smoothly on desktop.\n\nUnattended verification policy: Agents run all desktop sessions. Require the T024 visual report and T025 stability report under docs/AGENT_TESTING.md. Preserve seeds, commands, screenshots, logs, and source identity. No human or physical device test is required to pass this software gate.\n\nPerformance gate: Require T026 and its notes/performance.md evidence. Verify every retained optimization against independent benchmarks and behavior checks. Do not claim desktop performance passes while the report lists an unresolved target failure. No human or physical device test is required.\n\nIndependent design gate: Require T027 screenshot review and T028 verification of required fixes. Findings must route into real, deduplicated Looper tasks with linked evidence. Preserve final-only human and device acceptance.\n\nResume correction (2026-11-03): The depends_on list gates scheduling. T014 evidence is supplied by an agent. No separate operator evidence or manual deferral removal is required for this desktop software gate.\n\nScheduling correction (2026-11-03): T029 and T037 are explicit prerequisites. Run the full desktop gate at their integrated source identity. The board geometry is already 27 pixels at (345, 2), completed by T038. Reuse retained gate artifacts only after verifying they exist in the integrated tree; recreate missing drivers and evidence as required. No operator or device prerequisite applies to this software gate.",
       "depends_on": [
         "T008",
         "T012",
@@ -373,7 +374,9 @@
         "T024",
         "T025",
         "T026",
-        "T028"
+        "T028",
+        "T029",
+        "T037"
       ],
       "files": [
         "README.md",
@@ -389,53 +392,62 @@
         "tests/harness/scripts/m3-restart.script.txt",
         "tests/harness/t015.sh"
       ],
-      "blockers": [
-        "An operator must complete this prerequisite; coding workers cannot execute it.",
-        "Deferred: T037 (focused-gameplay-hud) completes the approved HUD composition at the landed 27 px geometry",
-        "The owner-approved desktop layout pass (task T037, stable key focused-gameplay-hud, subsuming the separately queued board-cells-27px plan) is pending: both owner decision notes (/notes/stackfall-27px-board-plan-2026-11-03.md and /notes/stackfall-focused-hud-plan-2026-11-03.md) say 'Make final desktop gate T015 depend on this task' / 'Gate final desktop verification T015 on the final layout task', and T037's own contract repeats the gate instruction for Looper planning, but T015's accepted depends_on does not list it and workers cannot edit the backlog. The board is still 24-px cells at (360, 32) (include/stackfall/renderer_sdl.hpp:78-80). The M3 software verification itself passes; only the final layout identity would change the evidence."
-      ],
       "tags": [
         "M3",
-        "looper:deferred",
-        "looper:finding:m3-desktop-gate-full-regression",
-        "looper:operator"
+        "looper:finding:m3-desktop-gate-full-regression"
       ],
-      "updated_at": "2026-11-03T17:52:37Z",
-      "unblock_when": "T037 (focused-gameplay-hud) completes the approved HUD composition at the landed 27 px geometry; remove looper:deferred and set todo when this condition is met."
+      "updated_at": "2026-11-03T23:15:57Z",
+      "unblock_when": "\"\""
     },
     {
       "id": "T016",
       "title": "Build AArch64 binary in PortMaster-aligned environment",
       "priority": 3,
-      "status": "todo",
-      "details": "Round M4. Set up an Ubuntu 22.04 ARM64 build container or chroot aligned with the PortMaster build-environment guide (https://portmaster.games/build-environments.html), install matching SDL2 development libraries, and build with CMake/Ninja inside that environment. Do not ship an x86 executable and do not assume the host desktop SDL2 binary is compatible. Acceptance: file stackfall.aarch64 reports 'ELF 64-bit ... ARM aarch64'; readelf or ldd documents the runtime dependencies; stackfall_tests runs inside the ARM64 environment and produces the same pinned state hashes as the desktop build (section 11, item 18 ARM64 half).\n\nResume correction (2026-11-03): After T015, the agent sets up the ARM64 environment as part of this task. Do not wait for an operator to provide it. If setup encounters a concrete external restriction, record the exact failed step and prerequisite.",
+      "status": "done",
+      "details": "Round M4. Set up an Ubuntu 22.04 ARM64 build container or chroot aligned with the PortMaster build-environment guide (https://portmaster.games/build-environments.html), install matching SDL2 development libraries, and build with CMake/Ninja inside that environment. Do not ship an x86 executable and do not assume the host desktop SDL2 binary is compatible. Acceptance: file stackfall.aarch64 reports 'ELF 64-bit ... ARM aarch64'; readelf or ldd documents the runtime dependencies; stackfall_tests runs inside the ARM64 environment and produces the same pinned state hashes as the desktop build (section 11, item 18 ARM64 half).\n\nResume correction (2026-11-03): After T015, the agent sets up the ARM64 environment as part of this task. Do not wait for an operator to provide it. If setup encounters a concrete external restriction, record the exact failed step and prerequisite.\n\nReview repair: No AArch64 binary, PortMaster launcher, or release package exists yet\nAcceptance criteria per T016, T017, and T019: an Ubuntu 22.04 ARM64 build environment aligned with the PortMaster guide produces stackfall.aarch64 reporting 'ELF 64-bit ... ARM aarch64' with readelf or ldd dependency documentation and pinned state hashes matching the desktop build; portmaster/Stackfall.sh follows the current official template with controlfolder discovery, control.txt, the CFW modifier, get_controls, SDL_GAMECONTROLLERCONFIG, save paths, conf/, pm_platform_helper, and pm_finish; the local archive carries the binary, launcher, port.json, README.md, gameinfo.xml, a 4:3 gameplay screenshot.png, licenses, release notes, and reproducible build steps. None of these artifacts exist. The goal text requires 'a native AArch64 binary with a PortMaster launcher and package'. This is agent work: T016's resume correction already assigns the environment setup to the agent, and Docker is installed on this host, so an ARM64 container is reachable without an operator grant.\nEvidence: portmaster/ contains only README.md (verified with ls); no Stackfall.sh, port.json, gameinfo.xml, or screenshot. 'file build/stackfall' reports 'ELF 64-bit LSB pie executable, x86-64', so only a desktop binary exists. No aarch64 cross compiler is installed, but /usr/bin/docker is present. Tasks T016, T017, and T019 are status todo and all wait behind blocked T015.",
       "depends_on": [
         "T015"
+      ],
+      "files": [
+        "README.md",
+        "notes/agent-testing.md",
+        "src/input_sdl.cpp",
+        "tools/arm64/Dockerfile",
+        "tools/arm64/README.md",
+        "tools/arm64/build-arm64.sh"
       ],
       "tags": [
         "M4",
         "looper:finding:aarch64-state-hash-parity",
         "looper:finding:m4-m5-local-platform-deliverables"
       ],
-      "updated_at": "2026-11-03T06:02:02Z"
+      "updated_at": "2026-11-04T00:46:47Z"
     },
     {
       "id": "T017",
       "title": "Write PortMaster launcher and install layout",
       "priority": 3,
-      "status": "todo",
-      "details": "Round M4. Author portmaster/Stackfall.sh from the current official PortMaster template: locate the control folder, source control.txt, apply the CFW modifier when present, call get_controls, use the ports/stackfall game folder, export SDL_GAMECONTROLLERCONFIG and the save paths (XDG_DATA_HOME pointing at the game conf/ directory, or an explicit save-directory variable), create conf/, call pm_platform_helper on the executable, run it, and call pm_finish afterward. Start gptokeyb in exit-hotkey-only mode only if the installed PortMaster version requires it, and do not capture or override the platform-wide exit chord. Match the /roms/ports layout from section 10.3. Acceptance: the script and directory layout are reviewed against the current official template and the specification; on-device execution is validated by the blocked device task.",
+      "status": "done",
+      "details": "Round M4. Author portmaster/Stackfall.sh from the current official PortMaster template: locate the control folder, source control.txt, apply the CFW modifier when present, call get_controls, use the ports/stackfall game folder, export SDL_GAMECONTROLLERCONFIG and the save paths (XDG_DATA_HOME pointing at the game conf/ directory, or an explicit save-directory variable), create conf/, call pm_platform_helper on the executable, run it, and call pm_finish afterward. Start gptokeyb in exit-hotkey-only mode only if the installed PortMaster version requires it, and do not capture or override the platform-wide exit chord. Match the /roms/ports layout from section 10.3. Acceptance: the script and directory layout are reviewed against the current official template and the specification; on-device execution is validated by the blocked device task.\n\nReview repair: Write PortMaster launcher and install layout\nAuthor portmaster/Stackfall.sh from the current official PortMaster template (controlfolder discovery, control.txt, CFW modifier, get_controls, ports/stackfall game folder, SDL_GAMECONTROLLERCONFIG, XDG_DATA_HOME at conf/, pm_platform_helper, pm_finish, gptokeyb exit-hotkey-only as the installed version requires) and the /roms/ports layout of SPEC section 10.3. T016's binary and evidence are ready as the artifact to launch. Same round M4; prerequisites T015 and T016 are done.\nEvidence: portmaster/ contains only README.md; acceptance criteria for the launcher are in T017's contract and the review repair attached to T016\n\nReview repair: PortMaster launcher and install layout are not written\nThe goal requires a PortMaster launcher and package. T017 must author portmaster/Stackfall.sh from the current official template (controlfolder discovery, control.txt, CFW modifier, get_controls, ports/stackfall game folder, SDL_GAMECONTROLLERCONFIG, XDG_DATA_HOME at conf/, pm_platform_helper, pm_finish, gptokeyb exit-hotkey-only as required) and match the /roms/ports layout of SPEC section 10.3.\nEvidence: portmaster/ contains only README.md, which still says 'The build writes nothing here yet' and lists Stackfall.sh, port.json, and gameinfo.xml as planned. Prerequisites T015 and T016 are done: tools/arm64/build-arm64.sh exists and notes/agent-testing.md records the verified stackfall.aarch64 build with desktop hash parity. T017 is status todo with no blocker, so this is ready agent work.",
       "depends_on": [
         "T015"
       ],
       "files": [
-        "portmaster/Stackfall.sh"
+        "README.md",
+        "docs/AGENT_TESTING.md",
+        "docs/SPEC.md",
+        "notes/agent-testing.md",
+        "portmaster/README.md",
+        "portmaster/Stackfall.sh",
+        "tests/harness/check_t017.py",
+        "tests/harness/t017.sh",
+        "tools/portmaster/install-tree.sh"
       ],
       "tags": [
         "M4",
         "looper:finding:portmaster-launcher-save-dir"
       ],
-      "updated_at": "2026-11-03T06:02:02Z"
+      "updated_at": "2026-11-04T02:32:49Z"
     },
     {
       "id": "T018",
@@ -448,41 +460,75 @@
       ],
       "blockers": [
         "An operator must complete this prerequisite; coding workers cannot execute it.",
+        "Deferred: An operator installs stackfall.zip (SHA-256 7d5e0f63...) on an RG503 running ROCKNIX and runs the section 12 checklist",
         "Deferred: Local PortMaster package exists and the final operator device pass is scheduled",
+        "Deferred: T017, T045, and T019 are done; the operator receives the local archive and schedules the RG503 pass",
         "Deferred: T018 is scheduled",
+        "Deferred: T018, the RG503 device acceptance pass, runs on physical hardware",
+        "Deferred: T019 delivers the assembled PortMaster package and the operator grants device access",
+        "Deferred: T019 delivers the assembled PortMaster package and the operator has an RG503 running ROCKNIX available for the device pass",
         "Deferred: T019 local package exists and the operator schedules the RG503 pass; T020 follows a passing device check and T021 follows owner approval of a publication channel",
+        "Deferred: The T019 local PortMaster package and the T035 1.0.0 version bump are in the repository, and an operator has an RG503 running ROCKNIX available to run the section 12 checklist",
+        "Deferred: The T019 local package exists and is handed to the operator with an RG503 running ROCKNIX available; T020 follows a passing T018 device check and T021 follows owner approval of a publication channel",
+        "Deferred: The operator grants access to the Anbernic RG503 running ROCKNIX for the final acceptance pass.",
         "Requires a physical Anbernic RG503 running ROCKNIX with PortMaster; no device is attached to this environment, and software workers cannot press handheld buttons or observe the device screen."
       ],
       "tags": [
         "M4",
         "looper:deferred",
         "looper:finding:rg503-final-device-acceptance-and-publication",
+        "looper:finding:rg503-midround-save-pacing",
         "looper:finding:rg503-physical-controller-mapping",
         "looper:finding:t024-physical-acceptance-device-pass",
         "looper:operator"
       ],
       "updated_at": "2026-11-02T20:04:56Z",
-      "unblock_when": "T018 is scheduled; remove looper:deferred and set todo when this condition is met."
+      "unblock_when": "Record evidence that the operator completed the action, then mark this task done. To delegate different work, explicitly change its contract and remove looper:operator."
     },
     {
       "id": "T019",
       "title": "Assemble PortMaster release package locally",
       "priority": 3,
-      "status": "todo",
+      "status": "done",
       "details": "Round M5 (local preparation only; external publication is tracked separately). Assemble the ready-to-run PortMaster archive per section 10.4: the stackfall.aarch64 executable, the Stackfall.sh launcher, port.json, README.md, gameinfo.xml, the required 4:3 gameplay screenshot.png captured from the desktop build, all applicable licenses, release notes, and reproducible build instructions for the ARM64 environment. Keep the STACKFALL name and original presentation; do not use the Tetris name or trade dress. Acceptance: the archive unpacks into the current PortMaster directory structure with every required item, and the documented steps reproduce the binary from a clean ARM64 environment.\n\nUnattended verification policy: Include the agent verification report and reproducible dogfooding commands in the local handoff. Assemble the package before requesting any human or physical device tests. Keep public publication separate.",
       "depends_on": [
         "T016",
-        "T017"
+        "T017",
+        "T045"
       ],
       "files": [
-        "portmaster/port.json",
+        "CMakeLists.txt",
+        "README.md",
+        "docs/AGENT_TESTING.md",
+        "docs/SPEC.md",
+        "include/stackfall/version.hpp",
+        "notes/agent-testing.md",
+        "portmaster/BUILDING.md",
+        "portmaster/README.md",
         "portmaster/gameinfo.xml",
-        "portmaster/README.md"
+        "portmaster/licenses/LICENSE",
+        "portmaster/licenses/LICENSE.SDL2.txt",
+        "portmaster/port.json",
+        "portmaster/release-notes.md",
+        "tests/harness/check_t015.py",
+        "tests/harness/check_t019.py",
+        "tests/harness/scripts/t019-screenshot.script.txt",
+        "tests/harness/t019.sh",
+        "tests/test_regression.cpp",
+        "tests/test_sanity.cpp",
+        "tools/portmaster/README.md",
+        "tools/portmaster/bmp2png.py",
+        "tools/portmaster/capture-screenshot.sh",
+        "tools/portmaster/package.sh"
+      ],
+      "blockers": [
+        "Deferred: T017 and T045 are done"
       ],
       "tags": [
-        "M5"
+        "M5",
+        "looper:finding:portmaster-release-package-local"
       ],
-      "updated_at": "2026-11-02T20:04:56Z"
+      "updated_at": "2026-11-04T11:47:48Z"
     },
     {
       "id": "T020",
@@ -496,17 +542,19 @@
       ],
       "blockers": [
         "An operator must complete this prerequisite; coding workers cannot execute it.",
+        "Deferred: T018 passes on the device and the T019 package is in hand",
         "Deferred: T020 is scheduled",
         "Requires the physical RG503 and ROCKNIX device access described in the device acceptance task, plus the locally assembled package."
       ],
       "tags": [
         "M5",
         "looper:deferred",
+        "looper:finding:rocknix-fresh-install-release-gate",
         "looper:finding:t024-audio-on-physical-device",
         "looper:operator"
       ],
       "updated_at": "2026-11-02T20:04:56Z",
-      "unblock_when": "T020 is scheduled; remove looper:deferred and set todo when this condition is met."
+      "unblock_when": "Record evidence that the operator completed the action, then mark this task done. To delegate different work, explicitly change its contract and remove looper:operator."
     },
     {
       "id": "T021",
@@ -518,21 +566,25 @@
         "T020"
       ],
       "blockers": [
+        "An operator must complete this prerequisite; coding workers cannot execute it.",
+        "Deferred: T020 passes on a fresh ROCKNIX install and the owner approves a publication channel",
+        "Deferred: The owner approves submitting the port to the public PortMaster index",
         "Publishing to the PortMaster listing or any public channel requires owner approval and channel credentials or accounts that workers do not hold."
       ],
       "tags": [
         "M5",
         "looper:deferred",
+        "looper:finding:portmaster-publication-owner-approval",
         "looper:operator"
       ],
-      "unblock_when": "The project owner approves public release after the fresh-install gate passes and provides an authorized publication channel."
+      "unblock_when": "Record evidence that the operator completed the action, then mark this task done. To delegate different work, explicitly change its contract and remove looper:operator."
     },
     {
       "id": "T022",
       "title": "README status section still describes the M0 skeleton",
       "priority": 3,
-      "status": "todo",
-      "details": "README.md still says \"Status: M0 project skeleton\" and \"Current state (M0)\" with a placeholder main.cpp, although T003-T005 have delivered the shape tables, SRS rotation, and the board engine of M1. Update the status line and the current-state bullet list to reflect M1 progress when the next milestone task touches documentation, so the front page matches the repository. Purely documentation; no code impact.\nEvidence: README.md lines 10-12 and 66-73 describe only the M0 skeleton, while include/stackfall/pieces.hpp, board.hpp and their passing suites already exist.\n\nReview repair: README front page still describes the M0 skeleton after four M1 components landed\nREADME.md must state the actual milestone status and current-state list so the front page matches the repository. The outcome is already tracked as task T022; this finding attaches updated evidence only and must not create a second task.\nEvidence: README.md lines 10-12 still read \"Status: M0 project skeleton\" and lines 66-73 list only the M0 skeleton, while include/stackfall/pieces.hpp, board.hpp, randomizer.hpp, src/pieces.cpp, src/board.cpp, src/randomizer.cpp and their suites (323387 checks passing in Debug and Release at da23a3d) deliver the shape tables, SRS kicks, board engine, and randomizer of M1.\n\nReview repair: README status section still describes the M0 skeleton\nREADME.md lines 66-73 still describe src/main.cpp as the M0 placeholder that only initializes and shuts down SDL2, and lines 10-12 still say \"Status: M0 project skeleton\". T002 replaced the placeholder with the real SDL2 window, controller detection, and fixed 60 Hz loop, and T003-T006 already delivered the shape tables, SRS kicks, board engine, and randomizer, so the front page lags the repository further. The outcome is already tracked as task T022; this finding attaches updated evidence only and must not create a second task.\nEvidence: After T002, README.md line 71 still reads \"src/main.cpp is a placeholder that initializes and shuts down SDL2. Task T002 adds the desktop window, controller detection, and the fixed 60 Hz loop\", while src/main.cpp in the T002 worktree now implements the 960x544 window, logged renderer fallback chain, ControllerSet discovery with keyboard-fallback logging, integer fixed-step 60 Hz accumulator with 250 ms clamp and stall logs, and clean EXIT shutdown, verified headless via SDL_VIDEODRIVER=dummy (--frames runs exit 0 with \"Clean shutdown\"; SIGSTOP/SIGCONT produced \"Frame stall of 1002 ms clamped to 250 ms\").\n\nReview repair: README status header still says M1 in progress while M1 is complete\nThe README front page states the actual milestone status, so the header and the current-state list agree with the repository after every milestone task lands.\nEvidence: README.md:10-16 reads 'Status: M1 in progress' and lists only the shape tables, SRS rotation, board engine, and PCG32 randomizer (scope of T003-T006). README.md:89-110 of the same file declares 'Milestone M1, the rules core, is complete. Six components are done', lists the T007 tick engine (src/game.cpp, src/scoring.cpp) and the T008 regression runner (tests/test_regression.cpp, --seed CLI), and ends with 'Milestone M2, the playable desktop build, is next'. The M1 gate is met at 9ce8e60: ctest passes in Debug and Release with 335,826 checks and 0 failures, and stackfall_tests --seed output is byte-identical across runs and build types. The outcome is already tracked as task T022 (key looper:finding:readme-milestone-status-stale, status done); this finding attaches updated evidence only and must not create a second task.\n\nReview repair: docs/SPEC.md status header still says M1 complete while M2/M3 work is integrated\nThe specification's own status line states the actual integrated milestone state (M3 in progress with T009-T013 landed), matching README.md, so the two front pages agree.\nEvidence: docs/SPEC.md:6 reads 'Status: M1 complete; the full rules core passes headless tests in Debug and Release' at 98e786b, while README.md:10 reads 'Status: M3 in progress' and T009-T013 (input adapter, renderer, screens, persistence, audio) are integrated per the same commit. The outcome is already tracked as task T022 (done, key looper:finding:readme-milestone-status-stale); this finding attaches updated evidence only and must not create a second task.\n\nReview repair: README front page lags the repository again after the verification tasks landed\nAcceptance criteria: the README status paragraph states the actual integrated state, per T022's own criterion that the front page matches the repository. After T014 and T023 through T028 are integrated, the sentence 'The agent verification of M2 and M3, the platform hardening, packaging, and device validation remain' is wrong on the first two items: the platform hardening and the M2/M3 agent verification (harness, play review, design-review fixes, stability pass, performance loop) are done; what remains is the T015 final gate at the approved layout, then packaging and device validation.\nEvidence: README.md lines 10-27 at 0ef908d. Completed and verified in this review: ctest 5/5 in Debug and Release; tests/harness/run.sh 163/163 and tests/harness/t024.sh 287/287 passing; T014 platform hardening present (renderer fallback chain, Architecture log line, fallback frame limiter observed in the log of a dummy-driver run); T023/T024/T025 sections and the T030-T034 fix records in notes/agent-testing.md; T027/T028 in notes/design-review.md; T026 in notes/performance.md. Outcome already tracked as done under key readme-milestone-status-stale; this finding attaches updated evidence only.",
+      "status": "done",
+      "details": "README.md still says \"Status: M0 project skeleton\" and \"Current state (M0)\" with a placeholder main.cpp, although T003-T005 have delivered the shape tables, SRS rotation, and the board engine of M1. Update the status line and the current-state bullet list to reflect M1 progress when the next milestone task touches documentation, so the front page matches the repository. Purely documentation; no code impact.\nEvidence: README.md lines 10-12 and 66-73 describe only the M0 skeleton, while include/stackfall/pieces.hpp, board.hpp and their passing suites already exist.\n\nReview repair: README front page still describes the M0 skeleton after four M1 components landed\nREADME.md must state the actual milestone status and current-state list so the front page matches the repository. The outcome is already tracked as task T022; this finding attaches updated evidence only and must not create a second task.\nEvidence: README.md lines 10-12 still read \"Status: M0 project skeleton\" and lines 66-73 list only the M0 skeleton, while include/stackfall/pieces.hpp, board.hpp, randomizer.hpp, src/pieces.cpp, src/board.cpp, src/randomizer.cpp and their suites (323387 checks passing in Debug and Release at da23a3d) deliver the shape tables, SRS kicks, board engine, and randomizer of M1.\n\nReview repair: README status section still describes the M0 skeleton\nREADME.md lines 66-73 still describe src/main.cpp as the M0 placeholder that only initializes and shuts down SDL2, and lines 10-12 still say \"Status: M0 project skeleton\". T002 replaced the placeholder with the real SDL2 window, controller detection, and fixed 60 Hz loop, and T003-T006 already delivered the shape tables, SRS kicks, board engine, and randomizer, so the front page lags the repository further. The outcome is already tracked as task T022; this finding attaches updated evidence only and must not create a second task.\nEvidence: After T002, README.md line 71 still reads \"src/main.cpp is a placeholder that initializes and shuts down SDL2. Task T002 adds the desktop window, controller detection, and the fixed 60 Hz loop\", while src/main.cpp in the T002 worktree now implements the 960x544 window, logged renderer fallback chain, ControllerSet discovery with keyboard-fallback logging, integer fixed-step 60 Hz accumulator with 250 ms clamp and stall logs, and clean EXIT shutdown, verified headless via SDL_VIDEODRIVER=dummy (--frames runs exit 0 with \"Clean shutdown\"; SIGSTOP/SIGCONT produced \"Frame stall of 1002 ms clamped to 250 ms\").\n\nReview repair: README status header still says M1 in progress while M1 is complete\nThe README front page states the actual milestone status, so the header and the current-state list agree with the repository after every milestone task lands.\nEvidence: README.md:10-16 reads 'Status: M1 in progress' and lists only the shape tables, SRS rotation, board engine, and PCG32 randomizer (scope of T003-T006). README.md:89-110 of the same file declares 'Milestone M1, the rules core, is complete. Six components are done', lists the T007 tick engine (src/game.cpp, src/scoring.cpp) and the T008 regression runner (tests/test_regression.cpp, --seed CLI), and ends with 'Milestone M2, the playable desktop build, is next'. The M1 gate is met at 9ce8e60: ctest passes in Debug and Release with 335,826 checks and 0 failures, and stackfall_tests --seed output is byte-identical across runs and build types. The outcome is already tracked as task T022 (key looper:finding:readme-milestone-status-stale, status done); this finding attaches updated evidence only and must not create a second task.\n\nReview repair: docs/SPEC.md status header still says M1 complete while M2/M3 work is integrated\nThe specification's own status line states the actual integrated milestone state (M3 in progress with T009-T013 landed), matching README.md, so the two front pages agree.\nEvidence: docs/SPEC.md:6 reads 'Status: M1 complete; the full rules core passes headless tests in Debug and Release' at 98e786b, while README.md:10 reads 'Status: M3 in progress' and T009-T013 (input adapter, renderer, screens, persistence, audio) are integrated per the same commit. The outcome is already tracked as task T022 (done, key looper:finding:readme-milestone-status-stale); this finding attaches updated evidence only and must not create a second task.\n\nReview repair: README front page lags the repository again after the verification tasks landed\nAcceptance criteria: the README status paragraph states the actual integrated state, per T022's own criterion that the front page matches the repository. After T014 and T023 through T028 are integrated, the sentence 'The agent verification of M2 and M3, the platform hardening, packaging, and device validation remain' is wrong on the first two items: the platform hardening and the M2/M3 agent verification (harness, play review, design-review fixes, stability pass, performance loop) are done; what remains is the T015 final gate at the approved layout, then packaging and device validation.\nEvidence: README.md lines 10-27 at 0ef908d. Completed and verified in this review: ctest 5/5 in Debug and Release; tests/harness/run.sh 163/163 and tests/harness/t024.sh 287/287 passing; T014 platform hardening present (renderer fallback chain, Architecture log line, fallback frame limiter observed in the log of a dummy-driver run); T023/T024/T025 sections and the T030-T034 fix records in notes/agent-testing.md; T027/T028 in notes/design-review.md; T026 in notes/performance.md. Outcome already tracked as done under key readme-milestone-status-stale; this finding attaches updated evidence only.\n\nReview repair: README project status says the options screen is next although T040 and T041 landed it\nAcceptance criteria: the README status paragraph states the actual integrated state, per T022's own criterion that the front page matches the repository. The options screen with the ghost toggle is integrated at cf980db, so 'Next comes the options screen with the ghost toggle' is wrong; what remains is the approved panel layout (T037), the final desktop regression gate (T015), then handheld packaging and device testing.\nEvidence: README.md:99-103 reads 'Next comes the options screen with the ghost toggle, the approved panel layout, and the final desktop regression checks', while src/renderer_sdl.cpp:78 lists the four-item title menu {'START GAME', 'CONTROLS', 'OPTIONS', ...} with kTitleItemCount 4 (include/stackfall/game.hpp:68), docs/SPEC.md:160-162 documents the OPTIONS scene and the two preferences, and the options-ghost harness session passed in this review's run (build/agent-checks/review-final, harness 195/195). The outcome is already tracked as task T022 (key readme-milestone-status-stale, status done); this finding attaches fresh evidence and must not create a second task.\n\nReview repair: README front page says fourteen harness sessions while fifteen run\nAcceptance criteria per T022's standing rule: the README status paragraph states the actual integrated state. The T052 record-abandon session made the harness fifteen sessions (tests/harness/run.sh:8 and docs/AGENT_TESTING.md:55 both say fifteen), but README.md:141 still says fourteen and its session description omits the abandoned-round record check.\nEvidence: build/agent-checks/review-final-442a546c/sessions.txt lists 15 session names; README.md:141 reads 'drives fourteen sessions'; T052's file list did not include README.md. All fifteen sessions pass 689/689 checks at c075fde.",
       "files": [
         "README.md",
         "docs/SPEC.md"
@@ -540,7 +592,7 @@
       "tags": [
         "looper:finding:readme-milestone-status-stale"
       ],
-      "updated_at": "2026-11-03T03:40:08Z"
+      "updated_at": "2026-11-04T09:51:27Z"
     },
     {
       "id": "T023",
@@ -767,23 +819,42 @@
     },
     {
       "id": "T029",
-      "title": "Decide the hidden I-piece spawn delay rule",
+      "title": "Make every piece visible immediately at spawn",
       "priority": 2,
-      "status": "blocked",
-      "details": "The I piece spawns at y=-2, fully above the visible board, and first appears exactly 48 ticks later (tick 5 to tick 53, seed 777), which equals the level 1 gravity interval (0.800 s at 60 Hz). Every other piece spawns at y=-1 and shows its lower rows immediately. Keep the 48-tick hidden interval or spawn pieces at row 0 so every piece is visible at once. A change moves lockout timing, so it is a design decision; nothing was changed in T024.\nEvidence: build/agent-checks/t024-final/review/t024-i-spawn-i-spawn-frame.png, t024-i-hidden-plus47.png, t024-i-first-visible-plus48.png; records in build/agent-checks/t024-final/t024-i-spawn.run.obs; notes/agent-testing.md T024 section",
+      "status": "done",
+      "details": "Owner decision recorded on 2026-11-03: every piece must be visible immediately. Implement this software task under the existing T029 identity. The earlier operator decision is resolved. T026 is complete; apply this follow-up after it and repeat affected checks.\n\n1. Place the topmost occupied cells of each newly spawned piece at visible\n   board row 0. Preserve the centered horizontal placement and spawn\n   orientation. For an I-piece with occupied local row 1, use matrix origin\n   y=-1; for pieces with occupied local row 0, use matrix origin y=0.\n2. Apply the same spawn rule to a new game, the next piece after locking,\n   and both hold paths. Do not wait for a gravity tick to reveal the piece.\n3. Preserve gravity timing, scoring, controls, hidden rows for rotations,\n   and existing block-out and lock-out rules. Test the changed collision\n   boundaries near the top. Do not silently change game-over rules to make\n   tests pass.\n4. Update docs/SPEC.md and relevant project documentation to describe the\n   approved rule. Replace the deferred T029 decision with its disposition.\n5. Add regression coverage for all seven spawn shapes, immediate I-piece\n   visibility, hold, and top-of-board collisions. Update deterministic\n   fixtures only after verifying and explaining the expected behavior change.\n6. Rerun relevant Debug and Release tests and affected scripted visual checks.\n   Capture a fresh I-piece spawn frame proving it is visible immediately,\n   including the old seed-777 reproduction where applicable. Record commands,\n   source identity, evidence, and any changed regression hashes.\n\nThis decision does not authorize publication or replace physical acceptance.\nKeep unrelated tasks, device gates, and publication gates unchanged.\n\n\nDecision source: /notes/stackfall-visible-spawn-decision-2026-11-03.md. Preserve existing evidence in notes/agent-testing.md. T015 depends on this implementation.",
       "depends_on": [
         "T024"
       ],
-      "blockers": [
-        "An operator must complete this prerequisite; coding workers cannot execute it.",
-        "Deferred: Before the T018 physical device pass begins"
+      "files": [
+        "docs/AGENT_TESTING.md",
+        "docs/SPEC.md",
+        "include/stackfall/pieces.hpp",
+        "notes/agent-testing.md",
+        "notes/design-review.md",
+        "src/pieces.cpp",
+        "tests/fixtures/blockout-ready.board.txt",
+        "tests/fixtures/lockout-ready.board.txt",
+        "tests/harness/check_harness.py",
+        "tests/harness/check_t024.py",
+        "tests/harness/scripts/fixture-blockout.script.txt",
+        "tests/harness/scripts/fixture-lockout.script.txt",
+        "tests/harness/scripts/t024-i-spawn.script.txt",
+        "tests/test_audio_sdl.cpp",
+        "tests/test_board.cpp",
+        "tests/test_fixture.cpp",
+        "tests/test_game.cpp",
+        "tests/test_pieces.cpp",
+        "tests/test_regression.cpp",
+        "tests/test_renderer_sdl.cpp",
+        "tests/test_screens.cpp",
+        "tools/design-review/build_prompt.py",
+        "tools/design-review/prior-findings.json"
       ],
       "tags": [
-        "looper:deferred",
-        "looper:finding:t024-i-spawn-hidden-delay-design-question",
-        "looper:operator"
+        "looper:finding:t024-i-spawn-hidden-delay-design-question"
       ],
-      "unblock_when": "Before the T018 physical device pass begins; remove looper:deferred and set todo when this condition is met."
+      "updated_at": "2026-11-03T21:52:18Z"
     },
     {
       "id": "T030",
@@ -893,16 +964,20 @@
       "id": "T035",
       "title": "No task owns the v1.0.0 release version bump",
       "priority": 4,
-      "status": "blocked",
-      "details": "Acceptance criteria: a backlog task (or an explicit scope note on an existing M5 task) owns raising the version to 1.0.0 in include/stackfall/version.hpp and src/version.cpp, updating the pinned expectation in tests/test_sanity.cpp, and confirming the binary banner and package metadata report 1.0.0. The goal text promises 'STACKFALL v1.0' and version.hpp's own comment says 'Milestone M5 raises the version to 1.0.0 for the first release', but searching all 34 backlog tasks finds no mention of the version bump. Without an owner, the release package (T019) and device acceptance (T018) would present a binary calling itself 0.1.0.\nEvidence: include/stackfall/version.hpp defines kVersionString = \"0.1.0\" with the M5 comment; src/version.cpp and CMakeLists.txt carry the same 0.1.0; tests/test_sanity.cpp:29 pins \"0.1.0\". Smoke run log.txt banner printed the 0.1.0 version. Backlog goal: 'Deliver STACKFALL v1.0'; no task in the accepted snapshot (34 tasks) references a version bump. Agent work; classify with the M5 release-prep round alongside T019.",
-      "blockers": [
-        "Deferred: M5 release preparation begins, after T015, T016, T017, and T019's inputs are done; the bump must land before the T019 package and T018 device acceptance run"
+      "status": "done",
+      "details": "Acceptance criteria: a backlog task (or an explicit scope note on an existing M5 task) owns raising the version to 1.0.0 in include/stackfall/version.hpp and src/version.cpp, updating the pinned expectation in tests/test_sanity.cpp, and confirming the binary banner and package metadata report 1.0.0. The goal text promises 'STACKFALL v1.0' and version.hpp's own comment says 'Milestone M5 raises the version to 1.0.0 for the first release', but searching all 34 backlog tasks finds no mention of the version bump. Without an owner, the release package (T019) and device acceptance (T018) would present a binary calling itself 0.1.0.\nEvidence: include/stackfall/version.hpp defines kVersionString = \"0.1.0\" with the M5 comment; src/version.cpp and CMakeLists.txt carry the same 0.1.0; tests/test_sanity.cpp:29 pins \"0.1.0\". Smoke run log.txt banner printed the 0.1.0 version. Backlog goal: 'Deliver STACKFALL v1.0'; no task in the accepted snapshot (34 tasks) references a version bump. Agent work; classify with the M5 release-prep round alongside T019.\n\nReview repair: T035 version bump to 1.0.0 landed inside the T019 package; record and close it there\nT035 requires the version bump to land before this package. It landed as part of T019's assembly so the archive is self-consistent: version.hpp, CMakeLists.txt, and the test_sanity pin now say 1.0.0; the five pinned replay hashes in tests/test_regression.cpp and the second pin set in tests/harness/check_t015.py were refreshed from the suite's own printed values (scores, lines, and ticks unchanged), and the shipped release notes plus the game banner in conf/log.txt report 1.0.0, which check_t019.py now verifies. T035 remains the owner of record; only its review and closure remain.\nEvidence: notes/agent-testing.md, section \"T019: PortMaster release package assembled locally (2026-11-04)\"; build/agent-checks/t019-package-2026-11-04/ (78 checks, including \"the game banner in conf/log.txt reports the shipped version\"); ctest 5 of 5 in Debug and Release; tests/harness/t015.sh gate pass at build/agent-checks/t015-2026-11-04-123954/ with the re-pinned hashes.",
+      "files": [
+        "README.md",
+        "docs/AGENT_TESTING.md",
+        "notes/agent-testing.md",
+        "tests/harness/check_t035.py",
+        "tests/harness/t035.sh"
       ],
       "tags": [
-        "looper:deferred",
         "looper:finding:release-version-1-0-0-bump"
       ],
-      "unblock_when": "M5 release preparation begins, after T015, T016, T017, and T019's inputs are done; the bump must land before the T019 package and T018 device acceptance run; remove looper:deferred and set todo when this condition is met."
+      "updated_at": "2026-11-04T12:06:07Z",
+      "unblock_when": "\"\""
     },
     {
       "id": "T036",
@@ -928,21 +1003,48 @@
       "id": "T037",
       "title": "Focus the gameplay HUD around the board: statistics left, Next right, no permanent gameplay legend",
       "priority": 2,
-      "status": "blocked",
-      "details": "Round M3 (desktop layout pass gating T015). Stable finding key focused-gameplay-hud. Planning and scope: the board geometry itself (27x27 cells, 270x540 board centered at (345,2), one-pixel border x=344..615 and y=1..542, 10x20 gameplay dimensions, 960x544 canvas) is owned by the separately queued board-cells-27px plan (source /notes/stackfall-27px-board-plan-2026-11-03.md); it has no task in the accepted backlog at 0ef908d, where the implemented geometry is still 24x24 cells at (360,32) (include/stackfall/renderer_sdl.hpp:78-82; docs/SPEC.md section 6.1). Do not duplicate that geometry work. If the task created from the board-cells-27px plan has not started when this lands, extend that task's contract with this approved composition instead of creating separate layout work; create this dependent task only if that contract is already in flight or complete. Never change the contract of an in-flight attempt. The scheduling hints 'before T026' and 'preserve T025's active work' are void at this revision: T025 and T026 are complete. Approved composition and acceptance criteria: (1) Regroup the HUD: Hold, score, lines, and level on the left; all five Next previews on the right; both groups anchored close to the board edges starting with about 24 pixels between board frame and each group, adjusted for readable content; the suggested 128-pixel columns are a starting point, not a clipping rule; leave the outer screen regions quiet. (2) Remove the permanent control legend from ordinary gameplay (src/renderer_sdl.cpp:480-496, drawn from drawGameplayPanels at src/renderer_sdl.cpp:308). This supersedes only the gameplay-hint portion of completed T030 as follow-up work; never reopen or rewrite T030. Keep complete controls on the controls screen (T011) and keep the title, pause, and game-over footer hints readable at their current scale. (3) Add a clear route from pause to the controls screen and back that resumes the same round without advancing its counters or losing state (current overlay offers only Resume, Restart, and Quit to Title: src/renderer_sdl.cpp:590-597); if controls access changes, verify paused-state preservation. (4) Keep the HUD continuously visible and stable with a clear contrast hierarchy: active and settled pieces dominate; Hold, the first Next piece, score values, and board boundaries stay readable; labels, grid, and the remaining previews are quieter; reduce decorative panel outlines; preserve all five identifiable previews, readable glyph sizes, the approved hollow ghost outline of at least 3:1 contrast (T031), and centered letterboxing (T032). (5) Prohibited: fading HUD elements, transient clear or level notices, combo counters, new scoring rules, animated backgrounds, and decorative effects; these were explicitly deferred. (6) Update docs/SPEC.md section 6.1/6.2 and relevant layout, testing, and design-review notes to the approved composition, and replace the old gameplay-legend acceptance rules instead of preserving contradictory screenshot checks: the control-hint-glyph-scale criterion measured on gameplay frames (tools/design-review/check_fixes.py:12-16, 87-110) must be replaced with checks for the new composition. Verification and acceptance: test the longest supported score and statistics values, all Hold and Next shapes, and empty Hold; nothing clips and nothing overlaps the board or the other group. Preserve menus, pause and resume, deterministic rules, controls, scoring, saves, and the separately queued T029 immediate-spawn change (do not block on or rewrite T029; rerun spawn captures if T029 lands first). Run affected Debug and Release ctest, layout checks, and scripted graphical scenarios (tests/harness/run.sh). Capture fresh native 960x544 gameplay plus the existing 640x480 letterbox scenario (tests/harness/scripts/t024-focus-letterbox.script.txt) and affected pause and controls views; inspect every affected image for readable text, spacing, contrast, missing values, and clipping. Record commands, source identity, screenshots, and dispositions in notes/agent-testing.md and notes/design-review.md. Gate instruction for Looper planning: add the final layout task (this task or the merged board-cells-27px task) to T015's depends_on, and complete it before T019 packaging. This change authorizes no physical-device work and no publication; T018, T020, and T021 gates stay unchanged.",
+      "status": "done",
+      "details": "Round M3 (desktop layout pass gating T015). Stable finding key focused-gameplay-hud. Planning and scope: T038 has completed the 27x27 board geometry at (345, 2). Preserve that geometry and implement this approved composition as agent work. T025 and T026 are complete; repeat affected verification after the layout change without reopening their tasks. Approved composition and acceptance criteria: (1) Regroup the HUD: Hold, score, lines, and level on the left; all five Next previews on the right; both groups anchored close to the board edges starting with about 24 pixels between board frame and each group, adjusted for readable content; the suggested 128-pixel columns are a starting point, not a clipping rule; leave the outer screen regions quiet. (2) Remove the permanent control legend from ordinary gameplay (src/renderer_sdl.cpp:480-496, drawn from drawGameplayPanels at src/renderer_sdl.cpp:308). This supersedes only the gameplay-hint portion of completed T030 as follow-up work; never reopen or rewrite T030. Keep complete controls on the controls screen (T011) and keep the title, pause, and game-over footer hints readable at their current scale. (3) Add a clear route from pause to the controls screen and back that resumes the same round without advancing its counters or losing state (current overlay offers only Resume, Restart, and Quit to Title: src/renderer_sdl.cpp:590-597); if controls access changes, verify paused-state preservation. (4) Keep the HUD continuously visible and stable with a clear contrast hierarchy: active and settled pieces dominate; Hold, the first Next piece, score values, and board boundaries stay readable; labels, grid, and the remaining previews are quieter; reduce decorative panel outlines; preserve all five identifiable previews, readable glyph sizes, the approved hollow ghost outline of at least 3:1 contrast (T031), and centered letterboxing (T032). (5) Prohibited: fading HUD elements, transient clear or level notices, combo counters, new scoring rules, animated backgrounds, and decorative effects; these were explicitly deferred. (6) Update docs/SPEC.md section 6.1/6.2 and relevant layout, testing, and design-review notes to the approved composition, and replace the old gameplay-legend acceptance rules instead of preserving contradictory screenshot checks: the control-hint-glyph-scale criterion measured on gameplay frames (tools/design-review/check_fixes.py:12-16, 87-110) must be replaced with checks for the new composition. Verification and acceptance: test the longest supported score and statistics values, all Hold and Next shapes, and empty Hold; nothing clips and nothing overlaps the board or the other group. Preserve menus, pause and resume, deterministic rules, controls, scoring, saves, and the separately queued T029 immediate-spawn change (do not block on or rewrite T029; rerun spawn captures if T029 lands first). Run affected Debug and Release ctest, layout checks, and scripted graphical scenarios (tests/harness/run.sh). Capture fresh native 960x544 gameplay plus the existing 640x480 letterbox scenario (tests/harness/scripts/t024-focus-letterbox.script.txt) and affected pause and controls views; inspect every affected image for readable text, spacing, contrast, missing values, and clipping. Record commands, source identity, screenshots, and dispositions in notes/agent-testing.md and notes/design-review.md. Gate instruction for Looper planning: add the final layout task (this task or the merged board-cells-27px task) to T015's depends_on, and complete it before T019 packaging. This change authorizes no physical-device work and no publication; T018, T020, and T021 gates stay unchanged.",
       "depends_on": [
         "T024",
         "T031",
-        "T032"
+        "T032",
+        "T038"
       ],
-      "blockers": [
-        "An operator must complete this prerequisite; coding workers cannot execute it."
+      "files": [
+        "README.md",
+        "docs/AGENT_TESTING.md",
+        "docs/SPEC.md",
+        "docs/images/gameplay.png",
+        "include/stackfall/game.hpp",
+        "include/stackfall/renderer_sdl.hpp",
+        "notes/agent-testing.md",
+        "notes/design-review.md",
+        "src/game.cpp",
+        "src/main.cpp",
+        "src/observe.cpp",
+        "src/renderer_sdl.cpp",
+        "tests/game_test_peer.hpp",
+        "tests/harness/check_harness.py",
+        "tests/harness/scripts/fixture-four-line.script.txt",
+        "tests/harness/scripts/options-ghost.script.txt",
+        "tests/harness/scripts/scene-cycle-keyboard.script.txt",
+        "tests/harness/scripts/t024-clears-23.script.txt",
+        "tests/harness/scripts/t024-focus-letterbox.script.txt",
+        "tests/harness/scripts/t024-i-spawn.script.txt",
+        "tests/harness/t025_gen.py",
+        "tests/test_regression.cpp",
+        "tests/test_renderer_sdl.cpp",
+        "tests/test_screens.cpp",
+        "tools/design-review/build_prompt.py",
+        "tools/design-review/check_fixes.py",
+        "tools/design-review/packet.tsv",
+        "tools/design-review/prior-findings.json"
       ],
       "tags": [
-        "looper:finding:focused-gameplay-hud",
-        "looper:operator"
+        "looper:finding:focused-gameplay-hud"
       ],
-      "unblock_when": "Record evidence that the operator completed the action, then mark this task done. To delegate different work, explicitly change its contract and remove looper:operator."
+      "updated_at": "2026-11-03T22:32:03Z"
     },
     {
       "id": "T038",
@@ -964,6 +1066,390 @@
         "looper:finding:board-cells-27px"
       ],
       "updated_at": "2026-11-03T19:01:41Z"
+    },
+    {
+      "id": "T039",
+      "title": "Extend the settings file with the ghost-preview preference",
+      "priority": 2,
+      "status": "done",
+      "details": "Round M3, settings follow-up to T012 and T013. The settings file gains a second preference beside the sound toggle: ghost=on|off for the ghost landing preview, default on. formatSettingsFile writes the three-line canonical form version=1\\nsound=on|off\\nghost=on|off\\n. parseSettingsFile (now parseSettingsFile(bytes, bool* soundOn, bool* ghostOn)) keeps the strict exact-byte-string rule of storage.hpp: it accepts exactly six strings, the four three-line forms plus the two legacy two-line forms (a legacy file parses with ghost on, so an upgrade never loses a saved sound choice), and every other outcome is a damaged file that recovers to sound on and ghost on. Saves always write the three-line form, so a legacy file upgrades on its next save. kSaveFormatVersion stays 1: storage.cpp shares it with the high-score record format, so do not bump it. SettingsResult gains bool ghostOn = true and SettingsStore::save becomes save(bool soundOn, bool ghostOn) over the existing atomic write. Update the pinned canonical strings and damaged-file cases in tests/test_storage.cpp (testSettingsFormatAndParse, testSettingsStores): keep all existing rejections and add ghost-specific ones (lost final newline, ghost=maybe, ghost=On, a file missing the sound line, a doubled ghost line, CRLF). Update tests/harness/t025_fuzz.py canonical_settings to b\"version=1\\nsound=on\\nghost=on\\n\" and extend the t025.sh failure grep to cover the ghost setting. Acceptance: ctest runs the storage suite green with the new pins, and a legacy version=1\\nsound=off\\n file loads with sound off and ghost on.",
+      "depends_on": [
+        "T012",
+        "T013"
+      ],
+      "files": [
+        "include/stackfall/storage.hpp",
+        "notes/agent-testing.md",
+        "src/main.cpp",
+        "src/storage.cpp",
+        "tests/harness/t025.sh",
+        "tests/harness/t025_fuzz.py",
+        "tests/test_storage.cpp"
+      ],
+      "tags": [
+        "M3",
+        "settings"
+      ],
+      "updated_at": "2026-11-03T20:00:45Z",
+      "created_at": "2026-11-03T19:18:16Z"
+    },
+    {
+      "id": "T040",
+      "title": "Add the options screen with the player ghost toggle",
+      "priority": 2,
+      "status": "done",
+      "details": "Round M3, screen feature in the pattern of T011. The title menu gains OPTIONS between CONTROLS and QUIT (kTitleItemCount 3 to 4; the four rows at kTitleMenuY plus kMenuItemHeight end at y=369 and clear the high-score label at y=396, so no title constant moves). The new Scene::Options joins at the END of the Scene enum after Controls: the regression hash folds the scene integer and the pinned scenarios never leave Playing or GameOver, so appending keeps every pinned hash, and the new optionsCursor_ is menu state that the hash never folds. The core stays value-free: Game::tickOptions(const MenuFrame\u0026) moves the cursor over two rows (new kOptionsItemCount = 2, SOUND then GHOST, cursor reset in openTitle) and back returns to Title, while select changes nothing in the core because the row values are platform state (layering of specification section 7). The renderer mirrors the setShowGrid precedent: setShowGhost/showGhost and setSoundOn/soundOn with showGhost_ and soundOn_ defaulting true; drawPlayScene gates drawGhostPiece on showGhost_ (Game::ghostPiece and every observation record stay untouched); drawOptionsScreen draws the heading, the rows as SOUND ON/OFF and GHOST ON/OFF highlighted at game.optionsCursor(), and the footer UP/DOWN CHOOSE - A CHANGE - B BACK, with new constants kOptionsHeadingY = 96, kOptionsHeadingScale = 4, kOptionsMenuY = 232, kOptionsFooterY = 400. Platform wiring in main.cpp: sceneName returns options; toggleSound gains the renderer (it calls renderer.setSoundOn and saves both values, keeping the existing sound log and input-log lines byte-identical); a new toggleGhost logs Saving the ghost setting failed on failure and ghost shown|hidden status=... to the input log; applyOptionsSelect runs toggleSound on row 0 and toggleGhost on row 1; pollEvents gains the renderer; runMainLoop captures the scene BEFORE game.tick(tickInput) and acts on tickInput.menu.selectPressed only when that captured scene was Options, so the select that opens the screen never toggles a value; startup calls setSoundOn and setShowGhost from SettingsResult and logs the ghost setting lines that mirror the sound ones. Five switch-over-Scene sites gain a case (src/game.cpp tick dispatch, src/renderer_sdl.cpp draw, src/observe.cpp draw plus the menu switch so records carry menu=options:N, src/main.cpp sceneName, and tests/test_regression.cpp sceneName) because -Wall -Wextra -Wpedantic makes a missed case a build failure. QUIT moves from title index 2 to 3, so the quit-from-title walks gain one down-press: scene-cycle-keyboard, scene-cycle-pad, fixture-four-line, fixture-blockout and fixture-lockout if they walk to Quit, t024-shapes-keyboard, t024-shapes-pad, t024-clears-23, t024-i-spawn, t024-focus-letterbox, and t025_gen.py quit_from_title. Tests: extend test_title_navigation_wraps and test_title_quit in tests/test_screens.cpp to four items; add test_title_options_round_trip (open, cursor wrap over two rows, select stays on Options, back returns with the title cursor still on the OPTIONS item); update the title items copy in tests/test_renderer_sdl.cpp and add options-screen checks (all four value combinations, the marker row, the footer band) plus a ghost-off pixel check proving the ghost cells become well color while the active piece still draws. Acceptance: zero-warning build, ctest green across all suites, and every harness session green through the four-item title menu.\n\nReview repair: Wire the loaded ghost preference into a player toggle and the renderer\nThe ghost preference now round-trips through settings.dat (T039) but nothing consumes it: src/main.cpp loads ghostOn and passes it through every save, while the renderer still always draws the ghost and no input toggles it. T040 owns the options screen and the player-facing toggle; the hand-off point is the ghostOn local in main() (src/main.cpp around line 1663) and the pollEvents/runMainLoop parameter threading already in place. T041 then adds the options-ghost harness session.\nEvidence: src/main.cpp:1649-1676 loads and logs both preferences and comments that T040 adds the toggle; renderer_sdl.hpp drawGhostPiece has no setting gate; ctest 5/5 and run.sh/t024.sh green with the preference preserved but unused.",
+      "depends_on": [
+        "T039"
+      ],
+      "files": [
+        "include/stackfall/game.hpp",
+        "include/stackfall/renderer_sdl.hpp",
+        "notes/agent-testing.md",
+        "src/game.cpp",
+        "src/main.cpp",
+        "src/observe.cpp",
+        "src/renderer_sdl.cpp",
+        "tests/harness/scripts/fixture-four-line.script.txt",
+        "tests/harness/scripts/scene-cycle-keyboard.script.txt",
+        "tests/harness/scripts/scene-cycle-pad.script.txt",
+        "tests/harness/scripts/t024-clears-23.script.txt",
+        "tests/harness/scripts/t024-focus-letterbox.script.txt",
+        "tests/harness/scripts/t024-i-spawn.script.txt",
+        "tests/harness/scripts/t024-shapes-keyboard.script.txt",
+        "tests/harness/scripts/t024-shapes-pad.script.txt",
+        "tests/harness/t025_gen.py",
+        "tests/harness/t026_gen.py",
+        "tests/test_font.cpp",
+        "tests/test_regression.cpp",
+        "tests/test_renderer_sdl.cpp",
+        "tests/test_screens.cpp"
+      ],
+      "tags": [
+        "M3",
+        "ui",
+        "settings",
+        "looper:finding:ghost-preference-player-toggle"
+      ],
+      "updated_at": "2026-11-03T20:25:28Z",
+      "created_at": "2026-11-03T19:18:16Z",
+      "unblock_when": "\"\""
+    },
+    {
+      "id": "T041",
+      "title": "Add the options-ghost harness session and document the options screen",
+      "priority": 3,
+      "status": "done",
+      "details": "Round M3, agent-testing follow-up in the pattern of T023 and T024. Add the deterministic options-ghost session (keyboard, seed 20261103): title, down to OPTIONS, enter, check the open screen, down to the GHOST row, enter to toggle ghost off, esc back to the title, up twice and enter to start a round, and a checkpoint on the first playing tick. check_harness.py gains the branch: the scene sequence, check_field menu=options:0 and menu=options:1 on the options checkpoints, the first playing record showing the active piece in the hidden rows while ghost names a visible landing row, the session save dir holding settings.dat with exactly version=1\\nsound=on\\nghost=off\\n bytes, and a small dependency-free BMP reader (24/32 bpp, bottom-up, 4-byte stride, about 30 lines, no PIL) that scans the board well of the screenshot and requires zero pixels besides the well and grid-line colors, proving no ghost outline was drawn; an optional ghost-on companion checkpoint before the toggle gives the positive proof. Register the session in run.sh and update the session-count wording. Documents: SPEC.md section 4.7 (the TITLE bullet lists Start Game / Controls / Options / Quit, and a new OPTIONS bullet describes the two rows, select-to-change, back-to-title, and persistence), section 5 (one sentence: the options screen uses the same menu edges and adds no key bindings), section 6.2 (the ghost item notes the player toggle and the on default), section 6.3 and section 9 (the settings file carries both preferences with the same atomic write and recovery rules); docs/AGENT_TESTING.md lists the session. Acceptance: tests/harness/run.sh runs the new session green end to end, and a fresh design-review capture still passes check_fixes.py with the ghost on by default.\n\nReview repair: Add the options-ghost harness session and document the options screen (T041)\nT041 owns the registered harness session for the new screen (options-ghost script, check_harness.py branch with menu=options pins, settings.dat byte check, and the BMP ghost-absence reader) plus the documentation: SPEC.md section 4.7 still reads 'TITLE: Start Game / Controls / Quit' and lacks the OPTIONS bullet, and section 5/6.2/6.3/9 notes and docs/AGENT_TESTING.md session list need the same. T040 deliberately left those to T041 per its contract; the implementation and verification evidence are in place to build on.\nEvidence: docs/SPEC.md:160 still lists the three-item TITLE bullet; notes/agent-testing.md 'T040: options screen with the ghost toggle' records the verified round trip (build/agent-checks/t040-manual/) that T041 can register as a session; run.sh session-count wording still says six sessions.",
+      "depends_on": [
+        "T040"
+      ],
+      "files": [
+        "docs/AGENT_TESTING.md",
+        "docs/SPEC.md",
+        "notes/agent-testing.md",
+        "notes/design-review.md",
+        "tests/harness/check_harness.py",
+        "tests/harness/run.sh",
+        "tests/harness/scripts/options-ghost.script.txt"
+      ],
+      "tags": [
+        "M3",
+        "agent-testing",
+        "ui",
+        "looper:finding:options-screen-harness-session-and-docs"
+      ],
+      "updated_at": "2026-11-03T20:44:25Z",
+      "created_at": "2026-11-03T19:18:16Z",
+      "unblock_when": "\"\""
+    },
+    {
+      "id": "T042",
+      "title": "Refresh the dr-title expectation row of the design-review packet for the four-item title menu",
+      "priority": 4,
+      "status": "blocked",
+      "details": "The dr-title row of tools/design-review/packet.tsv still lists the three pre-options title items (START GAME selected, CONTROLS and QUIT). The title menu has had four items since T040, so a future review round that quotes this expectation would compare against a stale list. One-line text fix, outside the file list of T041, so it was recorded rather than edited.\nEvidence: tools/design-review/packet.tsv line 22; noted in notes/design-review.md under 'Fresh capture after the options screen (T041, 2026-11-03)'",
+      "blockers": [
+        "An operator must complete this prerequisite; coding workers cannot execute it.",
+        "Deferred: Before the next design-review capture or review round (the T037 packet refresh)"
+      ],
+      "tags": [
+        "looper:deferred",
+        "looper:finding:design-review-packet-title-item-list",
+        "looper:finding:looper:finding:design-review-packet-title-item-list",
+        "looper:operator"
+      ],
+      "unblock_when": "Record evidence that the operator completed the action, then mark this task done. To delegate different work, explicitly change its contract and remove looper:operator."
+    },
+    {
+      "id": "T043",
+      "title": "Decide whether the game-over overlay nests between the HUD columns",
+      "priority": 4,
+      "status": "blocked",
+      "details": "The game-over panel (x=239..720) cuts across the dimmed left statistics column (x=192..319), so fragments of the dimmed SCORE, LINES, and LEVEL labels peek out beside the panel edge. Pre-existing overlay geometry, not a T037 regression; the pause overlay now nests between the columns (x=320..639) and the game-over overlay could match. Needs a product decision before implementation; recorded as an open question in notes/design-review.md.\nEvidence: build/agent-checks/design-review/t037-fix/packet/images/gameover.png inspection (dimmed label fragments at the panel's left edge); notes/design-review.md 'Open questions'",
+      "blockers": [
+        "An operator must complete this prerequisite; coding workers cannot execute it.",
+        "Deferred: Owner records a decision on nesting the game-over panel between the HUD columns",
+        "Deferred: Owner records the nesting decision during release review"
+      ],
+      "tags": [
+        "looper:deferred",
+        "looper:finding:gameover-panel-hud-overlap",
+        "looper:finding:looper:finding:gameover-panel-hud-overlap",
+        "looper:operator"
+      ],
+      "unblock_when": "Record evidence that the operator completed the action, then mark this task done. To delegate different work, explicitly change its contract and remove looper:operator."
+    },
+    {
+      "id": "T044",
+      "title": "Expand the options screen and settings file with Grid, Hold, Next pieces, and Grayscale",
+      "priority": 2,
+      "status": "done",
+      "details": "Round M3 settings/ui follow-up to the completed T039/T040/T041; never reopen or rewrite those tasks. Grow the options screen from two to six rows (SOUND, GHOST, GRID, HOLD, NEXT PIECES, GRAYSCALE): kOptionsItemCount 2 to 6 in include/stackfall/game.hpp, cursor reachable over every row by keyboard and controller with wrap, each row shows its current value (ON/OFF, or the digit), back returns to the title with the cursor still on OPTIONS, and the select that opens the screen still changes nothing (keep T040's captured-scene rule in runMainLoop). GRID reuses the existing renderer gate setShowGrid (src/renderer_sdl.cpp:112, default on): Off removes the grid lines, On restores them, pieces unchanged. HOLD Off ignores every mapped hold input (controller Y/left shoulder, keyboard C/Left Shift per SPEC section 5) so no hold swap or hold lock is consumed, and hides the Hold preview; On keeps the existing once-per-piece rule of T007. NEXT PIECES cycles 1,2,3,4,5,1 on select, default 5: draw exactly N previews in queue order for N=1..5, randomizer and piece sequence byte-identical for a fixed seed at every value, and N=5 renders exactly today's T037 composition with all five identifiable previews and the right column still anchored and quiet. GRAYSCALE Off by default: On renders the play scene without color (settled pieces, active piece, ghost, Hold and Next previews) while shapes, outlines, text, and the T031 ghost contrast of at least 3:1 stay readable; Off restores the normal palette exactly. Settings file: extend the canonical form to version=1 plus the five preference lines (grid, hold, next, grayscale added); parseSettingsFile accepts the new canonical form plus the legacy three-line and two-line forms, with legacy files keeping their saved sound and ghost values and receiving the new defaults (grid on, hold on, next 5, grayscale off); every other outcome stays a damaged file that recovers to all defaults per the existing recovery rule; kSaveFormatVersion stays 1 because storage.cpp shares it with the high-score record; saves always write the new canonical form; save each preference when it changes and apply all five at startup. Extend the pinned canonical and damaged-file cases in tests/test_storage.cpp (keep the existing rejection shapes: doubled lines, wrong case, CRLF, lost newline) and update tests/harness/t025_fuzz.py canonical_settings plus the t025.sh failure grep. Update tests/test_screens.cpp (six-row navigation wrap and round trip) and tests/test_renderer_sdl.cpp (all value combinations, marker row, footer band, grid-off, preview-count, and grayscale pixel checks). Fit all six rows, their values, and the footer navigation hints inside the 960x544 canvas with nothing clipped, keeping menu hint glyphs at their current readable scale (T030/T037 rules). Acceptance: zero-warning build, ctest green in Debug and Release, every existing harness session green through the unchanged four-item title menu, a legacy version=1/sound=off/ghost=off file loads with those values plus the four new defaults, and toggling each row changes and persists its value on relaunch. No pending preference-refactoring task exists in the accepted backlog (verified 2026-11-04), so this task owns the settings-format extension directly. No physical-device work and no publication.",
+      "depends_on": [
+        "T041"
+      ],
+      "files": [
+        "README.md",
+        "docs/SPEC.md",
+        "include/stackfall/game.hpp",
+        "include/stackfall/renderer_sdl.hpp",
+        "include/stackfall/storage.hpp",
+        "notes/agent-testing.md",
+        "src/game.cpp",
+        "src/main.cpp",
+        "src/renderer_sdl.cpp",
+        "src/storage.cpp",
+        "tests/harness/check_harness.py",
+        "tests/harness/t025.sh",
+        "tests/harness/t025_fuzz.py",
+        "tests/test_renderer_sdl.cpp",
+        "tests/test_screens.cpp",
+        "tests/test_storage.cpp"
+      ],
+      "updated_at": "2026-11-04T01:32:11Z",
+      "unblock_when": "\"\""
+    },
+    {
+      "id": "T045",
+      "title": "Add options-expansion harness coverage and document the six settings",
+      "priority": 3,
+      "status": "done",
+      "details": "Round M3 agent-testing and documentation follow-up in the pattern of T041, after P1. Add deterministic harness sessions and check_harness.py branches covering: reaching all six options rows by keyboard and by virtual controller (scene-cycle-pad pattern), changing each of the four new settings, settings.dat holding exactly the new canonical bytes after each change, a relaunch restoring all values, a legacy three-line and a legacy two-line settings file loading with saved sound/ghost and the new defaults, hold-off gameplay proving every mapped hold input neither swaps nor consumes the hold lock and the Hold preview is absent while hold-on keeps the once-per-piece rule, next-count sessions at 1..5 proving exactly N visible previews in queue order with identical observation records for a fixed seed, and grayscale on/off play-scene captures with a pixel check (no colored pixels in the play scene while text, outlines, and the ghost stay readable, using the dependency-free BMP reader pattern from T041). Register the sessions in tests/harness/run.sh and update the session-count wording. Documents: docs/SPEC.md section 4.7 (six rows, values, Next pieces cycling, persistence), section 5 (no new key bindings), sections 6.2, 6.3, and 9 (grid, hold, preview count, grayscale rendering, the settings keys, defaults, legacy loading, and recovery); docs/AGENT_TESTING.md session list; README status paragraph per T022's standing rule that the front page matches the repository (attach any review evidence to T022, do not create a second task). Rerun affected Debug and Release ctest and tests/harness/run.sh, capture and inspect screenshots of the six-row options screen, hold-off, next-count, and grayscale scenes, and record commands, source identity, screenshots, and dispositions in notes/agent-testing.md. This repeats the affected desktop checks of the completed T015 gate at the new feature without reopening T015. Acceptance: the new sessions run green end to end, relevant existing tests pass, and the specification and user documentation describe all six settings.\n\nReview repair: Options-expansion harness sessions and six-setting user documentation are missing\nAcceptance criteria of the options-expansion import, item 7: automated checks cover menu input, persistence, hold behavior, preview counts, and grayscale rendering, and the specification and user documentation describe the settings. T044 delivered the feature and unit checks. The registered end-to-end sessions and the documentation list are still absent, and the documents count the settings wrongly.\nEvidence: tests/harness/run.sh line 122 still registers exactly seven sessions (scene-cycle-keyboard, scene-cycle-pad, normal-game-clears, options-ghost, fixture-four-line, fixture-lockout, fixture-blockout); none drives GRID, HOLD, NEXT PIECES, or GRAYSCALE, and docs/AGENT_TESTING.md documents no such session. T044 verified its feature only with unregistered manual runs (notes/agent-testing.md, T044 section, build/agent-checks/t044-manual). Documentation names six preferences but calls them five: README.md:120 'all five preferences persist' and README.md:54 'your high score, sound setting, and ghost setting'; docs/SPEC.md:167, 243, and 323 'all five preferences/values' while each lists sound, ghost, grid, hold, next, grayscale. My own end-to-end runs at b24643e confirm the behavior is correct and only coverage and wording lag.",
+      "depends_on": [
+        "T044"
+      ],
+      "files": [
+        "README.md",
+        "docs/AGENT_TESTING.md",
+        "docs/SPEC.md",
+        "notes/agent-testing.md",
+        "tests/harness/check_harness.py",
+        "tests/harness/reference_replay.cpp",
+        "tests/harness/run.sh",
+        "tests/harness/scripts/grayscale.script.txt",
+        "tests/harness/scripts/hold-off.script.txt",
+        "tests/harness/scripts/next-count-step.script.txt",
+        "tests/harness/scripts/next-count.stages.txt",
+        "tests/harness/scripts/options-legacy-three.script.txt",
+        "tests/harness/scripts/options-legacy-two.script.txt",
+        "tests/harness/scripts/options-legacy.stages.txt",
+        "tests/harness/scripts/options-relaunch-grayscale.script.txt",
+        "tests/harness/scripts/options-relaunch-grid.script.txt",
+        "tests/harness/scripts/options-relaunch-hold.script.txt",
+        "tests/harness/scripts/options-relaunch-next.script.txt",
+        "tests/harness/scripts/options-relaunch.stages.txt",
+        "tests/harness/scripts/options-six-keyboard.script.txt",
+        "tests/harness/scripts/options-six-pad.script.txt",
+        "tests/harness/settings/legacy-three-line.dat",
+        "tests/harness/settings/legacy-two-line.dat"
+      ],
+      "tags": [
+        "looper:finding:options-expansion-harness-coverage-and-docs"
+      ],
+      "updated_at": "2026-11-04T03:36:32Z"
+    },
+    {
+      "id": "T046",
+      "title": "Share bounded file loading between stores",
+      "priority": 2,
+      "status": "done",
+      "details": "Extract the repeated directory, file-status, regular-file, and bounded-read checks from HighScoreStore::load and SettingsStore::load into one private helper. Keep format parsing and default values separate. Keep parser exceptions inside the recovery boundary; do not introduce a generic store framework. Acceptance: both stores use the helper; missing, invalid, oversized, unreadable, and legacy files retain their statuses and defaults; storage tests and persistence harness sessions pass. Preserve gameplay, pinned hashes, save formats, input timing, and existing log and observation formats. Follow notes/refactor-review.md, including its second validation pass.",
+      "files": [
+        "notes/agent-testing.md",
+        "src/storage.cpp",
+        "tests/test_storage.cpp"
+      ],
+      "tags": [
+        "refactor"
+      ],
+      "updated_at": "2026-11-04T04:49:28Z",
+      "created_at": "2026-11-03T23:56:28Z"
+    },
+    {
+      "id": "T047",
+      "title": "Give platform resources scoped cleanup",
+      "priority": 2,
+      "status": "done",
+      "details": "Replace repeated manual cleanup in startup failures, script-load failure, and normal shutdown with scoped owners for files, window, renderer, controllers, and the virtual controller. AudioDriver already owns its device. Preserve audio shutdown before SDL_Quit and retain logging through final cleanup. Support script-driven controller detachment without double closing. Acceptance: initialization failures, invalid scripts, controller detach, repeated launch and quit, and relevant sanitizer checks pass; clean shutdown remains logged. Preserve gameplay, pinned hashes, save formats, input timing, and existing log and observation formats. Follow notes/refactor-review.md, including its second validation pass.",
+      "files": [
+        "notes/agent-testing.md",
+        "src/main.cpp",
+        "tests/harness/t025.sh"
+      ],
+      "tags": [
+        "refactor"
+      ],
+      "updated_at": "2026-11-04T05:12:19Z",
+      "created_at": "2026-11-03T23:56:28Z"
+    },
+    {
+      "id": "T048",
+      "title": "Extract developer scripts and checkpoint capture",
+      "priority": 3,
+      "status": "done",
+      "details": "Move the SDL script driver and checkpoint capture into a focused developer module with explicit input-injection and capture operations. Reduce the main loop dependency list where the module owns those dependencies; do not hide all application resources in one context. Keep timing, simulation, and rendering visible in the loop. Keep the reference parser and mapping tables independent. Acceptance: main.cpp delegates script execution and capture; Debug and Release tests pass; keyboard, controller, fixture, restart, stall, and capture sessions retain equivalent observations and screenshots. Preserve gameplay, pinned hashes, save formats, input timing, and existing log and observation formats. Follow notes/refactor-review.md, including its second validation pass.",
+      "depends_on": [
+        "T045"
+      ],
+      "files": [
+        "CMakeLists.txt",
+        "include/stackfall/developer_session.hpp",
+        "notes/agent-testing.md",
+        "src/developer_session.cpp",
+        "src/main.cpp"
+      ],
+      "tags": [
+        "refactor"
+      ],
+      "updated_at": "2026-11-04T06:00:20Z",
+      "created_at": "2026-11-03T23:56:28Z"
+    },
+    {
+      "id": "T049",
+      "title": "Simplify preference application and persistence",
+      "priority": 4,
+      "status": "done",
+      "details": "Optional, low-priority simplification from the validated review: current preference paths are consistent and no synchronization defect is established. Inspect the platform structure after script extraction. Use a small Preferences value and shared apply/save helpers only if they remove duplicated synchronization without adding a general settings framework. Keep preferences outside the rules core. Acceptance: startup, sound shortcuts, and options use consistent values; immediate persistence, missing audio, and opening Options without toggling remain correct; options and persistence sessions pass. A documented no-change result is acceptable if the proposed abstraction increases complexity. Preserve gameplay, pinned hashes, save formats, input timing, and existing log and observation formats. Follow notes/refactor-review.md, including its second validation pass.",
+      "depends_on": [
+        "T046"
+      ],
+      "files": [
+        "include/stackfall/game.hpp",
+        "include/stackfall/renderer_sdl.hpp",
+        "include/stackfall/storage.hpp",
+        "notes/agent-testing.md",
+        "src/developer_session.cpp",
+        "src/main.cpp",
+        "tests/harness/scripts/options-ghost.script.txt"
+      ],
+      "tags": [
+        "refactor"
+      ],
+      "updated_at": "2026-11-04T07:21:23Z",
+      "created_at": "2026-11-03T23:56:28Z"
+    },
+    {
+      "id": "T050",
+      "title": "Resolve the SDL CMake dependency once",
+      "priority": 3,
+      "status": "done",
+      "details": "Replace four repeated SDL imported-target checks and legacy fallback blocks with one dependency resolution. Prefer one target variable; create a fallback interface target only when SDL2::SDL2 is absent. Use existing public transitive dependencies and keep stackfall_core free of SDL linkage. Acceptance: clean Debug and Release builds and all CTest suites pass; core tests have no SDL dependency; verify the legacy package path where available and document any untested environment. Preserve gameplay, pinned hashes, save formats, input timing, and existing log and observation formats. Follow notes/refactor-review.md, including its second validation pass.",
+      "files": [
+        "CMakeLists.txt",
+        "notes/agent-testing.md"
+      ],
+      "tags": [
+        "refactor"
+      ],
+      "updated_at": "2026-11-04T06:08:47Z",
+      "created_at": "2026-11-03T23:56:28Z"
+    },
+    {
+      "id": "T051",
+      "title": "Reuse the existing scene-name formatter",
+      "priority": 2,
+      "status": "done",
+      "details": "Replace main.cpp sceneName with the existing public observationSceneName formatter, whose switch body is identical. main.cpp already includes observe.hpp. Avoid a new module. Acceptance: only one scene-name mapping remains; builds and tests pass; recorded scene names and observation strings remain byte-identical. Preserve gameplay, pinned hashes, save formats, input timing, and existing log and observation formats. Follow notes/refactor-review.md, including its second validation pass.",
+      "files": [
+        "include/stackfall/observe.hpp",
+        "notes/agent-testing.md",
+        "src/main.cpp",
+        "src/observe.cpp"
+      ],
+      "tags": [
+        "refactor"
+      ],
+      "updated_at": "2026-11-04T05:17:48Z",
+      "created_at": "2026-11-03T23:56:28Z",
+      "unblock_when": "\"\""
+    },
+    {
+      "id": "T052",
+      "title": "Persist the record when a round is abandoned, closed, or power is lost",
+      "priority": 2,
+      "status": "done",
+      "details": "Owner approved 2026-11-04. Today the record saves only on the tick the scene becomes game over (the lastScene check in src/main.cpp), so Quit to Title, a window close, or power loss discards a running best; a live abandon session at score 68 wrote no highscore.dat. Change: keep the rules core untouched. In the platform layer, after each simulated tick compare game.score() with a locally tracked savedRecord seeded from the loaded file, and save through HighScoreStore the moment the score passes it, updating savedRecord; the store's atomic temp+fsync+rename write keeps each save crash-safe, so a kill loses at most the current piece's improvement. Between rounds only, feed the best record back with game.setHighScore(savedRecord) when a round ends, never mid-round, so endRound's newRecord flag still compares against the record the round began with and Play Again compares against the best so far. Acceptance: a harness session scores points, abandons through Quit to Title, and the checker asserts highscore.dat holds that score; a normal game-over round keeps saving at game over; the observation stream stays byte-identical to the reference replay; docs/SPEC.md sections 4.7 and 9 and docs/AGENT_TESTING.md state the persistence timing; record evidence in notes/agent-testing.md. Preserve gameplay, pinned hashes, save formats, input timing, and existing log and observation formats.",
+      "files": [
+        "docs/AGENT_TESTING.md",
+        "docs/SPEC.md",
+        "include/stackfall/game.hpp",
+        "include/stackfall/storage.hpp",
+        "notes/agent-testing.md",
+        "src/main.cpp",
+        "tests/harness/check_harness.py",
+        "tests/harness/check_t024.py",
+        "tests/harness/reference_replay.cpp",
+        "tests/harness/run.sh",
+        "tests/harness/scripts/next-count-step.script.txt",
+        "tests/harness/scripts/record-abandon-save.script.txt",
+        "tests/harness/t025.sh"
+      ],
+      "tags": [
+        "M3"
+      ],
+      "updated_at": "2026-11-04T08:22:11Z",
+      "created_at": "2026-11-04T07:30:00Z"
+    },
+    {
+      "id": "T053",
+      "title": "Pin DAS charge carry across piece locks",
+      "priority": 3,
+      "status": "done",
+      "details": "Owner chose DAS preservation 2026-11-04. spawnPiece (src/game.cpp) resets the gravity timer, lock timers, and the reset budget, but not shiftDir_ and shiftTicks_, so a held direction keeps its charge into the next piece and slides it by ARR without a new press. That is modern, expected behavior, but neither the section 4.5 table nor the suite pins it, so a refactor could change the feel silently. Change: add one row to the section 4.5 table of docs/SPEC.md stating that the held direction and its DAS/ARR charge carry across a lock into the next piece, a fresh press or reversal still restarts the charge, and both directions held park it. Pin the rule in tests/test_game.cpp: hold one direction, let lock delay expire the piece, keep holding, and assert the next piece slides by ARR within two ticks of spawn with no new press; pin a reversal across the boundary moving immediately; pin both-directions-held causing no movement across it. No production code change. Acceptance: the suite covers all three cases and the spec row is in place; pinned hashes and every observation format stay byte-identical.",
+      "files": [
+        "docs/SPEC.md",
+        "notes/agent-testing.md",
+        "tests/test_game.cpp"
+      ],
+      "tags": [
+        "M3"
+      ],
+      "updated_at": "2026-11-04T09:01:31Z",
+      "created_at": "2026-11-04T07:30:00Z",
+      "unblock_when": "\"\""
+    },
+    {
+      "id": "T054",
+      "title": "Bound and shrink checkpoint screenshots",
+      "priority": 3,
+      "status": "done",
+      "details": "Every check and shot command writes a full 24-bit BMP through SDL_SaveBMP (src/developer_session.cpp), 1.5 MB each, with no cap: one 313-piece play session wrote 314 files, about 490 MB, while the host had 1.2 GB free (papercut pc_01M6JJR4BAFHC9KZM6GQ1EKK04). Owner approved 2026-11-04. Change, part one: add --screenshot-budget BYTES, default 256 MiB, 0 for unlimited; track bytes written, and when the next image would exceed the budget log one line and skip the image while observations continue, with the record's shot field reading none exactly as it does today when a save fails. Change, part two: replace SDL_SaveBMP with a local palettized writer: build the frame palette, emit an 8-bit BI_RLE8 BMP, and fall back to uncompressed output when a frame exceeds 256 colors or RLE would grow the data; expected size is 30 to 80 KB per image on these frames. Extend read_bmp_pixels in tests/harness/check_harness.py with an RLE8 decode path, keeping the no-image-library rule; PIL reads RLE8 BMPs natively, so visual review keeps working. Acceptance: the pinned harness sessions stay under the default budget and keep passing unchanged; a session over budget stops writing images but still writes every observation record; a long scripted session's screenshot bytes drop by roughly an order of magnitude; document the flag in --help and docs/AGENT_TESTING.md and record evidence in notes/agent-testing.md. Preserve gameplay, pinned hashes, save formats, input timing, and observation record formats.",
+      "files": [
+        "docs/AGENT_TESTING.md",
+        "include/stackfall/developer_session.hpp",
+        "notes/agent-testing.md",
+        "src/developer_session.cpp",
+        "src/main.cpp",
+        "tests/harness/check_harness.py",
+        "tests/harness/check_t024.py"
+      ],
+      "tags": [
+        "agent-testing"
+      ],
+      "updated_at": "2026-11-04T09:24:32Z",
+      "created_at": "2026-11-04T07:30:00Z",
+      "unblock_when": "\"\""
     }
   ]
 }

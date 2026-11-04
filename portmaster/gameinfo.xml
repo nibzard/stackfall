@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<gameList>
+  <game>
+    <path>./Stackfall.sh</path>
+    <name>STACKFALL</name>
+    <desc>An offline block-stacking game. Clear lines, hold a piece for later, and plan around five previews while the speed rises every ten lines. Original rules and presentation, drawn from rectangles and lines, with synthesized sound and a persistent high score.</desc>
+    <releasedate>20261104T000000</releasedate>
+    <developer>The STACKFALL project contributors</developer>
+    <publisher>Open Source</publisher>
+    <genre>Puzzle</genre>
+    <image>./stackfall/screenshot.png</image>
+  </game>
+</gameList>

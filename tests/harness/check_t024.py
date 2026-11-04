@@ -12,8 +12,10 @@ fail from evidence, reusing the T023 checker's helpers:
     the stack, the hold restriction, the pause freeze, the soft- and
     hard-drop points, and the section 4.6 clear table - so a defect the
     game and the reference share still fails here;
-  * the hidden I-piece spawn delay must measure exactly the gravity the
-    rules prescribe (48 ticks at level 1);
+  * a spawned I piece must be visible immediately (task T029): its only
+    occupied row is visible row 0 on the spawn tick, the frame's pixels
+    show it, and it still falls exactly on the level 1 gravity schedule
+    of 48 ticks per cell;
   * the input log must show one sound cue per event and a working mute;
   * every checkpoint screenshot must exist as a BMP of the canvas size
     the window had when it was taken;
@@ -69,7 +71,9 @@ def check_bmp_size(path, size, rule):
         fail(rule, "%s is %dx%d, expected %dx%d" %
              (path, width, height, size[0], size[1]))
         return
-    if depth != 24 and depth != 32:
+    if depth not in (8, 24, 32):
+        # 8 is the palettized checkpoint writer of task T054; 24 and 32 are
+        # the uncompressed forms before it and its too-many-colors escape.
         fail(rule, "%s has %d bits per pixel" % (path, depth))
         return
     good(rule, "%s %dx%d" % (os.path.basename(path), width, height))
@@ -209,42 +213,46 @@ def check_shapes(session, run_records, run_dir, keyboard):
     names = by_name(run_records)
     first = "S" if keyboard else "O"
 
+    # Every spawn is immediately visible (4.2 with the T029 rule): the
+    # topmost occupied cells sit in visible row 0, so the I matrix starts
+    # at y=-1 (its first occupied row is local row 1) and the others at 0.
     check_active(session, names["round-first-frame"],
-                 (first, 0, 3, -1), session + "/first-spawn")
+                 (first, 0, 3, 0), session + "/first-spawn")
 
     if keyboard:
         check_active(session, names["s-moved-left-once"],
-                     ("S", 0, 2, -1), session + "/one-column-move")
-        check_active(session, names["s-rotated-cw"], ("S", 1, 1, -1),
+                     ("S", 0, 2, 0), session + "/one-column-move")
+        check_active(session, names["s-rotated-cw"], ("S", 1, 1, 0),
                      session + "/rotate-cw-state")
-        check_active(session, names["s-rotated-l-state"], ("S", 3, 1, -1),
+        check_active(session, names["s-rotated-l-state"], ("S", 3, 1, 0),
                      session + "/rotate-l-state")
-        check_active(session, names["s-back-to-spawn-state"], ("S", 0, 1, -1),
+        check_active(session, names["s-back-to-spawn-state"], ("S", 0, 1, 0),
                      session + "/rotate-back-to-spawn")
         soft_drop_arithmetic(session, run_records, "s-back-to-spawn-state",
                              "s-soft-dropped", session + "/soft-drop-points")
         hard_drop_arithmetic(session, run_records, "s-soft-dropped",
                              "z-spawn-frame", session + "/hard-drop-points")
     else:
-        check_active(session, names["o-rotated-cw"], ("O", 1, 3, -1),
+        check_active(session, names["o-rotated-cw"], ("O", 1, 3, 0),
                      session + "/o-rotates-state")
-        check_active(session, names["o-rotated-back"], ("O", 0, 3, -1),
+        check_active(session, names["o-rotated-back"], ("O", 0, 3, 0),
                      session + "/o-rotates-back")
-        check_active(session, names["o-moved-right"], ("O", 0, 4, -1),
+        check_active(session, names["o-moved-right"], ("O", 0, 4, 0),
                      session + "/one-column-move")
         hard_drop_arithmetic(session, run_records, "o-moved-right",
                              "i-spawn-frame", session + "/hard-drop-points")
         soft_drop_arithmetic(session, run_records, "s-back-to-spawn-state",
                              "s-soft-dropped", session + "/soft-drop-points")
 
-    # The I spawns hidden (4.2): origin y=-2, its only row at y=-1.
-    check_active(session, names["i-spawn-frame"], ("I", 0, 3, -2),
-                 session + "/i-hidden-spawn")
-    check_active(session, names["i-at-right-wall"], ("I", 1, 7, -2),
+    # The I spawns in view (4.2 with the T029 rule): origin y=-1, its only
+    # occupied row at visible row 0.
+    check_active(session, names["i-spawn-frame"], ("I", 0, 3, -1),
+                 session + "/i-visible-spawn")
+    check_active(session, names["i-at-right-wall"], ("I", 1, 7, -1),
                  session + "/i-at-wall")
     # SRS I kick R->2: the in-place candidate leaves columns 7..10, so the
     # (-1, 0) candidate applies (4.4, the I table).
-    check_active(session, names["i-wall-kick"], ("I", 2, 6, -2),
+    check_active(session, names["i-wall-kick"], ("I", 2, 6, -1),
                  session + "/i-wall-kick")
 
     # A grounded JLSTZ piece rotating clockwise lifts one row and one
@@ -263,30 +271,31 @@ def check_shapes(session, run_records, run_dir, keyboard):
         fail(session + "/l-grounded-order", "grounding check precedes the move")
 
     if keyboard:
-        check_active(session, names["j-rotated-cw"], ("J", 1, 3, -1),
+        check_active(session, names["j-rotated-cw"], ("J", 1, 3, 0),
                      session + "/j-state-r")
-        check_active(session, names["j-half-turn"], ("J", 2, 3, -1),
+        check_active(session, names["j-half-turn"], ("J", 2, 3, 0),
                      session + "/j-state-2")
-        check_active(session, names["j-l-state"], ("J", 3, 3, -1),
+        check_active(session, names["j-l-state"], ("J", 3, 3, 0),
                      session + "/j-state-l")
-        check_active(session, names["j-at-left-wall"], ("J", 2, 0, -1),
+        check_active(session, names["j-at-left-wall"], ("J", 2, 0, 0),
                      session + "/j-left-wall")
-        check_active(session, names["z-at-right-wall"], ("Z", 0, 7, -1),
+        check_active(session, names["z-at-right-wall"], ("Z", 0, 7, 0),
                      session + "/z-right-wall")
-        check_active(session, names["z-rotated-at-wall"], ("Z", 1, 7, -1),
+        check_active(session, names["z-rotated-at-wall"], ("Z", 1, 7, 0),
                      session + "/z-rotates-at-wall")
-        check_active(session, names["o-rotated-cw"], ("O", 1, 3, -1),
+        check_active(session, names["o-rotated-cw"], ("O", 1, 3, 0),
                      session + "/o-rotates-state")
         held_id, out_id = "T", "O"
     else:
-        check_active(session, names["z-rotated-at-wall"], ("Z", 1, 3, -1),
+        check_active(session, names["z-rotated-at-wall"], ("Z", 1, 3, 0),
                      session + "/z-rotates-state")
-        check_active(session, names["z-centered"], ("Z", 0, 1, -1),
+        check_active(session, names["z-centered"], ("Z", 0, 1, 0),
                      session + "/z-centered")
         held_id, out_id = "T", "J"
 
-    # Hold: once per lock, the swap returns the piece to spawn (4.3).
-    check_active(session, names["hold-swap-first-frame"], (out_id, 0, 3, -1),
+    # Hold: once per lock, the swap returns the piece to spawn (4.3), and
+    # the returned piece is visible at once like any other spawn (T029).
+    check_active(session, names["hold-swap-first-frame"], (out_id, 0, 3, 0),
                  session + "/hold-swap-spawn")
     check_field(names["hold-swap-first-frame"], "hold", "%s,locked" % held_id,
                 session + "/hold-locks")
@@ -294,7 +303,7 @@ def check_shapes(session, run_records, run_dir, keyboard):
                      session + "/hold-once")
     check_field(names["hold-free-after-lock"], "hold", "%s,free" % held_id,
                 session + "/hold-freed-by-lock")
-    check_active(session, names["hold-return-first-frame"], (held_id, 0, 3, -1),
+    check_active(session, names["hold-return-first-frame"], (held_id, 0, 3, 0),
                  session + "/hold-return-spawn")
     stashed = "I" if keyboard else "Z"
     check_field(names["hold-return-first-frame"], "hold", "%s,locked" % stashed,
@@ -320,7 +329,7 @@ def check_shapes(session, run_records, run_dir, keyboard):
     # 4.7). No rotation, drop, or hold may leak across the restart.
     check_field(names["restart-first-frame"], "scene", "playing",
                 session + "/restart-scene")
-    check_active(session, names["restart-first-frame"], (first, 0, 3, -1),
+    check_active(session, names["restart-first-frame"], (first, 0, 3, 0),
                  session + "/restart-spawn")
     delta = 3 - active_of(names["restart-held-moves"])[2]
     if delta < 1:
@@ -332,7 +341,7 @@ def check_shapes(session, run_records, run_dir, keyboard):
                         names["restart-release-stops"],
                         session + "/restart-release-stops")
     check_active(session, names["restart-release-stops"],
-                 (first, 0, active_of(names["restart-release-stops"])[2], -1),
+                 (first, 0, active_of(names["restart-release-stops"])[2], 0),
                  session + "/restart-no-leaked-action")
 
     # The full cycle: game over, play again, game over, title, quit.
@@ -348,14 +357,28 @@ def check_keyboard(session, run_records, run_dir):
     check_scene_seq(session, run_records)
     # Regression pins recorded from the passing rehearsal of this script
     # at seed 31337 (the reference comparison above carries correctness).
-    check_field(names["gameover-first"], "score", "214",
+    # The T029 refresh (2026-11-03) reflects the immediate-spawn rule: each
+    # hard drop travels one cell less, so 2 points less per drop - ten in
+    # the first round, eleven in the second. The T052 refresh (2026-11-04)
+    # reflects the mid-round record persistence: the first round of the
+    # script exercises the seven shapes to 229 and is then dropped by the
+    # pause-menu RESTART, and that abandoned best is already saved and fed
+    # back, so the restarted round's 194 game over is not a record and the
+    # file the session leaves holds the abandoned 229.
+    check_field(names["after-t-lock"], "score", "229",
+                session + "/shapes-round-score")
+    check_field(names["restart-first-frame"], "high", "229",
+                session + "/restart-carries-record")
+    check_field(names["gameover-first"], "score", "194",
                 session + "/first-round-score")
-    check_field(names["gameover-first"], "record", "1",
-                session + "/first-round-record")
-    check_field(names["gameover-second"], "score", "228",
+    check_field(names["gameover-first"], "record", "0",
+                session + "/first-round-below-abandoned-record")
+    check_field(names["gameover-second"], "score", "206",
                 session + "/second-round-score")
+    check_field(names["gameover-second"], "record", "0",
+                session + "/second-round-below-abandoned-record")
     check_high_score_file(session, os.path.join(run_dir, session, "save"),
-                          228, session + "/saved-record")
+                          229, session + "/saved-record")
     check_input_log(session, os.path.join(run_dir, session, "input.log"), [
         "sound muted status=ok",
         "sound unmuted status=ok",
@@ -386,12 +409,12 @@ def check_pad(session, run_records, run_dir):
     same_piece_frozen_x(session, names["after-detach"],
                         names["after-detach-still"],
                         session + "/detach-stays-stopped")
-    check_field(names["gameover-first"], "score", "262",
+    check_field(names["gameover-first"], "score", "238",
                 session + "/first-round-score")
-    check_field(names["gameover-second"], "score", "222",
+    check_field(names["gameover-second"], "score", "200",
                 session + "/second-round-score")
     check_high_score_file(session, os.path.join(run_dir, session, "save"),
-                          262, session + "/saved-record")
+                          238, session + "/saved-record")
     check_log_lines(session, os.path.join(run_dir, session + ".run.log"), [
         "Clean shutdown",
         "Virtual Pad\" (instance",
@@ -402,24 +425,59 @@ def check_pad(session, run_records, run_dir):
     ])
 
 
+def check_i_visible_pixels(session, record, rule):
+    """The spawn frame shows the I: task T029 puts its only occupied row in
+    visible row 0, so the four cells under columns 3..6 of that row hold
+    something other than the well fill and the grid lines (section 6.2).
+    Under the old rule this band was empty for the first 48 ticks."""
+    shot = record.get("shot", "none")
+    if shot == "none":
+        fail(rule, "checkpoint %s has no screenshot" % record["check"])
+        return
+    loaded = base.read_bmp_pixels(shot, rule)
+    if loaded is None:
+        return
+    width, height, pixel = loaded
+    drawn = 0
+    for column in (3, 4, 5, 6):
+        x = base.BOARD_ORIGIN[0] + column * base.BOARD_CELL + \
+            base.BOARD_CELL // 2
+        y = base.BOARD_ORIGIN[1] + base.BOARD_CELL // 2
+        if width <= x or height <= y:
+            fail(rule, "%s is %dx%d, too small for row 0" % (shot, width, height))
+            return
+        if pixel(x, y) not in (base.WELL_COLOR, base.GRID_LINE_COLOR):
+            drawn += 1
+    if drawn != 4:
+        fail(rule, "only %d of the four I cells draw in row 0 of %s" %
+             (drawn, record["check"]))
+        return
+    good(rule, "all four I cells draw in row 0")
+
+
 def check_i_spawn(session, run_records, run_dir):
     names = by_name(run_records)
     spawn = names["i-spawn-frame"]
-    hidden = names["i-hidden-plus47"]
-    visible = names["i-first-visible-plus48"]
-    check_active(session, spawn, ("I", 0, 3, -2), session + "/i-spawns-hidden")
-    check_active(session, hidden, ("I", 0, 3, -2), session + "/i-still-hidden")
-    check_active(session, visible, ("I", 0, 3, -1), session + "/i-becomes-visible")
-    # The measurement: exactly the level 1 gravity of 48 ticks per cell
-    # (4.5) passes between the spawn tick and the first visible tick.
-    delay = number(visible, "tick") - number(spawn, "tick")
+    held = names["i-visible-plus47"]
+    fell = names["i-fell-plus48"]
+    # Task T029: the I spawns with its only occupied row in visible row 0,
+    # matrix origin y=-1, so it is on screen the tick it appears.
+    check_active(session, spawn, ("I", 0, 3, -1), session + "/i-spawns-visible")
+    check_i_visible_pixels(session, spawn, session + "/i-spawn-frame-shows-it")
+    # Gravity timing is unchanged (4.5): the visible I holds row 0 through
+    # the +47 tick and falls on the +48 tick, exactly the level 1 interval
+    # of 48 ticks per cell.
+    check_active(session, held, ("I", 0, 3, -1), session + "/i-holds-row-0")
+    check_active(session, fell, ("I", 0, 3, 0), session + "/i-falls-on-schedule")
+    delay = number(fell, "tick") - number(spawn, "tick")
     if delay != 48:
-        fail(session + "/i-spawn-delay",
-             "hidden for %d ticks, the rules prescribe 48" % delay)
+        fail(session + "/i-gravity-delay",
+             "the I fell %d ticks after the spawn, the rules prescribe 48" %
+             delay)
     else:
-        good(session + "/i-spawn-delay",
+        good(session + "/i-gravity-delay",
              "48 ticks = %.3f s at 60 Hz" % (delay / 60.0))
-    hard_drop_arithmetic(session, run_records, "i-visible-plus50",
+    hard_drop_arithmetic(session, run_records, "i-fell-plus50",
                          "after-i-lock", session + "/i-hard-drop-points")
     counts = sfx_counts(os.path.join(run_dir, session, "input.log"))
     # Two locks in this session, nothing else: each lands exactly once and
@@ -442,7 +500,7 @@ def check_clears_23(session, run_records, run_dir):
     check_field(names["triple-loaded"], "settled", "27",
                 session + "/triple-fixture-board")
     check_field(names["triple-cleared"], "lines", "5", session + "/triple-lines")
-    check_field(names["triple-cleared"], "score", "872",
+    check_field(names["triple-cleared"], "score", "868",
                 session + "/triple-score")
     hard_drop_arithmetic(session, run_records, "triple-before-drop",
                          "triple-cleared", session + "/triple-arithmetic")

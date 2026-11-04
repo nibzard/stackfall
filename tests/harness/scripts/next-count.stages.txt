@@ -1,0 +1,9 @@
+# The five keyboard processes of the next-count session (T045), in order,
+# over the session's one save directory. Every stage runs the same script and
+# selects the NEXT PIECES row once, so the ring walks 5 -> 1 -> 2 -> 3 -> 4 ->
+# 5 across the processes: stage N ends with exactly N visible previews.
+script=next-count-step.script.txt
+script=next-count-step.script.txt
+script=next-count-step.script.txt
+script=next-count-step.script.txt
+script=next-count-step.script.txt

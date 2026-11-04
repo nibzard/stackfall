@@ -23,9 +23,16 @@ The following decisions are approved. Do not report them as defects.
 
 - Canvas 960x544. Board cells are 27x27 pixels. The board occupies
   x=345..614 and y=2..541, centered on the canvas, inside a one-pixel
-  frame at x=344..615 and y=1..542. The left panel (x=52..324) holds the
-  hold box and the control hints. The right panel (x=630..910) holds five
-  next previews and the score, lines, and level.
+  frame at x=344..615 and y=1..542. The focused HUD of the approved
+  composition (2026-11-03, task T037) holds two narrow columns beside
+  the board, each about 24 pixels from the frame: the left column
+  (x=192..319) carries Hold, score, lines, and level; the right column
+  (x=640..767) carries the five next previews, the first at full color
+  and the rest quieter. Ordinary gameplay shows no permanent control
+  legend; the complete mappings live on the controls screen, reached
+  from the title and from the pause overlay, and the outer regions of
+  the canvas stay quiet. Do not report the missing gameplay legend or
+  the quiet previews as defects.
 - All graphics are procedural: filled rectangles and lines only, drawn
   from a source-defined 5x7 pixel glyph table. No sprites, no texture
   files, no image assets, no external fonts.
@@ -36,10 +43,10 @@ The following decisions are approved. Do not report them as defects.
 - Controls: D-pad moves and soft drops, A rotates clockwise, B rotates
   counter-clockwise, X hard drops, Y or L1 holds, Start pauses. The
   keyboard mirrors them.
-- Pieces spawn above the visible field. Cells above row 0 are never
-  drawn. The I piece spawns two rows above row 0, so it stays fully
-  hidden until its first gravity step. A separate task owns that design
-  question. Do not report it again.
+- Pieces spawn with their topmost cells at visible row 0 (approved
+  2026-11-03, task T029), so every piece is on screen the tick it
+  appears. Cells above row 0 exist only for rotations and are never
+  drawn. Do not report immediate spawn visibility as a defect.
 """
 
 ASSESS = """\
@@ -54,7 +61,7 @@ Judge gameplay clarity first and cosmetic preference last:
 - Preview order and readability: which piece comes next.
 - Score, lines, and level readability at a glance.
 - Menu selection clarity on the title, pause, and game-over screens.
-- Control hints on the play panel and the controls screen.
+- The controls screen and the pause overlay's route to it.
 - Landing and clear feedback, when a frame pair can support it.
 - The letterboxed 640x480 frame: readability at two-thirds size.
 """

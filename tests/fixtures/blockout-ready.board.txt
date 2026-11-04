@@ -1,15 +1,18 @@
 # stackfall board fixture v1
-# Both hidden rows are full, so the fixture's forced respawn cannot occupy
-# its spawn cells: the block-out game over of specification section 4.3, the
-# moment the fixture lands rather than after a long stacking round.
+# The topmost visible row is full, so the fixture's forced respawn cannot
+# occupy its spawn cells: the block-out game over of specification section
+# 4.3, the moment the fixture lands rather than after a long stacking
+# round. Under the immediate-spawn rule of task T029 every piece holds its
+# top cells in row 0, so one full row there blocks all seven shapes; the
+# hidden rows stay empty and keep their rotation role.
 name: blockout-ready
-description: hidden rows y=-2..-1 full; one settled row at y=19 misses column 9
-provenance: hand-built for T023 to reach the block-out rule on apply; independent of any piece sequence
+description: visible row y=0 full; one settled row at y=19 misses column 9
+provenance: hand-built for T023 to reach the block-out rule on apply; row moved from the hidden rows to y=0 by T029; independent of any piece sequence
 # 22 rows from the hidden row y=-2 down to y=19; '.' is empty and a
 # letter I,O,T,S,Z,J,L settles that cell in its piece color.
-ZZZZZZZZZZ
-SSSSSSSSSS
 ..........
+..........
+ZZZZZZZZZZ
 ..........
 ..........
 ..........

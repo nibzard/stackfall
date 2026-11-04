@@ -1,0 +1,61 @@
+# Options-relaunch stage `hold` (T045, docs/AGENT_TESTING.md): one keyboard
+# process of the relaunch session, seed 20261103. The stage opens the options
+# screen, walks to the HOLD row, selects it once, and quits through the title
+# menu, so the save directory the earlier stages share holds exactly the
+# canonical settings bytes this one change leaves behind. A `wait` follows
+# every check, so no record carries the tick of the input that comes after it.
+check title-start
+wait 1
+key down down
+wait 2
+key down up
+wait 2
+key down down
+wait 2
+key down up
+wait 2
+check title-at-options
+wait 1
+key enter down
+wait 2
+key enter up
+wait 2
+check options-open
+wait 1
+key down down
+wait 2
+key down up
+wait 2
+key down down
+wait 2
+key down up
+wait 2
+key down down
+wait 2
+key down up
+wait 2
+check options-row
+wait 1
+key enter down
+wait 2
+key enter up
+wait 2
+check value-changed
+wait 1
+key esc down
+wait 2
+key esc up
+wait 2
+check title-back
+wait 1
+key down down
+wait 2
+key down up
+wait 2
+check title-at-quit
+wait 1
+check quit-confirmed
+key enter down
+wait 2
+key enter up
+wait 2

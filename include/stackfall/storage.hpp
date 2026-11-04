@@ -40,7 +40,8 @@
 namespace stackfall {
 
 // The record's name inside the save directory (specification section 10.3).
-// The settings file of the sound toggle sits beside it; see kSettingsFileName.
+// The settings file of the player preferences sits beside it; see
+// kSettingsFileName.
 inline constexpr char kSaveFileName[] = "highscore.dat";
 
 // The format version of the first line. A file with any other version is not a
@@ -154,8 +155,10 @@ class HighScoreStore {
 
   // Writes `highScore` through the temporary file, flush, close, and rename of
   // the header comment. The store holds no cached value, so the caller owns
-  // the record rule of section 4.7: the platform layer saves when a round sets
-  // a new record, and writes the value it was given.
+  // the record rule of sections 4.7 and 9: the platform layer saves the
+  // running score the moment it passes the stored record and saves again
+  // when a game-over round sets a new record, and writes the value it was
+  // given.
   SaveStatus save(std::uint64_t highScore) const;
 
  private:
@@ -163,34 +166,67 @@ class HighScoreStore {
 };
 
 // ---------------------------------------------------------------------------
-// The settings file (task T013, specification section 6.3). The mute state of
-// the sound toggle persists beside the high score, in the same save directory
-// and through the same atomic write, as one more versioned ASCII file:
+// The settings file (tasks T013, T039, and T044, specification section 6.3).
+// The preferences of the player persist beside the high score, in the same
+// save directory and through the same atomic write, as one more versioned
+// ASCII file with one line per preference:
 //
-//   version=1\nsound=on\n
+//   version=1\nsound=on\nghost=on\ngrid=on\nhold=on\nnext=5\ngrayscale=off\n
 //
-// `sound=off` starts the session muted; every other outcome, including a
-// missing, unreadable, or damaged file, starts it with sound on, so a broken
-// settings file can only cost the preference and never the game. The format
-// rules follow the high-score record: the exact canonical rendering of the
-// value, nothing more and nothing less.
+// `sound=off` starts the session muted, `ghost=off` hides the ghost landing
+// preview, `grid=off` removes the faint board grid, `hold=off` ignores every
+// hold input and hides the Hold preview, `next=1..5` draws that many Next
+// previews in queue order, and `grayscale=on` draws the play scene without
+// color. Every other outcome, including a missing, unreadable, or damaged
+// file, starts every preference at its default (sound, ghost, grid, and hold
+// on, five previews, grayscale off), so a broken settings file can only cost
+// the preferences and never the game. The format rules follow the high-score
+// record: the exact canonical rendering of the values, nothing more and
+// nothing less.
+//
+// The grid, hold, next, and grayscale lines are new (T044), and a settings
+// file written before them carries only the sound line or the sound and ghost
+// lines. Those legacy files still parse, with the new preferences at their
+// defaults, so an upgrade never loses a saved sound or ghost choice; the next
+// save rewrites the file in the current six-preference form. The format
+// version stays 1, exactly as the high-score record's does.
 // ---------------------------------------------------------------------------
 
 // The settings file's name inside the save directory.
 inline constexpr char kSettingsFileName[] = "settings.dat";
 
-// Reads `bytes` as the two-line settings file. Accepts only the exact
-// canonical rendering of `sound=on` or `sound=off`; returns false and leaves
-// *soundOn untouched on anything else.
-bool parseSettingsFile(const std::string& bytes, bool* soundOn);
+// The next-preference bounds: the option cycles 1..5, and 5 is the default
+// composition of the five queue previews (task T044).
+inline constexpr int kSettingsNextMin = 1;
+inline constexpr int kSettingsNextMax = 5;
 
-// Renders the canonical settings file of `soundOn`.
-std::string formatSettingsFile(bool soundOn);
-
-// The outcome of a settings load: the sound state to use and how it was
-// obtained. Every status except Ok leaves soundOn at its default of true.
-struct SettingsResult {
+// The six player preferences of one session, in settings-file line order.
+// The defaults are the recovery values of a damaged file: every toggle on,
+// five Next previews, color on.
+struct SettingsValues {
   bool soundOn = true;
+  bool ghostOn = true;
+  bool gridOn = true;
+  bool holdOn = true;
+  int nextPreviews = kSettingsNextMax;
+  bool grayscaleOn = false;
+};
+
+// Reads `bytes` as the settings file. Accepts exactly the readable
+// renderings: the 160 canonical forms of the six preferences, the four
+// legacy three-line forms of the sound-and-ghost era, and the two legacy
+// two-line forms of the sound-only era; the legacy files parse with every
+// preference the file does not name at its default. Returns false and leaves
+// *values untouched on anything else.
+bool parseSettingsFile(const std::string& bytes, SettingsValues* values);
+
+// Renders the canonical settings file of the six preferences.
+std::string formatSettingsFile(const SettingsValues& values);
+
+// The outcome of a settings load: the preference states to use and how they
+// were obtained. Every status except Ok leaves every preference at its
+// default.
+struct SettingsResult : SettingsValues {
   SaveStatus status = SaveStatus::NotFound;
 
   bool ok() const { return status == SaveStatus::Ok; }
@@ -208,11 +244,14 @@ class SettingsStore {
   const std::string& directory() const { return directory_; }
   std::string filePath() const;
 
-  // Reads the sound state. Sound stays on unless a valid file turns it off.
+  // Reads the six preferences. Each stays at its default unless a valid file
+  // changes it.
   SettingsResult load() const;
 
-  // Writes the sound state through the same atomic sequence as the record.
-  SaveStatus save(bool soundOn) const;
+  // Writes all six preferences through the same atomic sequence as the
+  // record. A save always writes the current canonical form, so a legacy file
+  // upgrades on its next save.
+  SaveStatus save(const SettingsValues& values) const;
 
  private:
   std::string directory_;  // empty: persistence is off

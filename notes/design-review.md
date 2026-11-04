@@ -466,7 +466,7 @@ record in `review-verify/runner.json`, the directory name, and
 | ghost-outline-contrast (T031) | fixed; pixel check, reviewer, and tests agree |
 | letterbox-scene-centered (T032) | fixed; pixel check, reviewer, and tests agree |
 | hold-lock-status-implicit | optional cosmetic, deferred; does not gate closure |
-| hidden I-piece spawn rule (T029) | deferred product question for the owner; does not gate closure |
+| hidden I-piece spawn rule (T029) | deferred product question for the owner; does not gate closure. Decided and implemented 2026-11-03 by T029: pieces spawn at visible row 0 |
 
 No finding was rejected in this round and no new required defect
 appeared, so no follow-up task needs routing. Every required finding of
@@ -503,8 +503,113 @@ above are unchanged; the HUD composition change of T037
 (`focused-gameplay-hud`) still waits and will need its own packet and
 checks when it runs.
 
+## Fresh capture after the options screen (T041, 2026-11-03)
+
+The options screen of T040/T041 persists a GHOST preference, so the packet
+had to prove the reviewed frames still draw the ghost. A fresh capture
+(`t041-design-review-2026-11-03`, seed 31337, the same four `packet.tsv`
+sessions and twelve images) passes `check_fixes.py` with all three required
+criteria: hint glyphs 14 logical px inside the left panel, the ghost outline
+at 5.82:1 over 416 pixels, and letterbox bars of 59 and 59 px. Every packet
+session starts from an empty save directory, so both preferences load at
+their on defaults - the ghost check measures the default the options screen
+can now turn off, not a fixture state. This was a capture and pixel check
+only; no review round ran, and the two closed rounds above stay as they
+are. The registered harness session that proves the off state is
+`options-ghost` in `tests/harness/run.sh` (see `notes/agent-testing.md`).
+One stale line remains in the packet definition: the `dr-title` expected
+text of `packet.tsv` still lists the three pre-options title items, so a
+future review round that quotes it should update that row first.
+
+## Focused gameplay HUD (T037, 2026-11-03)
+
+The approved composition of task T037 (`looper:finding:focused-gameplay-hud`)
+replaced the gameplay HUD the earlier rounds reviewed: the statistics group
+(Hold, score, lines, level) moved to a 128 px column at x=192..319 beside the
+board, the five Next previews to the matching column at x=640..767, both
+24 px from the frame, the permanent gameplay legend was removed (superseding
+only the gameplay-hint half of T030, whose footer-hint half still holds),
+and the pause overlay gained a CONTROLS item that opens the mappings page
+over the frozen round and returns to the same item.
+
+Tooling changes:
+
+- `tools/design-review/check_fixes.py`: the superseded
+  `control-hint-glyph-scale` criterion is gone. Two required criteria
+  replace it. `focused-hud-stats-left` requires seven 14 px text rows in
+  the left column (HOLD, three labels, three values), nothing below the
+  group, and quiet gaps from the column to the frame and to the canvas
+  edge. `focused-hud-next-right` requires the NEXT heading as the only
+  text of the right column, a piece in every one of the five slots, and
+  the same quiet gaps. The letterbox variants of both stay informational;
+  they now map their boxes through a centering `window_box` (smallest
+  axis ratio, ceil top-left, floor bottom-right), so the black letterbox
+  bars no longer fall inside the measured bands. Before that fix the
+  informational slot 0 of the letterbox frame read 3096 non-background
+  pixels - the top bar inside a band scaled without its vertical offset;
+  after it, all five slots read exactly 400 device pixels, which is the
+  native 900 scaled by two thirds squared.
+- `tools/design-review/packet.tsv`: the `dr-title` row now lists the four
+  title items including OPTIONS (this was the deferred task T042; see
+  below), `dr-gameplay-early` states the focused-HUD expectation of the
+  reviewed frame, `dr-pause` states the nested panel with its four items
+  and the route to CONTROLS, and `dr-restart-spawn` was corrected to the
+  immediate-spawn rule of T029 (its old text still described the piece
+  entering below the visible rows).
+- `tools/design-review/build_prompt.py`: the approved-scope block states
+  the focused HUD, the quiet outer regions, and the pause route, and
+  tells the reviewer not to report the missing gameplay legend or the
+  quiet previews as defects; the assessment list adds the controls
+  screen and the pause overlay's route to it.
+- `tools/design-review/prior-findings.json`: the
+  `control-hint-glyph-scale` entry carries a `superseded` note now, so a
+  verification round that loads it knows the gameplay-legend half was
+  replaced by T037 while the 14 px footer hints of T030 still apply.
+
+Fresh packet `t037-fix` (seed 31337, the same four `packet.tsv` sessions,
+twelve images): all four required criteria pass - the seven statistics
+rows at exactly 14 logical px with quiet gaps, the NEXT heading alone
+with 900 piece pixels in every slot, the ghost outline at 5.82:1, and
+letterbox bars of 59 and 59 px. `fix-checks.json` sits beside the packet.
+The informational letterbox rows now agree with the native frame, and the
+hold dim still reads 0.77 of the full color.
+
+Every packet image was opened and inspected (factual description batches
+through the codex reader, reports under `t037-fix/inspect/`): the left
+column reads HOLD then SCORE, LINES, LEVEL with bright values over dim
+labels, the right column reads NEXT with the first preview bright and the
+four below quieter, no gameplay legend appears anywhere, and no frame
+shows text clipped or overlapping. The pause overlay nests between the
+columns with the frozen statistics and previews readable beside it, and
+the letterboxed frame keeps every label readable at two-thirds size. One
+cosmetic observation, pre-existing and outside this task's composition:
+the game-over panel's left edge (x=239) cuts across the dimmed background
+statistics column (x=192..319), so fragments of the dimmed SCORE, LINES,
+and LEVEL labels peek out at the panel edge. The gameplay HUD and the
+pause overlay own this task's geometry; the game-over overlay kept its
+earlier panel, and any change there belongs to a new finding.
+
+The pause route itself was captured outside the packet, because the
+packet's scenes session ends its pause at the overlay: the ad hoc session
+`t037-fix/pause-controls/` (seed 31337, keyboard, `--tick-per-frame`)
+records the overlay on RESUME at round tick 63, the mappings screen
+reached from the CONTROLS item with the footer "A OR B BACK TO PAUSE",
+and the return to the overlay with the cursor still on CONTROLS and the
+same frozen tick 63.
+
+T042 (the stale `dr-title` row) is done by this packet refresh: the row
+at `packet.tsv` line 22 lists START GAME, CONTROLS, OPTIONS, and QUIT,
+and the fresh `dr-title` frame shows all four items. The task can be
+closed with this note as evidence.
+
 ## Open questions
 
-- None new. The hidden I-piece spawn rule stays with T029, physical
-  controller and audio judgments with T018 and T020, and the final
-  human pass with the release owner.
+- One cosmetic question, recorded above in the T037 section: whether the
+  game-over overlay should nest between the HUD columns the way the pause
+  overlay now does, instead of cutting across the dimmed statistics
+  column. No task owns it; it needs a product decision before work.
+- The hidden I-piece spawn rule stayed with T029 until it was decided and
+  implemented there on 2026-11-03 (pieces spawn at visible row 0; see the
+  T029 section of `notes/agent-testing.md`). Physical controller and
+  audio judgments stay with T018 and T020, and the final human pass with
+  the release owner.

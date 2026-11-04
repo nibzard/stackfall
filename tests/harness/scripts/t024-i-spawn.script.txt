@@ -1,11 +1,12 @@
-# T024 measurement session: how long a spawned I piece stays invisible
-# (seed 777; first bag J I ...). The I spawns with its only occupied row
-# at y=-1, inside the hidden rows, so nothing of it is on screen until
-# gravity moves it down one cell. Level 1 gravity is 48 ticks per cell,
-# so the rules predict the first visible frame 48 ticks after the spawn
-# tick, 0.8 s at 60 Hz. This session pins that against the application:
-# i-spawn-frame rides the hard-drop frame that spawns the I, then one
-# check per tick around the boundary finds the exact frame it appears.
+# T029 measurement session: a spawned I piece is visible immediately
+# (seed 777; first bag J I ...). The I spawns with its only occupied row at
+# visible row 0 under the approved immediate-spawn rule, so the spawn frame
+# itself shows the piece. The session also pins that gravity timing is
+# unchanged: level 1 gravity is 48 ticks per cell, so the I holds row 0
+# through the +47 tick and falls on the +48 tick, the same interval the old
+# hidden-spawn rule kept it invisible. i-spawn-frame rides the hard-drop
+# frame that spawns the I, then one check per tick around the boundary
+# finds the exact frame it falls.
 check title-first
 wait 1
 key enter down
@@ -19,21 +20,21 @@ check i-spawn-frame
 wait 2
 key space up
 wait 38
-check i-hidden-plus40
+check i-visible-plus40
 wait 2
-check i-hidden-plus42
+check i-visible-plus42
 wait 2
-check i-hidden-plus44
+check i-visible-plus44
 wait 2
-check i-hidden-plus46
+check i-visible-plus46
 wait 1
-check i-hidden-plus47
+check i-visible-plus47
 wait 1
-check i-first-visible-plus48
+check i-fell-plus48
 wait 1
-check i-visible-plus49
+check i-fell-plus49
 wait 1
-check i-visible-plus50
+check i-fell-plus50
 wait 2
 key space down
 check after-i-lock
@@ -54,6 +55,10 @@ key down down
 wait 2
 key down up
 wait 2
+key down down
+wait 2
+key down up
+wait 2
 check paused-at-quit-title
 wait 2
 key enter down
@@ -61,6 +66,10 @@ wait 2
 key enter up
 wait 2
 check back-at-title
+wait 2
+key down down
+wait 2
+key down up
 wait 2
 key down down
 wait 2

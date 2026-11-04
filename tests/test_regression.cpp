@@ -275,20 +275,30 @@ struct Scenario {
 // hold swap turns the S sideways to fill the one remaining column of the
 // second row. Every placement is a single-tick press, because one held tick
 // moves one column and only a ten-tick hold charges the DAS.
+//
+// The pins below are the T029 refresh (immediate spawn, 2026-11-03),
+// re-pinned for the 1.0.0 version of the first release (2026-11-04): the
+// version string leads the state hash, so the bump alone moved every value;
+// the scores, lines, and tick counts are unchanged. Every
+// piece starts one row lower, so each hard drop travels one cell less and
+// scores 2 points less per drop - soft-drop-moves holds five drops (108 ->
+// 98), hold-and-pause four (107 -> 99), stack-and-clear ten (559 -> 539,
+// the same two cleared lines) - and the block-out round tops out one row
+// earlier, after one piece less (224 -> 202, still by block-out).
 constexpr Scenario kScenarios[] = {
-    {"gravity-lock", 20261102ULL, "1200*.", 0x13d2f17addd37dc3ULL, 0, 0},
+    {"gravity-lock", 20261102ULL, "1200*.", 0xcbc3d0ac48e709d5ULL, 0, 0},
     {"soft-drop-moves", 1ULL,
      "3*l c 8*d z 2*r 10*d x 4*r c 6*d x 2*l z 12*d x 20*. 5*l 9*d x "
      "3*r c 7*d z x 25*.",
-     0xd2d36cfc30b41f4dULL, 108, 0},
+     0x73c9f9b3446d866fULL, 98, 0},
     {"hold-and-pause", 424242ULL,
      "h 6*d x 30*. p 40*. p h 8*d x 15*. 4*r c 5*d x h x 60*.",
-     0x5c5e0e5c177b7b1cULL, 107, 0},
+     0x3fe169192382b9d1ULL, 99, 0},
     {"stack-and-clear", 30ULL,
      "l . l . l . x r . x r . r . r . r . x h r . r . r . x l . l . l . x "
      "r . x h c l . l . x l . l . c d d x d d d x 25*. d d x 40*.",
-     0x4a37e53632c5dfb9ULL, 559, 2},
-    {"block-out", 999ULL, "120*x 300*.", 0x0366befc1f4628e3ULL, 224, 0},
+     0xeab46107fc034bc1ULL, 539, 2},
+    {"block-out", 999ULL, "120*x 300*.", 0x108537ace8574743ULL, 202, 0},
 };
 
 constexpr int kScenarioCount =
@@ -320,10 +330,14 @@ const char* sceneName(Scene scene) {
       return "title";
     case Scene::Controls:
       return "controls";
+    case Scene::Options:
+      return "options";
     case Scene::Playing:
       return "playing";
     case Scene::Paused:
       return "paused";
+    case Scene::PauseControls:
+      return "pause-controls";
     case Scene::GameOver:
       return "game-over";
   }

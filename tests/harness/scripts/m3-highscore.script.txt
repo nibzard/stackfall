@@ -1,0 +1,108 @@
+# M3 gate session: the high score across process restarts, keyboard
+# driver. One script, four game processes over one save directory (the
+# T015 driver runs it with different seeds and file states):
+#
+#   run 1  fresh save: the title shows 0, the round ends as a new
+#           record, and the file holds that score;
+#   run 2  the same seed again: the title shows the record, the same
+#           round is not a record (strict improvement only), and the
+#           file does not change;
+#   run 3  a better seed: the round beats the record and the file
+#           updates;
+#   run 4  a damaged file: the load recovers to 0 (section 9), the
+#           round saves a fresh record.
+#
+# The record fields (high, record) depend on the saved state the
+# reference cannot know, so the checker compares every other field
+# against the headless reference stream and pins high and record
+# directly from the storage rules.
+check title
+wait 1
+key enter down
+wait 2
+key enter up
+wait 3
+check playing-start
+wait 1
+key space down
+wait 2
+key space up
+wait 4
+key space down
+wait 2
+key space up
+wait 4
+key space down
+wait 2
+key space up
+wait 4
+key space down
+wait 2
+key space up
+wait 4
+key space down
+wait 2
+key space up
+wait 4
+key space down
+wait 2
+key space up
+wait 4
+key space down
+wait 2
+key space up
+wait 4
+key space down
+wait 2
+key space up
+wait 4
+key space down
+wait 2
+key space up
+wait 4
+key space down
+wait 2
+key space up
+wait 4
+key space down
+wait 2
+key space up
+wait 4
+key space down
+wait 2
+key space up
+wait 4
+wait 2
+check gameover
+wait 2
+key down down
+wait 2
+key down up
+wait 2
+check gameover-title-cursor
+wait 1
+key enter down
+wait 2
+key enter up
+wait 3
+check title-after
+wait 2
+# quit through the fourth title item
+key down down
+wait 2
+key down up
+wait 2
+key down down
+wait 2
+key down up
+wait 2
+key down down
+wait 2
+key down up
+wait 2
+check title-at-quit
+wait 1
+key enter down
+wait 2
+key enter up
+wait 2

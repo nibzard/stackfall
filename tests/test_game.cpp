@@ -258,6 +258,99 @@ void test_same_seed_same_input_same_round() {
 }
 
 // ---------------------------------------------------------------------------
+// Immediate spawn visibility, task T029 (specification section 4.2).
+// ---------------------------------------------------------------------------
+
+// The occupied rows of a piece state, so a test can name the top of a piece
+// instead of recomputing the cell bounds by hand.
+void occupiedRowRange(const Piece& piece, int* minY, int* maxY) {
+  const std::array<Cell, stackfall::kCellsPerPiece> cells =
+      stackfall::boardCells(piece);
+  *minY = cells[0].y;
+  *maxY = cells[0].y;
+  for (const Cell& cell : cells) {
+    *minY = *minY < cell.y ? *minY : cell.y;
+    *maxY = *maxY > cell.y ? *maxY : cell.y;
+  }
+}
+
+// One spawn is visible at once: the piece is in its spawn state, its top
+// cells sit in visible row 0, and no cell hides above the field.
+void checkSpawnIsImmediatelyVisible(const Game& g, PieceId id) {
+  SC_CHECK(g.hasActivePiece());
+  SC_CHECK(samePiece(g.activePiece(), stackfall::makeSpawnPiece(id)));
+  int minY = 0;
+  int maxY = 0;
+  occupiedRowRange(g.activePiece(), &minY, &maxY);
+  SC_CHECK(minY == 0);
+  SC_CHECK(maxY == (id == PieceId::I ? 0 : 1));
+}
+
+void test_every_spawn_is_immediately_visible() {
+  // A new game: the piece of the start call itself is on screen, before any
+  // gravity tick ran.
+  Game g;
+  g.start(kSeed);
+  checkSpawnIsImmediatelyVisible(g, g.activePiece().id);
+
+  // All seven shapes through the hold swap: the returned piece arrives in
+  // its spawn state, top cells in row 0.
+  for (PieceId id : stackfall::kAllPieceIds) {
+    Game swap;
+    swap.start(kSeed);
+    stackfall::GameTestPeer::setHoldSlot(swap, id);
+    stackfall::GameTestPeer::setPiece(
+        swap, Piece{PieceId::O, Rotation::Spawn, 4, 10});
+    swap.tick(pressHold());
+    checkSpawnIsImmediatelyVisible(swap, id);
+  }
+
+  // The first hold of a round draws from the queue instead of swapping.
+  Game drawn;
+  drawn.start(kSeed);
+  const PieceId upcoming = drawn.queue()[0];
+  stackfall::GameTestPeer::setPiece(
+      drawn, Piece{PieceId::O, Rotation::Spawn, 4, 10});
+  drawn.tick(pressHold());
+  checkSpawnIsImmediatelyVisible(drawn, upcoming);
+
+  // The next piece after a lock spawns in view as well, in the same tick as
+  // the lock that freed it.
+  Game locked;
+  locked.start(kSeed);
+  const PieceId second = locked.queue()[0];
+  locked.tick(pressHardDrop());
+  SC_CHECK(locked.hasActivePiece());
+  SC_CHECK(locked.activePiece().id == second);
+  checkSpawnIsImmediatelyVisible(locked, second);
+}
+
+void test_i_spawn_is_visible_on_the_spawn_tick() {
+  // The seed-777 reproduction of the old hidden I spawn: the first bag deals
+  // J then I, and the J locks on its hard-drop tick. The I that appears in
+  // that same tick holds visible row 0, so it no longer waits the 48-tick
+  // level 1 gravity of specification section 4.5 to enter the field.
+  Game g;
+  g.start(777);
+  SC_CHECK(g.activePiece().id == PieceId::J);
+  const std::uint64_t spawnTick = g.tickCount() + 1;
+  g.tick(pressHardDrop());
+  SC_CHECK(g.tickCount() == spawnTick);
+  checkSpawnIsImmediatelyVisible(g, PieceId::I);
+
+  // Nothing moves it on the next tick either: natural gravity at level 1
+  // needs 48 ticks, so the visible I holds its row for the same interval
+  // the old rule kept it hidden.
+  g.tick(InputFrame::idle());
+  SC_CHECK(g.activePiece().id == PieceId::I);
+  SC_CHECK(g.activePiece().y == stackfall::spawnY(PieceId::I));
+  int minY = 0;
+  int maxY = 0;
+  occupiedRowRange(g.activePiece(), &minY, &maxY);
+  SC_CHECK(minY == 0 && maxY == 0);
+}
+
+// ---------------------------------------------------------------------------
 // Gravity, section 11 item 9 (first half).
 // ---------------------------------------------------------------------------
 
@@ -475,6 +568,107 @@ void test_direction_switch_resets_the_charge() {
   g.tick(InputFrame::idle());
   SC_CHECK(g.activePiece().x == 3);
   SC_CHECK(stackfall::GameTestPeer::shiftDir(g) == 0);
+}
+
+// ---------------------------------------------------------------------------
+// The charge across a lock, section 4.5. A lock resets the per-piece counters
+// but not the held direction or its charge, so the piece the lock spawns
+// inherits both (task T053).
+// ---------------------------------------------------------------------------
+
+// A round whose O rests on the floor against the right wall. Every right
+// repeat fails there, so no lock-delay reset is spent and the piece locks on
+// its thirtieth grounded tick while the charge keeps cycling at the ARR pace.
+// The returned id is the piece that lock spawns.
+PieceId startOAgainstRightWall(Game& g) {
+  g.start(kSeed);
+  const PieceId second = g.queue()[0];
+  stackfall::GameTestPeer::setPiece(g, Piece{PieceId::O, Rotation::Spawn, 7, 18});
+  SC_CHECK(maxCellX(g.activePiece()) == stackfall::kBoardWidth - 1);
+  return second;
+}
+
+void test_das_charge_carries_across_a_lock() {
+  Game g;
+  const PieceId second = startOAgainstRightWall(g);
+
+  runTicks(g, holdRight(), 30);  // every repeat fails; tick 30 locks the O
+  SC_CHECK(g.board().settledCellCount() == 4);
+  SC_CHECK(g.hasActivePiece());
+  SC_CHECK(g.activePiece().id == second);
+  // The spawned piece sits exactly at its spawn: the lock tick spent its
+  // shift on the piece it locked, never on the piece it spawned.
+  SC_CHECK(samePiece(g.activePiece(), stackfall::makeSpawnPiece(second)));
+  const int spawnX = g.activePiece().x;
+  // The direction and its charge crossed the lock unchanged.
+  SC_CHECK(stackfall::GameTestPeer::shiftDir(g) == 1);
+  SC_CHECK(stackfall::GameTestPeer::shiftTicks(g) == 9);
+
+  // No new press, yet the carried charge pays an ARR step within two ticks of
+  // the spawn: here on the first, because the charge stood at nine of ten.
+  g.tick(holdRight());
+  SC_CHECK(g.activePiece().x == spawnX + 1);
+  g.tick(holdRight());  // inside the ARR gap of the carried cycle
+  SC_CHECK(g.activePiece().x == spawnX + 1);
+  g.tick(holdRight());  // two ticks later, the next repeat
+  SC_CHECK(g.activePiece().x == spawnX + 2);
+}
+
+void test_reversal_across_a_lock_moves_immediately() {
+  Game g;
+  const PieceId second = startOAgainstRightWall(g);
+
+  runTicks(g, holdRight(), 30);  // a charged direction crosses the lock
+  SC_CHECK(g.activePiece().id == second);
+  const int spawnX = g.activePiece().x;
+
+  // Reversing on the first tick after the spawn is a fresh direction: it
+  // moves immediately and restarts the charge instead of spending the carry.
+  g.tick(holdLeft());
+  SC_CHECK(g.activePiece().x == spawnX - 1);
+  SC_CHECK(stackfall::GameTestPeer::shiftDir(g) == -1);
+  SC_CHECK(stackfall::GameTestPeer::shiftTicks(g) == 0);
+
+  // The restarted charge waits a full DAS again; the carried ARR cadence is
+  // gone, so nothing moves for the next nine ticks.
+  runTicks(g, holdLeft(), 9);
+  SC_CHECK(g.activePiece().x == spawnX - 1);
+  SC_CHECK(stackfall::GameTestPeer::shiftTicks(g) == 9);
+  g.tick(holdLeft());
+  SC_CHECK(g.activePiece().x == spawnX - 2);
+}
+
+void test_both_directions_held_across_a_lock_move_nothing() {
+  // Both directions held before the lock: no move ever happens, the piece
+  // still locks on its thirtieth grounded tick, and the spawned piece keeps
+  // the parked charge.
+  Game parked;
+  const PieceId parkedSecond = startOAgainstRightWall(parked);
+  runTicks(parked, holdBoth(), 30);
+  SC_CHECK(parked.board().settledCellCount() == 4);
+  SC_CHECK(parked.activePiece().id == parkedSecond);
+  const int parkedSpawnX = parked.activePiece().x;
+  runTicks(parked, holdBoth(), 12);
+  SC_CHECK(parked.hasActivePiece());
+  SC_CHECK(parked.activePiece().id == parkedSecond);  // still the same piece
+  SC_CHECK(parked.activePiece().x == parkedSpawnX);
+  SC_CHECK(stackfall::GameTestPeer::shiftDir(parked) == 0);
+  SC_CHECK(stackfall::GameTestPeer::shiftTicks(parked) == 0);
+
+  // A carried charge parks the same way: the direction crossed the lock, and
+  // holding both on the far side discards it without one step.
+  Game carried;
+  const PieceId carriedSecond = startOAgainstRightWall(carried);
+  runTicks(carried, holdRight(), 30);
+  SC_CHECK(carried.activePiece().id == carriedSecond);
+  SC_CHECK(stackfall::GameTestPeer::shiftDir(carried) == 1);
+  const int carriedSpawnX = carried.activePiece().x;
+  runTicks(carried, holdBoth(), 12);
+  SC_CHECK(carried.hasActivePiece());
+  SC_CHECK(carried.activePiece().id == carriedSecond);
+  SC_CHECK(carried.activePiece().x == carriedSpawnX);
+  SC_CHECK(stackfall::GameTestPeer::shiftDir(carried) == 0);
+  SC_CHECK(stackfall::GameTestPeer::shiftTicks(carried) == 0);
 }
 
 // ---------------------------------------------------------------------------
@@ -755,6 +949,100 @@ void test_lock_out_on_hidden_row_cells() {
   SC_CHECK(g.lines() == 0);  // the round ended before any clear
   SC_CHECK(g.queue() == queueBefore);  // nothing spawned afterwards
   SC_CHECK(g.board().isConsistent());
+}
+
+void test_spawn_boundary_sits_between_rows_0_and_1() {
+  // The immediate-spawn rule moves the spawn collision boundary: the I
+  // occupies row 0 alone and the other six shapes rows 0 and 1, so a stack
+  // one row below the field edge still receives the I, while the piece
+  // after it blocks out. The game-over rules themselves are unchanged.
+  Game g;
+  g.start(kSeed);
+  Board& board = stackfall::GameTestPeer::board(g);
+  for (int x = 3; x <= 6; ++x) {
+    SC_CHECK(board.settleCell(x, 1, PieceId::J));
+  }
+  stackfall::GameTestPeer::setPiece(g, stackfall::makeSpawnPiece(PieceId::I));
+  SC_CHECK(g.hasActivePiece());
+  SC_CHECK(g.board().canPlace(g.activePiece()));  // row 0 is free
+
+  // The I is grounded on the stack and locks in place: its cells sit in row
+  // 0, so no hidden cell locks the round out here.
+  g.tick(pressHardDrop());
+  SC_CHECK(g.score() == 0);  // the drop travelled no cell
+  for (const Cell& cell :
+       std::array<Cell, 4>{{Cell{3, 0}, Cell{4, 0}, Cell{5, 0}, Cell{6, 0}}}) {
+    SC_CHECK(g.board().isSettled(cell.x, cell.y));
+  }
+
+  // The next piece needs row 0 of columns 3..6 whatever shape it is: the
+  // locked I holds that row, so the spawn fails and the round ends by
+  // block-out in the same tick.
+  SC_CHECK(g.scene() == Scene::GameOver);
+  SC_CHECK(!g.hasActivePiece());
+  SC_CHECK(g.board().settledCellCount() == 8);  // the stack plus the locked I
+  SC_CHECK(g.lines() == 0);
+  SC_CHECK(g.board().isConsistent());
+}
+
+void test_lock_out_still_fires_after_an_upward_spawn_kick() {
+  // Under the immediate-spawn rule a piece starts at visible row 0, so a
+  // lock-out near the top needs an SRS kick that lifts a cell into a hidden
+  // row. The (-1, -1) candidate of 0->R does that against a stack under the
+  // spawn cells, and the lock that follows still ends the round: the rule of
+  // section 4.5 is untouched by the spawn change.
+  Game g;
+  g.start(kSeed);
+  Board& board = stackfall::GameTestPeer::board(g);
+  board.settleCell(3, 2, PieceId::J);  // the stack that grounds the spawn T
+  board.settleCell(4, 2, PieceId::J);
+  board.settleCell(5, 2, PieceId::J);
+  stackfall::GameTestPeer::setPiece(g, stackfall::makeSpawnPiece(PieceId::T));
+  SC_CHECK(!g.board().canPlace(  // grounded: row 2 blocks the fall
+      Piece{PieceId::T, Rotation::Spawn, 3, 1}));
+
+  g.tick(pressRotateCW());
+  SC_CHECK(g.hasActivePiece());
+  const Piece lifted = g.activePiece();
+  SC_CHECK(lifted.id == PieceId::T);
+  SC_CHECK(lifted.rotation == Rotation::Clockwise);
+  SC_CHECK(lifted.x == 2 && lifted.y == -1);  // the (-1, -1) kick applied
+  int minY = 0;
+  int maxY = 0;
+  occupiedRowRange(lifted, &minY, &maxY);
+  SC_CHECK(minY == -1 && maxY == 1);  // one cell hides above the field
+
+  // Still grounded, so the hard drop travels nowhere, commits the hidden
+  // cell, and ends the round (section 4.5, lock-out).
+  g.tick(pressHardDrop());
+  SC_CHECK(g.scene() == Scene::GameOver);
+  SC_CHECK(!g.hasActivePiece());
+  SC_CHECK(g.board().isSettled(3, -1));
+  SC_CHECK(g.board().isSettled(3, 0));
+  SC_CHECK(g.board().isSettled(4, 0));
+  SC_CHECK(g.board().isSettled(3, 1));
+  SC_CHECK(g.score() == 0);  // the drop travelled no cell
+  SC_CHECK(g.lines() == 0);
+  SC_CHECK(g.board().isConsistent());
+}
+
+void test_spawn_rotation_stays_inside_the_hidden_rows() {
+  // The hidden rows keep their role as rotation space: every shape turns in
+  // place out of its spawn state without leaving the stored rows.
+  for (PieceId id : stackfall::kAllPieceIds) {
+    Game g;
+    g.start(kSeed);
+    stackfall::GameTestPeer::setPiece(g, stackfall::makeSpawnPiece(id));
+    for (int step = 0; step < 4; ++step) {
+      g.tick(pressRotateCW());
+      SC_CHECK(g.hasActivePiece());
+      for (const Cell& cell : stackfall::boardCells(g.activePiece())) {
+        SC_CHECK(stackfall::inBoard(cell));
+      }
+    }
+    // Four turns return the piece to its spawn state, row 0 on top.
+    checkSpawnIsImmediatelyVisible(g, id);
+  }
 }
 
 void test_top_out_is_deterministic() {
@@ -1095,6 +1383,8 @@ void run_game_tests() {
   std::printf("test_game: state machine and deterministic tick\n");
   test_start_opens_a_fresh_round();
   test_same_seed_same_input_same_round();
+  test_every_spawn_is_immediately_visible();
+  test_i_spawn_is_visible_on_the_spawn_tick();
   test_gravity_table_is_pinned();
   test_gravity_moves_exactly_when_scheduled();
   test_soft_drop_beats_gravity_and_scores_cells();
@@ -1104,6 +1394,9 @@ void run_game_tests() {
   test_das_and_arr_repeat();
   test_opposite_directions_cancel();
   test_direction_switch_resets_the_charge();
+  test_das_charge_carries_across_a_lock();
+  test_reversal_across_a_lock_moves_immediately();
+  test_both_directions_held_across_a_lock_move_nothing();
   test_movement_stops_at_walls_in_every_orientation();
   test_ground_locks_after_thirty_ticks();
   test_lock_delay_resets_cap_at_fifteen();
@@ -1114,6 +1407,9 @@ void run_game_tests() {
   test_hold_blocked_spawn_ends_the_round();
   test_block_out_on_failed_spawn();
   test_lock_out_on_hidden_row_cells();
+  test_spawn_boundary_sits_between_rows_0_and_1();
+  test_lock_out_still_fires_after_an_upward_spawn_kick();
+  test_spawn_rotation_stays_inside_the_hidden_rows();
   test_top_out_is_deterministic();
   test_clear_scoring_for_every_quantity();
   test_clear_scores_at_the_pre_clear_level();

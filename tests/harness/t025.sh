@@ -23,7 +23,9 @@
 #              loss, controller removal, a long stall, and the missing,
 #              partial, corrupt, and unwritable save cases
 #   san        the headless suites under AddressSanitizer and
-#              UndefinedBehaviorSanitizer, plus one scripted SDL session
+#              UndefinedBehaviorSanitizer, plus one scripted SDL session and
+#              the scoped-cleanup exit paths (renderer failure, a rejected
+#              script, and a virtual-pad detach) with leak detection on
 #   regress    the T023 and T024 harness drivers again, after T025's edits
 #
 # Every phase writes <phase>.status (passed|failed|unavailable) into
@@ -329,6 +331,10 @@ EOF
   # The kill loop: every run uses the same save directory; the saves script
   # tops out once, right after the "Game over:" log line, which is where a
   # triggered kill aims (the shim keeps the save open for ~2 x 120 ms).
+  # Since task T052 the same delayed write also carries every mid-round
+  # record save of the round before it, so a kill can land inside those
+  # too: the classification below only ever allows a canonical, absent, or
+  # damaged record either way.
   python3 - "$game" "$hk" "$kill_runs" > "$hk/kill-loop.log" 2>&1 <<'PYEOF'
 import os, random, re, signal, subprocess, sys, time
 
@@ -439,14 +445,28 @@ else:
     if left.get("canonical", 0) and not left.get("damaged"):
         pass  # the value itself is checked below against the file
 saved = re.search(r"New high score (\d+) saved", log)
-if not saved:
-    problems.append("verify run did not save a record")
-else:
+if saved:
     report["verify_saved"] = int(saved.group(1))
     blob = open(os.path.join(hk, "save", "highscore.dat"), "rb").read()
     if blob != (b"version=1\nhigh_score=" + str(saved.group(1)).encode() +
                 b"\n"):
         problems.append("record file is not canonical after the verify run")
+else:
+    # Since the mid-round persistence of task T052, a killed run leaves a
+    # canonical record of its best score so far, which can exceed what the
+    # verify seed's own round reaches. A clean run that loaded such a
+    # record and ended below it saves nothing - the record stands - so the
+    # expectation here is conditional: either a save line above, or a game
+    # over that finished under the record the run loaded, with the file
+    # still holding exactly that record.
+    ended = re.search(r"Game over: score (\d+)", log)
+    blob = open(os.path.join(hk, "save", "highscore.dat"), "rb").read()
+    canonical = re.fullmatch(rb"version=1\nhigh_score=(\d+)\n", blob)
+    if (loaded is None or ended is None or canonical is None or
+            int(ended.group(1)) > int(loaded.group(1)) or
+            int(canonical.group(1)) != int(loaded.group(1))):
+        problems.append("verify run saved nothing and the standing record "
+                        "does not explain it")
 report["problems"] = problems
 json.dump(report, open(os.path.join(hk, "hardkill-check.json"), "w"),
           indent=2)
@@ -491,8 +511,10 @@ print('%d kills (%s), record states %s' % (r['kills'], r['modes'], r['states']))
   { [ "$code_a" -eq 0 ] && grep -q "Clean shutdown" "$hk/two/a-log.txt"; } || two_ok=0
   { [ "$code_b" -eq 0 ] && grep -q "Clean shutdown" "$hk/two/b-log.txt"; } || two_ok=0
   # Only persistence failures count here: the renderer fallback's own
-  # "failed" attempt lines are the normal dummy-driver startup.
-  grep -hE "Saving the (high score|sound setting).*failed" \
+  # "failed" attempt lines are the normal dummy-driver startup. One settings
+  # save carries all five preferences, and its failure line names the one the
+  # player changed (task T044).
+  grep -hE "Saving the (high score|sound and ghost settings|sound setting|ghost setting|grid setting|hold setting|next setting|grayscale setting).*failed" \
     "$hk/two/a-log.txt" "$hk/two/b-log.txt" > "$hk/two/failures.log" || true
   [ -s "$hk/two/failures.log" ] && two_ok=0
   score_a=$(sed -n 's/.*Game over: score \([0-9]*\),.*/\1/p' "$hk/two/a-log.txt" | head -1)
@@ -1161,14 +1183,62 @@ if want_phase san; then
     --save-dir "$sn/session/save" --frames 4000 \
     > "$sn/session/run.log" 2>&1
   session_code=$?
+  # The scoped cleanup of task T047 owns the exit paths that never reach the
+  # loop, so those paths belong here too: a startup that fails and a script
+  # the parser rejects leave through the same owners as a clean quit, and a
+  # script that detaches the virtual pad must not double close it. Every run
+  # keeps leak detection on, so an owner that stops releasing its resource
+  # fails this phase. san_case NAME EXPECTED_EXIT command...: the command may
+  # open with its own `env VAR=...` word for a case-specific variable.
+  san_case() {
+    local name=$1 expected=$2
+    shift 2
+    mkdir -p "$sn/$name/save"
+    timeout --foreground "$default_timeout" \
+      env SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy \
+      ASAN_OPTIONS=detect_leaks=1 "$@" > "$sn/$name/run.log" 2>&1
+    local code=$?
+    echo "$code" > "$sn/$name/exit"
+    if [ "$code" != "$expected" ]; then
+      echo "$name: FAILED (exit $code, wanted $expected)" >> "$sn/matrix.txt"
+      return 1
+    fi
+    echo "$name: passed (exit $code)" >> "$sn/matrix.txt"
+    return 0
+  }
+  printf 'key enter down\nbogus verb here\nquit\n' > "$sn/bad.script.txt"
+  san_ok=1
+  san_case render-fail 1 env SDL_RENDER_DRIVER=stackfall-no-such-renderer \
+    "$san_build_dir/stackfall" --seed 5 --frames 30 \
+    --save-dir "$sn/render-fail/save" || san_ok=0
+  # Every evidence stream is open when the script is rejected, so this run
+  # exercises each scoped owner on its way out.
+  san_case script-reject 1 \
+    "$san_build_dir/stackfall" --seed 5 --virtual-controller \
+    --input-script "$sn/bad.script.txt" --input-log "$sn/script-reject/input.log" \
+    --observations "$sn/script-reject/obs" --screenshot-dir "$sn/script-reject/shots" \
+    --frame-times "$sn/script-reject/ft.txt" \
+    --save-dir "$sn/script-reject/save" || san_ok=0
+  mkdir -p "$sn/pad-detach/shots"
+  san_case pad-detach 0 \
+    "$san_build_dir/stackfall" --seed 20261104 --frames 6000 \
+    --input-script "$repo/tests/harness/scripts/scene-cycle-pad.script.txt" \
+    --input-log "$sn/pad-detach/input.log" --observations "$sn/pad-detach/obs" \
+    --screenshot-dir "$sn/pad-detach/shots" \
+    --save-dir "$sn/pad-detach/save" || san_ok=0
+  grep -q "Game controller .* removed" "$sn/pad-detach/run.log" ||
+    { echo "pad-detach: FAILED (no controller removal logged)" >> "$sn/matrix.txt"
+      san_ok=0; }
+  cat "$sn/matrix.txt" 2>/dev/null || true
   if grep -qE "ERROR: (Address|Leak)Sanitizer|runtime error:" \
-       "$sn/ctest.log" "$sn/session/run.log"; then
+       "$sn/ctest.log" "$sn"/*/run.log; then
     status san failed "a sanitizer reported; see $sn"
   elif [ "$ctest_code" -eq 0 ] && [ "$session_code" -eq 0 ] &&
+       [ "$san_ok" -eq 1 ] &&
        grep -q "Clean shutdown" "$sn/session/run.log"; then
-    status san passed "ctest and one scripted ASan+UBSan session clean"
+    status san passed "ctest, one scripted session, and the scoped-cleanup exit paths clean"
   else
-    status san failed "ctest $ctest_code, session $session_code; see $sn"
+    status san failed "ctest $ctest_code, session $session_code, cases $san_ok; see $sn"
   fi
 fi
 

@@ -67,6 +67,9 @@ The review driver bounds discovery and process exit to ten seconds each.
   At level 1, the specified delay is 48 ticks, or 0.8 seconds.
   This is a prediction from the rule and shape data. Gameplay is not yet
   available to observe that delay. T024 must capture it before a rule change.
+  (Resolved 2026-11-03 by task T029: T024 captured the delay, the design
+  owner approved immediate visibility, and pieces now spawn with their
+  topmost cells at visible row 0. See the T029 section below.)
 - Physical button mappings, handheld performance, and human enjoyment remain
   unverified. Request the final operator pass after the local package exists.
 
@@ -934,6 +937,11 @@ Hidden I-piece spawn delay, recorded as a design question:
   interval, or spawn pieces at row 0 so every piece is visible at
   once? A change moves lockout timing, so it is a design decision.
   Nothing was changed here.
+- Disposition, 2026-11-03: task T029 implemented the second option.
+  Pieces now spawn with their topmost occupied cells at visible row 0
+  (I matrix origin y=-1, all others y=0), so this 48-tick hidden
+  interval no longer occurs. The measurement above is the preserved
+  pre-change evidence. The T029 section below records the new proof.
 
 Visual review, by opened image:
 
@@ -988,7 +996,8 @@ Findings and open questions:
   accounts its 5 cues as without a device. Device latency and human
   judgment stay with the operator pass in T018 and T020.
 - The hidden I spawn delay question above needs a design decision
-  before the physical rounds.
+  before the physical rounds. (Decided and implemented 2026-11-03 by
+  task T029; every piece is now visible on its spawn frame.)
 
 Commands:
 
@@ -1730,3 +1739,2071 @@ python3 tools/design-review/check_fixes.py \
   owner's notes order - final desktop verification after the final layout
   task - needs Looper planning to add it; workers cannot edit the
   backlog. T015's blocker already records this.
+
+## T039: settings file gains the ghost preference (2026-11-03)
+
+Task T039, round M3, the settings follow-up to T012 and T013. Tested at
+commit `c0fcb8e` plus uncommitted task changes; the tested source hashes
+are in `build/agent-checks/t039-settings/source.sha256`.
+
+What landed:
+
+- `include/stackfall/storage.hpp` and `src/storage.cpp`: the settings file
+  is now three lines, `version=1\nsound=on|off\nghost=on|off\n`.
+  `formatSettingsFile(bool, bool)` renders it, and
+  `parseSettingsFile(bytes, bool* soundOn, bool* ghostOn)` accepts exactly
+  six strings: the four three-line forms plus the two legacy two-line
+  forms, which parse with the ghost on so an upgrade never loses a saved
+  sound choice. Everything else is a damaged file that recovers to both
+  preferences on. `SettingsResult` gains `ghostOn`, `SettingsStore::save`
+  takes both values over the unchanged atomic write, and
+  `kSaveFormatVersion` stays 1 because the high-score record shares it.
+- `src/main.cpp`: the session loads both preferences, logs
+  `Settings: sound %s, ghost preview %s (%s)`, writes `ghost start=` to
+  the input log, and carries the loaded ghost value through every save of
+  the sound toggle. The player has no ghost control yet; T040 adds the
+  options screen, so until then a session preserves what it loaded.
+- `tests/test_storage.cpp`: the four canonical renderings, the six
+  readable parses, both legacy upgrades on disk and in memory, and the
+  ghost rejections (lost final newline, `ghost=maybe`, `ghost=On`, a file
+  missing the sound line, a doubled ghost line, CRLF) beside every
+  existing sound rejection.
+- `tests/harness/t025_fuzz.py`: the settings corpus is the three-line
+  form, both legacy files joined the mutation bases and the save-pair
+  cases, and the oracle accepts the legacy renderings only with the ghost
+  reported on. `tests/harness/t025.sh`: the persistence-failure grep of
+  the two-instance phase covers the ghost setting save.
+
+Verification, under `build/agent-checks/`:
+
+- Passed: `ctest` 5 of 5 in `build/` (Debug), `build-rel/` (Release), and
+  the sanitizer build. The core suite reports 338,576 checks, the render
+  suite 985, the audio suite 4,005.
+- Passed, the acceptance case: a legacy `version=1\nsound=off\n` file
+  loads through the real binary as `Settings: sound off, ghost preview on
+  (ok)`, and one sound toggle rewrites the file as
+  `version=1\nsound=on\nghost=on\n` - the upgrade on the next save.
+- Passed: `tests/harness/run.sh` 163 of 163 (`harness-2026-11-03-204845`)
+  and `tests/harness/t024.sh` 287 of 287
+  (`t024-2026-11-03-204904`), including the mute-toggle input-log pins;
+  the saved `settings.dat` of those sessions is the three-line form.
+- Passed: `T025_PHASES=fuzz T025_RUN_ID=t039-fuzz-check-2
+  tests/harness/t025.sh`: the parser loop under ASan and UBSan and 229
+  binary cases, the save pairs now seeded from both the current and the
+  legacy settings file, no findings.
+- Passed: `T025_PHASES=hardkill T025_RUN_ID=t039-hardkill-check
+  tests/harness/t025.sh`: 24 kills (21 canonical records, 3 absent, none
+  damaged), the repair-and-load run, and the two-instance check whose
+  persistence-failure grep now covers the ghost setting.
+- Passed, mutation checks: forcing the legacy parse to report the ghost
+  off fails four storage pins, and a deliberately wrong legacy oracle in
+  the fuzz driver is caught within seconds, so both the pins and the
+  oracle are meaningful.
+
+Commands:
+
+```bash
+ctest --test-dir build --output-on-failure
+cmake --build build-rel && ctest --test-dir build-rel
+HARNESS_RUN_ID=harness-2026-11-03-204845 tests/harness/run.sh
+T024_RUN_ID=t024-2026-11-03-204904 tests/harness/t024.sh
+T025_PHASES=fuzz T025_RUN_ID=t039-fuzz-check-2 tests/harness/t025.sh
+T025_PHASES=hardkill T025_RUN_ID=t039-hardkill-check tests/harness/t025.sh
+```
+
+## T040: options screen with the ghost toggle (2026-11-03)
+
+Scope, per the task contract: the title menu gains OPTIONS between CONTROLS
+and QUIT (`kTitleItemCount` 4), the new value-free `Scene::Options` joins the
+enum at its end, `Game::tickOptions` moves a two-row cursor that the state
+hash never folds, the renderer gains `setShowGhost`/`setSoundOn` and gates
+`drawGhostPiece` on the setting, and the platform layer turns the row select
+into `toggleSound`/`toggleGhost` writes of `settings.dat`. QUIT moved from
+title index 2 to 3, so every quit-from-title walk gained one down-press:
+`scene-cycle-keyboard`, `scene-cycle-pad`, `fixture-four-line`,
+`t024-shapes-keyboard`, `t024-shapes-pad`, `t024-clears-23`, `t024-i-spawn`,
+`t024-focus-letterbox`, and `t025_gen.py quit_from_title` (`fixture-blockout`
+and `fixture-lockout` exit through the script `quit` command, so they needed
+nothing).
+
+Verification, under `build/agent-checks/`:
+
+- Passed: zero-warning `cmake --build` in `build/` (Debug) and `build-rel`
+  (Release) after `--clean-first`. One pre-existing `-Wparentheses` warning
+  in `tests/test_font.cpp:60` (present at the baseline, unrelated to this
+  change) was repaired with explicit parentheses so the zero-warning gate
+  holds.
+- Passed: `ctest` 5 of 5 in Debug and Release. Check counts: core 338,593
+  (the screens suite grew by the four-item title tests and
+  `test_title_options_round_trip`), render 1,050 (the options-page checks
+  and the ghost-off pixel check), audio 4,005, input 382.
+- Passed: `tests/harness/run.sh` 163 of 163 (`t040-final-2026-11-03`) and
+  `tests/harness/t024.sh` 287 of 287 (`t040-final-t024`): every session
+  walks the four-item title menu and quits from `menu=title:3`.
+- Passed: `T025_PHASES="failures san regress" T025_RUN_ID=t040-t025fail
+  tests/harness/t025.sh` - the forced-failure logs, one scripted
+  ASan+UBSan session, and fresh run.sh/t024.sh reruns. A two-cycle
+  `t025_gen.py cycles` session exited through the menu quit with
+  `menu=title:3` on `final-at-quit`.
+- Passed: `t026.sh` verify - all four scenarios, `busy` at the full 6000
+  frames (`t040-t026busy`; its pinned top-out stays at tick 3983, so the
+  rules core is untouched). The menu scenario now alternates Controls and
+  Options and never plays (`t040-t026verify`).
+- Passed, the options round trip (`build/agent-checks/t040-manual/`): the
+  scripted walk opens the screen (`scene=options`, `menu=options:0`),
+  moves to and toggles the GHOST row, returns with the title cursor on
+  OPTIONS, and starts a round. The input log gains exactly one
+  `ghost hidden status=ok` line, `settings.dat` holds exactly
+  `version=1\nsound=on\nghost=off\n`, and all 8 checkpoint records are
+  byte-identical to the headless `stackfall_reference` stream. The SOUND
+  row toggles through the menu path and the opening select toggles
+  nothing (one `sound muted` line for one row select).
+- Passed, the render gate measured on captured pixels: the well of
+  `playing-start.bmp` after the toggle holds 0 pixels of the T ghost
+  outline color (135, 87, 173) while the active piece draws identically;
+  the same checkpoint with the ghost on holds 416 outline pixels.
+- The options screenshots show the heading at y=96 (28 px tall) and the
+  selected row marker at y=232 (SOUND) moving to y=276 (GHOST).
+
+Commands:
+
+```bash
+ctest --test-dir build --output-on-failure
+HARNESS_RUN_ID=t040-final-2026-11-03 tests/harness/run.sh
+T024_RUN_ID=t040-final-t024 tests/harness/t024.sh
+T025_PHASES="failures san regress" T025_RUN_ID=t040-t025fail tests/harness/t025.sh
+T026_PHASES=verify T026_SCENARIOS=busy T026_RUN_ID=t040-t026busy tests/harness/t026.sh
+```
+
+T041 adds the registered options-ghost harness session and the SPEC and
+AGENT_TESTING documentation of the screen.
+
+## T041: options-ghost harness session and options documentation (2026-11-03)
+
+Task T041, round M3, the agent-testing follow-up to T040 in the pattern of
+T023 and T024. Tested at commit `789736a` plus uncommitted task changes; the
+tested source hashes are in
+`build/agent-checks/t041-final-harness/source.sha256`. No C++ source
+changed: the screen, the settings write, and the ghost gate are T039/T040
+work that this task registers and documents.
+
+What landed:
+
+- `tests/harness/scripts/options-ghost.script.txt`: the seventh session,
+  keyboard, seed 20261103. A first round runs with the ghost at its on
+  default and checks its first playing tick, the round is abandoned through
+  the pause menu, the title walks to OPTIONS (two downs), the screen opens
+  on SOUND, one down reaches GHOST, one select turns the ghost off, Esc
+  returns with the title cursor still on OPTIONS, two ups and a select start
+  a second round whose first playing tick is checked, and the session quits
+  through the fourth title item. A `wait` follows every check, so no record
+  carries the tick of the input after it.
+- `tests/harness/check_harness.py`: the options-ghost branch (32 checks)
+  pins the 13-record scene sequence, `menu=title:2` before the screen,
+  `menu=options:0` and `menu=options:1` on the two options checkpoints, the
+  select keeping the row, the back keeping the title cursor on OPTIONS, the
+  title still holding four items (`menu=title:3`), the quit, both playing
+  records with the active piece at a hidden row (`y=-1`) while the ghost
+  names a visible landing row (`y=18`), the saved settings bytes, and four
+  log lines. New helpers: `read_bmp_pixels` (a 30-line, dependency-free BMP
+  reader: 24 or 32 bpp, bottom-up or top-down, four-byte stride, BGR(A)
+  order), `check_well_below_piece` (a pixel census of the well from two rows
+  under the live piece's origin - strictly below the piece, where section
+  6.2 step 3 says the outline draws), `check_settings_file`, and
+  `check_hidden_spawn_landing`. The ghost-on checkpoint before the toggle is
+  the positive control: the same scan must find the outline there, so a
+  broken reader cannot pass the zero proof.
+- `tests/harness/run.sh`: registers the session and moves the header and
+  session-count wording from six sessions to seven.
+- `docs/SPEC.md`: section 4.7 TITLE reads Start Game / Controls / Options /
+  Quit with a new OPTIONS bullet (two rows, select-to-change, back to title,
+  persistence); section 5 gains the sentence that the options screen uses
+  the same menu edges and adds no key bindings; section 6.2 step 3 notes the
+  player toggle and the on default; sections 6.3 and 9 name `settings.dat`
+  carrying both preferences over the same atomic write and recovery rules;
+  the status line no longer lists the options screen as remaining.
+- `docs/AGENT_TESTING.md`: seven sessions, the options-ghost bullet, and the
+  well-scan and settings pins in the checker description.
+
+Verification, under `build/agent-checks/`:
+
+- Passed: `tests/harness/run.sh` 195 of 195 (`t041-final-harness`), up from
+  163 with the seventh session green end to end; the headless `ctest` suites
+  ran first inside it, 5 of 5 in `build/` (Debug) and 5 of 5 in `build-rel`
+  (Release).
+- Passed: the session's 13 records are byte-identical to the headless
+  `stackfall_reference` stream, its exit is 0 with a clean shutdown, and
+  `log.txt` sits in the passed `--save-dir`.
+- Passed, the pixel proof: the ghost-on frame's well below the piece holds
+  416 pixels besides the well and grid colors (the T outline at 135, 87,
+  173); the ghost-off frame holds 0. The saved `settings.dat` is exactly
+  `version=1\nsound=on\nghost=off\n`, and the input log holds
+  `ghost start=on` and `ghost hidden status=ok`.
+- Passed, mutation check: forcing `drawPlayScene` to draw the ghost whatever
+  the setting says makes the checker fail `well-ghost-off` with exactly the
+  416 pixels of the S outline color (57, 159, 83), so the zero proof detects
+  a real regression. Evidence in `build/agent-checks/t041-mutation/`;
+  reverted and rebuilt afterward.
+- Passed, the acceptance case beside the harness: a fresh design-review
+  capture (`t041-design-review-2026-11-03`, seed 31337, twelve images) still
+  passes `check_fixes.py` 3 of 3 with the ghost on by default - the ghost
+  outline measures 5.82:1 over 416 pixels. See `notes/design-review.md`.
+
+Commands:
+
+```bash
+ctest --test-dir build --output-on-failure
+cmake --build build-rel && ctest --test-dir build-rel
+HARNESS_RUN_ID=t041-final-harness tests/harness/run.sh
+DR_RUN_ID=t041-design-review-2026-11-03 tools/design-review/capture.sh
+python3 tools/design-review/check_fixes.py \
+  --packet build/agent-checks/design-review/t041-design-review-2026-11-03/packet \
+  --json build/agent-checks/design-review/t041-design-review-2026-11-03/fix-checks.json
+```
+
+## T029: immediate spawn visibility (2026-11-03)
+
+Sources: [design decision](stackfall-visible-spawn-decision-2026-11-03.md)
+(approved 2026-11-03), [game specification](../docs/SPEC.md) section 4.2,
+[agent testing guide](../docs/AGENT_TESTING.md) T024 step 4. Source
+identities: `build/agent-checks/t029-harness-2/source.sha256` and
+`build/agent-checks/t029-t024-2/source.sha256`.
+
+Rule change, `src/pieces.cpp`: the matrix origin is `y=-1` for the I (its
+first occupied row is local row 1) and `y=0` for every other piece. The
+topmost occupied cell of each spawn sits at visible row 0. The same rule
+applies to a new game, the piece after a lock, and both hold paths. Gravity,
+scoring, controls, the hidden rows, and the game-over rules are unchanged.
+Section 4.2 of the specification now states the rule and its approval.
+
+Verified effects, each traced to the one-row shift:
+
+- Every spawn frame shows its piece. Unit tests in `tests/test_game.cpp`
+  cover all seven shapes: at game start, after a hold swap with an empty
+  slot, after a hold swap with a filled slot, and after a lock. Each spawn
+  has its top occupied row at 0.
+- Each hard drop travels one cell less, so it scores 2 points less. The
+  refreshed regression scores follow that arithmetic: soft-drop-moves
+  108 to 98 (5 drops), hold-and-pause 107 to 99 (4 drops), stack-and-clear
+  559 to 539 (10 drops), block-out 224 to 202 (11 drops; the round also
+  ends one piece earlier).
+- Block-out fires one row earlier. The rebuilt `blockout-ready` fixture
+  fills visible row 0; the forced spawn cannot occupy its cells.
+- Lock-out cannot follow from a plain spawn anymore, because no piece
+  starts above row 0 and drops only descend. An upward SRS kick is now
+  required. The test `test_lock_out_still_fires_after_an_upward_spawn_kick`
+  grounds a T on a row-2 stack, rotates (the 0-to-R kick `-1,-1` lifts a
+  cell to row -1), drops, and the game ends by lock-out. The rebuilt
+  `lockout-ready` fixture and `fixture-lockout.script.txt` use the same
+  path; the checker pins the hidden-row mask `0008` to prove it.
+- Spawn rotations stay inside the board.
+  `test_spawn_rotation_stays_inside_the_hidden_rows` turns each shape four
+  times at spawn without leaving `y=-2..19`.
+
+Changed regression pins in `tests/test_regression.cpp`, refreshed with the
+deliberate procedure (`stackfall_tests --seed N` prints the new values):
+
+```text
+gravity-lock    0x13d2f17addd37dc3 -> 0x7c1eb4141e56df81  score 0
+soft-drop-moves 0xd2d36cfc30b41f4d -> 0x133e70c548b0ee33  score 108 -> 98
+hold-and-pause  0x5c5e0e5c177b7b1c -> 0x9daf6f8a2cbac975  score 107 -> 99
+stack-and-clear 0x4a37e53632c5dfb9 -> 0x04958a77e3da0ce5  score 559 -> 539
+block-out       0x0366befc1f4628e3 -> 0x33069c75c87fb7b7  score 224 -> 202
+```
+
+Test and harness results:
+
+- Debug `ctest`: 5 of 5 suites pass. Release `ctest`: 5 of 5 suites pass.
+- T023 harness, run `t029-harness-2`: 198 checks pass, 0 fail. Pin changes:
+  scene-cycle-keyboard scores 196/198 (was 218/220), scene-cycle-pad scores
+  196 with saved record 198 (was 218/220) and spawn `S,0,2,0`, fixture-lockout
+  settles 7 with the hidden-row mask pinned, fixture-blockout settles 19
+  (was 20).
+- T024 harness, run `t029-t024-2`: 288 checks pass, 0 fail, including the
+  X11 focus and letterbox session. Score pins moved by 2 points per hard
+  drop: shapes-keyboard 194/206 (was 214/228), shapes-pad 238/200 (was
+  262/222), clears-23 triple 868 (was 872); the saved high-score files
+  follow the same arithmetic.
+
+Seed-777 reproduction, session `t024-i-spawn`:
+
+- Tick 5, `i-spawn-frame`: the J locks and the I spawns on the same tick
+  at `I,0,3,-1`, so its only occupied row is visible row 0.
+- Ticks 6 to 52, `i-visible-plus40..47`: the I holds row 0. Tick 53,
+  `i-fell-plus48`: `I,0,3,0`. The first fall still comes 48 ticks after
+  the spawn, so the level-1 gravity schedule is unchanged. Tick 57,
+  `after-i-lock`: the I locks at rows 0 and 1 and the T spawns visibly.
+
+Visual evidence, opened by image reader and confirmed by pixels: the frame
+crops `build/agent-checks/t029-review/t029-i-spawn-frame.png` (four cyan
+cells in the first board row on the spawn tick),
+`t029-i-visible-plus47.png` (same row on tick 52), and
+`t029-i-fell-plus48.png` (the row below on tick 53). The checker
+`check_i_visible_pixels` also proves the row-0 band by pixel color. The
+crops come from `build/agent-checks/t029-t024-2/t024-i-spawn/shots/`.
+
+Open questions: none from this change. Physical button feel and human
+enjoyment still wait for the operator pass (T018, T020).
+
+Commands:
+
+```bash
+cmake --build build && ctest --test-dir build --output-on-failure
+cmake --build build-rel && ctest --test-dir build-rel --output-on-failure
+HARNESS_RUN_ID=t029-harness-2 tests/harness/run.sh
+T024_RUN_ID=t029-t024-2 tests/harness/t024.sh
+```
+
+## T037: focused gameplay HUD (2026-11-03)
+
+Sources: [game specification](../docs/SPEC.md) sections 4.7 and 6.1 to
+6.2, [agent testing guide](../docs/AGENT_TESTING.md), the accepted task
+contract (`looper:finding:focused-gameplay-hud`). Source identity: the
+changes were uncommitted worktree state during every run below; the exact
+hashes are in `build/agent-checks/t037-smoke-2/source.sha256` and
+`build/agent-checks/design-review/t037-fix/source.sha256`.
+
+Composition that landed, on the preserved 27 px board geometry of T038:
+
+- The HUD holds two 128 px columns beside the board, each 24 px from the
+  frame: left x=192..319 (Hold above score, lines, level), right
+  x=640..767 (five Next previews). Both derive from `boardFrame()`, so
+  the group centers (256 and 704) stay symmetric about the board center.
+  The hold and preview boxes lost their decorative outlines.
+- `drawStatsPanel` centers label (dim) and value (bright) rows of 14 px;
+  `statValueScale` drops a value that would not fit to glyph scale 1, so
+  a 20-digit score (119 px) still fits the 128 px column. The first
+  preview draws at full color, previews two to five dim.
+- The permanent gameplay legend is gone (`drawHintsPanel` and its table
+  were deleted). The footer hints of the title, pause, and game-over
+  screens stay at 14 px, and the controls screen stays complete.
+- `Scene::PauseControls` (appended at the enum end, so every pinned
+  regression hash survived): the pause overlay's third item CONTROLS
+  opens the mappings page with the footer "A OR B BACK TO PAUSE"; select
+  or back returns to the overlay on the same item and the round stays
+  frozen. `observe.cpp`, `main.cpp`, and `test_regression.cpp` name the
+  scene `pausecontrols` or `pause-controls`.
+- `GameTestPeer` gained `setScore` so the renderer suite can pin value
+  extremes.
+
+Verification, under `build/agent-checks/`:
+
+- Passed: `ctest` 5 of 5 suites in `build/` (Debug) and `build-rel/`
+  (Release).
+- Passed: `tests/harness/run.sh` run `t037-smoke-2`, 209 checks, 0
+  failures. New pins: the pause detour records `paused-at-controls`
+  (menu `pause:2`), `pause-controls-open` (scene `pausecontrols`, round
+  fields identical), and `pause-controls-back` (scene `paused`, cursor
+  still 2); the scene list of `scene-cycle-keyboard` grew to 27 entries;
+  every quit-to-title walk in the pinned scripts and `t025_gen.py` now
+  takes three downs (RESUME, RESTART, CONTROLS, QUIT TO TITLE).
+- Passed: extreme statistics never clip. The renderer suite pins
+  `UINT64_MAX` score and lines through `setScore`: `statValueScale`
+  returns 1, the gap bands stay background, and no text enters the board.
+  All seven shapes render in Hold and in every preview slot, full and
+  dim, and a 59-seed scan sees each piece both ways at least once.
+- Passed: `tests/harness/t024.sh` run `t037-t024-rerun`, 288 checks, 0
+  failures, including the X11 focus-loss and letterbox session. Every
+  letterboxed frame keeps its 59 px bars.
+- Passed: `tests/harness/t025.sh` phase `cycles` rerun after the
+  generator change (run `t025-2026-11-03-232703`): 52 restart and menu
+  cycles at real-time pacing, no stuck input, no resource growth.
+- Passed: fresh design-review packet `design-review/t037-fix/packet`
+  (seed 31337, twelve images, `DR_RUN_ID=t037-fix
+  tools/design-review/capture.sh`). `check_fixes.py` passes 4 of 4
+  required criteria: seven 14 px statistics rows with quiet gaps, the
+  NEXT heading alone with 900 piece pixels per slot, ghost outline
+  5.82:1, letterbox bars 59 and 59. See `notes/design-review.md`.
+- Passed: the pause route outside the packet, session
+  `design-review/t037-fix/pause-controls/`: the overlay at round tick
+  63, the mappings screen opened from the CONTROLS item, and the return
+  to the overlay on the same item, all three records at the same frozen
+  tick 63 with score 0 and an empty board.
+- Passed, opened and inspected: every packet image plus the three
+  pause-route frames, read through the codex image reader in five
+  factual batches (reports in `design-review/t037-fix/inspect/`). The
+  columns read as designed, the values dominate the labels, the first
+  preview dominates the rest, no frame clips or overlaps text, and the
+  letterboxed frame keeps every label readable. One pre-existing
+  cosmetic observation is recorded in `notes/design-review.md`: the
+  game-over panel edge cuts the dimmed statistics column.
+- Updated: `docs/images/gameplay.png` now carries the fresh native
+  `dr-hold-locked` frame (seed 31337, tick 127), and the README alt
+  text names what it shows.
+
+Open questions: none from this change beyond the cosmetic game-over
+panel question in `notes/design-review.md`. Physical button feel and
+human judgment still wait for the operator pass (T018, T020).
+
+Commands:
+
+```bash
+cmake --build build && ctest --test-dir build --output-on-failure
+cmake --build build-rel && ctest --test-dir build-rel --output-on-failure
+HARNESS_RUN_ID=t037-smoke-2 tests/harness/run.sh
+T024_RUN_ID=t037-t024-rerun tests/harness/t024.sh
+T025_PHASES=cycles tests/harness/t025.sh
+DR_RUN_ID=t037-fix tools/design-review/capture.sh
+python3 tools/design-review/check_fixes.py \
+  --packet build/agent-checks/design-review/t037-fix/packet \
+  --json build/agent-checks/design-review/t037-fix/fix-checks.json
+```
+
+## T015: M3 desktop gate (2026-11-04)
+
+Round M3 gate, at commit `b543e76` ("Integrate T037", the T029 plus
+T037 integrated source). One command runs the complete pass:
+
+```bash
+tests/harness/t015.sh
+```
+
+The recorded run `t015-gate-2026-11-04` reports 434 checks passed and
+0 failed (`check-passed.txt`; sources, binaries, and scripts in
+`source.sha256`). The driver phases and what each proved:
+
+- Passed, builds: clean rebuild and `ctest` 5 of 5 in Debug
+  (`build/`) and Release (`build-rel/`), zero compiler warnings in
+  both compile logs.
+- Passed, hashes: `stackfall_tests --seed 987654321` produced
+  byte-identical output in both configurations, with the five pinned
+  scenario hashes of the T029 refresh (`gravity-lock` 0x7c1eb414..., 
+  `soft-drop-moves` 0x133e70c5..., `hold-and-pause` 0x9daf6f8a...,
+  `stack-and-clear` 0x04958a77..., `block-out` 0x33069c75...). This is
+  section 11, item 18, desktop half; the ARM64 half stays with T016.
+- Passed, sessions: seven M3 sessions, each equal to the headless
+  reference stream field by field, repeated byte-identically inside the
+  run, and replayed identically in the Release build (`m3-release.status`).
+  - `m3-das-arr` (seed 20261103, 39 checkpoints): the press tick moves
+    (x 3 -> 2 on tick 6); nine charge ticks with no movement; the first
+    repeat exactly ten ticks after the press; the next exactly two
+    ticks later; repeats fail parked at the left wall; a direction
+    switch moves on its own tick (tick 26); a pause after five charge
+    ticks freezes the charge - the first post-resume repeat still lands
+    on press + 10 (tick 36), where a reset charge would repeat ten
+    ticks past the resume instead; left plus right held moves nothing,
+    and releasing one leaves the other as a fresh press that moves.
+  - `m3-lock-delay` (seed 20261103, 130 checkpoints): the soft-dropped
+    T lands on tick 42 (the fall into row 18 observed tick by tick),
+    stays active through tick 70, and locks exactly on tick 71 = 42 +
+    29, the 30th grounded tick with the landing tick included; soft
+    drop scored 1 per cell (18). The Z lands on tick 107, sixteen
+    grounded moves follow at ticks 116..176 (columns alternate 5/6),
+    records show it alive 31 ticks past its own no-reset lock point
+    (136), and the lock lands on tick 201 = 15th reset 172 + 29,
+    strictly inside the 16th reset's window (205) - the sixteenth move
+    moved the piece without resetting the timer.
+  - `m3-bag-20261103`, `m3-bag-31337`, `m3-bag-777` (18 locks each,
+    spread placements): the checker rebuilds the piece stream from the
+    queue windows (21/24 and 27 pieces) with every overlapping window
+    consistent, and each complete block of seven draws is a permutation
+    of I O T S Z J L (three full bags per seed). No line cleared, so
+    one lock is exactly four settled cells throughout. The 777 session
+    adds the hold rules at a bag boundary: the swap drew the queue head
+    (T) into play at spawn, the second press changed nothing, the lock
+    freed the hold, and the return swap respawned the stashed Z at
+    orientation 0 while parking the other piece.
+  - `m3-restart` (seed 31337): two hard drops scored 36 and 32 by the
+    section 4.6 arithmetic; pause froze the round with the cursor
+    reaching RESTART; RESTART reset score, board, hold, and clock
+    (tick 5 after 23) with a fresh bag and a distinct seed; QUIT TO
+    TITLE returned a zero clock and the title started a third distinct
+    bag; a Left held across a restart moved on the fresh round's first
+    ticks (x 2), kept repeating to the wall, and stopped on release
+    with no leaked rotation, drop, or hold; twelve drops ended the
+    round; PLAY AGAIN began another fresh round (score 0, settled 0,
+    another distinct bag); the session quit from `menu=title:3`. The
+    input log carries two distinct title-started round seeds.
+  - `m3-highscore` (four processes over one save directory): run 1
+    (seed 999) recorded 202 on a fresh save; run 2 (seed 999 again)
+    replayed the round identically outside the storage fields, loaded
+    202, saved nothing (an equal score is not a record), and left the
+    file unchanged; run 3 (seed 5150) beat the record and the file
+    became 212; run 4 (seed 20261103) started from a damaged file
+    (binary garbage, preserved as `corrupt-highscore.dat`), logged
+    `High score 0 (invalid)`, and saved 196. The driver snapshots the
+    record file after every process; every process exited 0 with a
+    clean shutdown.
+- Passed, regress at this identity: `tests/harness/run.sh` 209 of 209
+  (`t015-gate-2026-11-04-harness/`) and `tests/harness/t024.sh` 287 of
+  287 in Debug and again in Release
+  (`t015-gate-2026-11-04-t024-debug/`, `-t024-release/`), including
+  the X11 focus-loss and letterbox sessions.
+- Passed, stability (T025 subset): `failures` 17 checks, `restarts` 50
+  process restarts carrying one record forward (final record 224, best
+  224, weakest 188), and `san` (the headless suites plus one scripted
+  session under AddressSanitizer and UndefinedBehaviorSanitizer, clean)
+  - all under `t015-gate-2026-11-04-t025/`.
+- Passed, performance: the T026 `verify` phase in Release proved every
+  benchmark scenario's claim at this source
+  (`t015-gate-2026-11-04-t026/`); `notes/performance.md` records no
+  unresolved desktop target, so the gate does not claim a pass over an
+  open failure. The report's unresolved limits remain device-scope
+  items (RG503 frame times, the nested-runner permission layer), which
+  the deferred T036 and final acceptance own.
+- Passed, reports: the checker verified the required evidence exists -
+  the T024 and T025 sections of this report, the T026 final regression
+  gate with its unresolved-limits section, and the T027 and T028
+  sections of `notes/design-review.md` with the closure recorded.
+
+Mutation proofs that the new pins are live (evidence under
+`build/agent-checks/t015-mutation/`, both reverted and rebuilt
+afterward; the rebuilt Debug binary hash matches the gate's):
+
+- `kDasTicks` 10 -> 9: the first repeat fires on tick 15 and the
+  checker fails `m3-das-arr/das-charge` at exactly that checkpoint.
+- `kLockDelayResets` 15 -> 16: the lock waits for the 16th reset's
+  window (tick 205) and the checker fails
+  `m3-lock-delay/reset-budget-15` (expected 201).
+
+Commands:
+
+```bash
+tests/harness/t015.sh
+T015_RUN_ID=t015-gate-2026-11-04 tests/harness/t015.sh   # the recorded run
+T015_PHASES="sessions check" T015_RUN_ID=<id> tests/harness/t015.sh
+python3 tests/harness/check_t015.py build/agent-checks/t015-gate-2026-11-04
+```
+
+Findings and open questions:
+
+- One driver defect surfaced and was fixed before the recorded pass:
+  `set -u` aborted the regress phase on an unset `T015_SKIP_X11`
+  (now `${T015_SKIP_X11:-}`), and the checker first read the
+  two-line T025 status files as failures (now it reads the first
+  line). Both fixes are in the recorded run's `source.sha256`.
+- The section 11 desktop inventory stands covered as follows: items
+  1-17 and 19-20 by the headless suites in both configurations (the
+  same ctest pass), item 18's desktop half by the hash phase, and the
+  gameplay-facing halves of items 9, 10, 12, 13, 14, and 20 by the m3
+  sessions above. The ARM64 hash comparison of item 18 and every
+  on-device check remain open for T016 and the device gates.
+- Real audio output stays unavailable on this host (no sound card);
+  the sessions ran against the SDL dummy audio driver, as in every
+  earlier round. Device latency and human judgment stay with the
+  operator pass.
+
+## T016: AArch64 build in the PortMaster-aligned environment (2026-11-04)
+
+Environment: Docker with the QEMU aarch64 binfmt handler registered.
+The image `stackfall-arm64-builder:22.04` from `tools/arm64/Dockerfile`
+is the guide's Ubuntu 22.04 ARM64 chroot environment moved into a
+container: the distribution gcc 11.4.0, CMake, Ninja, and pkg-config,
+with the distribution SDL2 packages installed for their build
+dependencies, purged, and replaced by SDL 2.26.2 built from the guide's
+pinned tag URL. `tools/arm64/README.md` records the deviations from the
+guide's package list. Every phase runs in its own container under
+`--platform=linux/arm64`; the Looper labels let a registered cleanup
+find a container the script leaves behind.
+
+One command produces and checks the device binary:
+
+```bash
+tools/arm64/build-arm64.sh
+```
+
+The recorded run is `build/agent-checks/t016-arm64-2026-11-04/`, a
+clean configure and build of the whole tree inside the environment
+(`rm -rf build-arm64` first). Results, all passed:
+
+- `file build-arm64/stackfall.aarch64`: `ELF 64-bit LSB pie
+  executable, ARM aarch64`, interpreter `/lib/ld-linux-aarch64.so.1`,
+  built for GNU/Linux 3.7.0.
+- `ldd` and `readelf -d` (in `arm64-binary-report.txt`) document the
+  runtime dependencies: `libSDL2-2.0.so.0` (the source-built 2.26.2 in
+  `/lib`), `libstdc++.so.6`, `libgcc_s.so.1`, `libc.so.6`,
+  `ld-linux-aarch64.so.1`, with `libm.so.6` through libstdc++. No
+  hidden host dependency: the binary loads only ARM64 libraries.
+- `stackfall_tests --seed 987654321` ran twice inside the environment:
+  byte-identical output, 338822 checks, 0 failures
+  (`arm64-hashes.txt`, `arm64-hashes-rerun.txt`).
+- The full `ctest` pass inside the environment: 5 of 5 tests,
+  including the SDL platform suites under SDL 2.26.2
+  (`arm64-ctest.log`).
+- Hash parity, section 11 item 18, ARM64 half: every state-hash line
+  of the ARM64 runs equals the desktop Debug run's
+  (`desktop-hash-lines.txt` diff `arm64-hash-lines.txt` is empty), and
+  the desktop pinned scenario hashes are unchanged from the T015 gate.
+- `source.sha256` ties the run to the source tree and commit.
+
+Failure found and fixed before the recorded pass: the first run
+(evidence kept in `build/agent-checks/2026-11-04-t016-arm64/`) failed
+the ARM64 `ctest` at `stackfall_input_tests` with 6 failures, all on
+the virtual pad: `SDL_IsGameController` stayed false and
+`SDL_GameControllerOpen` returned null after the exact-GUID mapping was
+added. The desktop SDL 2.30.0 accepted the same sequence. Probes
+(compiled in the container and on the host) isolated the cause: the
+virtual pad carried no USB IDs, so SDL derived its GUID from the pad
+name, and the name bytes land in GUID fields SDL 2.26 also reads as a
+controller CRC; SDL 2.26 then refuses the mapping it just accepted
+(`Couldn't find mapping for device`). Explicit fictional
+`vendor_id`/`product_id` values give the pad one stable GUID
+(`ff00e0dec7fa000011fa000000007600`) that SDL 2.26.2 and 2.30.0 both
+map. The fix is in `src/input_sdl.cpp`; the desktop Debug and Release
+suites were rebuilt and re-run green after it. This is developer test
+scaffolding only; no game-rule or desktop behavior changed, and the
+pinned hashes above prove the core is untouched.
+
+Cross-check against the guide's docker method, recorded 2026-11-04
+00:24 in `build/agent-checks/2026-11-04-t016-arm64/
+pm-builder-crosstest.txt`: the official builder image
+`ghcr.io/monkeyx-net/portmaster-build-templates/portmaster-builder:
+aarch64-latest` (Ubuntu 20.04, SDL 2.32.0 from `/usr/local`) also
+builds the tree and prints the same five state hashes. That run predates
+the virtual-pad fix and exercised the rules suite, which the fix does
+not touch.
+
+Host note: the image build and every container phase run with
+`--network=host`. On this machine the Docker bridge network drops the
+plain-HTTP apt traffic of an emulated ARM64 process, while the host
+path works. The game needs no network at build or run time.
+
+Findings and open questions:
+
+- Section 11 item 18 is now closed on both halves: identical pinned
+  hashes on desktop (Debug and Release) and inside the ARM64
+  environment.
+- The ARM64 binary is software-validated only. Nothing here runs on an
+  RG503; launch, controls, frame rate, and saves stay with the blocked
+  device tasks.
+- The launcher and the local PortMaster package are separate work
+  (T017, T019); `portmaster/` still holds only its README.
+
+## T044: options screen and settings file gain grid, hold, next, and grayscale (2026-11-04)
+
+Task T044, round M3, the settings and UI follow-up to the completed
+T039/T040/T041. Tested in the detached worktree of `cacd666` plus uncommitted
+task changes; the evidence below records the commands and artifacts, and the
+harness runs wrote their own `source.sha256`.
+
+What landed:
+
+- `include/stackfall/game.hpp`: `kOptionsItemCount` 2 to 6, so the options
+  cursor walks SOUND, GHOST, GRID, HOLD, NEXT PIECES, and GRAYSCALE with the
+  same wrapping `moveCursor`; no other core state moved, and the pinned
+  regression hashes are unchanged (verified below).
+- `include/stackfall/storage.hpp` and `src/storage.cpp`: the settings file
+  grows to `version=1` plus the five preference lines
+  (`sound`, `ghost`, `grid`, `hold`, `next`, `grayscale`; `next=1..5`).
+  `SettingsValues` carries the five preferences, `parseSettingsFile` accepts
+  the 160 canonical renderings plus the legacy three-line and two-line forms
+  (which keep their saved values and receive the new defaults), and
+  `SettingsStore::save` writes the whole file through the same atomic write.
+  `kSaveFormatVersion` stays 1.
+- `include/stackfall/renderer_sdl.hpp` and `src/renderer_sdl.cpp`: the
+  options page lays out six rows at `kOptionsMenuY = 144` with the heading
+  at 64 and the footer at 456 (everything inside the 960x544 canvas, hint
+  glyphs at the unchanged 14 px scale); the renderer mirrors the three new
+  preferences (`setShowHold`, `setNextPreviews` clamped to 1..5,
+  `setGrayscale`); NEXT draws exactly its count of previews in queue order;
+  HOLD off hides the whole Hold group; grayscale swaps the piece palettes
+  for seven fixed grays (J 130 .. O 235) whose ghost blends keep the 3:1
+  floor, and off restores the color palettes exactly.
+- `src/main.cpp`: `SettingsValues prefs` replaces the lone ghost bool; all
+  five preferences load, log, and apply at startup; A on a row toggles or
+  cycles it and one atomic save writes the whole file; the loop drops every
+  hold edge while hold is off, before the round can see it, so no hold swap
+  happens and no hold lock is spent.
+- Tests and harness: `tests/test_storage.cpp` pins all 160 canonical forms,
+  both legacy upgrades (including the acceptance case
+  `version=1/sound=off/ghost=off`), and the new damage shapes (next=0/6/05,
+  doubled and missing new lines, reordered lines, CRLF, lost newline);
+  `tests/test_screens.cpp` walks the six-row wrap and round trip;
+  `tests/test_renderer_sdl.cpp` draws all 160 options value combinations
+  with pinned glyph counts, the grid-off piece check, the exact-count
+  preview checks, the hold-off preview check, and the grayscale checks
+  (achromatic fills, distinct shades, 3:1 ghost floor, byte-identical
+  restore); `tests/harness/t025_fuzz.py` fuzzes the new canonical form plus
+  both legacy forms; the `t025.sh` failure grep covers the four new
+  preference names; `check_harness.py` pins the new settings bytes, the
+  extended startup log line, and the five preference start lines.
+- `docs/SPEC.md` sections 4.7, 5, 6.2, 6.3, and 9 and `README.md` describe
+  the six rows and the five preferences.
+
+Verification, under `build/agent-checks/`:
+
+- Passed: clean rebuilds of both configurations with zero warnings
+  (`build-t044-clean` Debug, `build-t044-clean-rel` Release; the build logs
+  hold no warning or error line), and `ctest` 5 of 5 in each.
+- Passed: `stackfall_tests --seed 987654321` in both configurations prints
+  byte-identical output with the five pinned scenario hashes unchanged.
+- Passed: `tests/harness/run.sh` (`t044-harness`) - all seven sessions green
+  through the unchanged four-item title menu, 209 of 209 checker pins,
+  including the options-ghost session against the new canonical
+  `settings.dat` bytes and startup log line.
+- Passed: the T025 fuzz phase (`t044-fuzz`) against the updated fuzz pass -
+  the parser loop under ASan/UBSan accepted only canonical or legacy forms,
+  and 224 binary cases through the sanitized binary closed clean. The first
+  run failed its own oracle on the legitimate legacy three-line
+  `sound=on/ghost=off` file (the oracle wrongly required ghost at its
+  default); fixed in `t025_fuzz.py` and rerun green.
+- Passed, the T044 acceptance sessions (`t044-manual`, keyboard, pad, and a
+  legacy directory, seeds 20261104/20261105/20261106, Release binary):
+  - The keyboard session toggles all six rows (NEXT selects twice,
+    5 -> 1 -> 2), then plays a round in which the C and Left Shift hold
+    presses leave the active piece, the queue, and the hold slot untouched
+    and never appear as hold edges in the input log, and quits through the
+    title menu. The saved file is exactly
+    `version=1\nsound=off\nghost=off\ngrid=off\nhold=off\nnext=2\ngrayscale=on\n`.
+  - The pad session relaunches on that directory - the startup log reads
+    `Settings: sound off, ghost preview off, grid off, hold off, next
+    previews 2, grayscale on (ok)` - then the virtual controller walks
+    every row, cycles NEXT 2 -> 3 -> 4 -> 5 -> 1 -> 2 (the ring wraps),
+    wraps the cursor down past GRAYSCALE back to SOUND, turns HOLD back on,
+    and a round proves Y swaps again (`hold=J,locked`), a second press and
+    L1 change nothing, per the once-per-piece rule.
+  - The legacy session loads `version=1\nsound=off\nghost=off\n` with those
+    two values plus grid on, hold on, next 5, and grayscale off, and leaves
+    the file untouched until its next save.
+  - Screenshot scans: the six options rows sit at y = 144..385 as single
+    21 px text lines with the 28 px heading above and the 14 px footer at
+    456 (nothing clipped); the grayscale round draws an achromatic board
+    with exactly two Next slots filled, the hold band empty, and the
+    statistics still labeled; the pad round shows the HOLD label back with
+    hold on.
+- Passed: `tests/harness/t024.sh` under Xvfb (`t044-t024`), the retained
+  agent play and visual review driver, after the change.
+
+Commands:
+
+```bash
+cmake -S . -B build-t044-clean -G Ninja -DCMAKE_BUILD_TYPE=Debug && cmake --build build-t044-clean
+ctest --test-dir build-t044-clean --output-on-failure
+cmake -S . -B build-t044-clean-rel -G Ninja -DCMAKE_BUILD_TYPE=Release && cmake --build build-t044-clean-rel
+ctest --test-dir build-t044-clean-rel --output-on-failure
+HARNESS_RUN_ID=t044-harness tests/harness/run.sh
+T025_PHASES="fuzz" T025_RUN_ID=t044-fuzz tests/harness/t025.sh
+T024_BUILD_DIR=build-rel T024_RUN_ID=t044-t024 xvfb-run -a -s "-screen 0 960x544x24" tests/harness/t024.sh
+```
+
+Open questions: none. The physical-device pass and publication stay with
+their blocked tasks.
+
+## T017: PortMaster launcher and install layout (2026-11-04)
+
+Task T017, round M4. Sources:
+[game specification](../docs/SPEC.md) sections 5, 9, and 10.3 and
+[agent testing contract](../AGENT_TESTING.md). Tested in the detached
+worktree of `b24643e` plus uncommitted task changes; the run wrote its own
+`source.sha256`.
+
+What landed:
+
+- `portmaster/Stackfall.sh`: the launcher, written from the current
+  official PortMaster launch template of
+  <https://portmaster.games/packaging.html> (reviewed 2026-11-04, template
+  block quoted in the run's evidence). Template order kept: control-folder
+  discovery over the four candidates, `source control.txt`, the CFW
+  modifier `mod_${CFW_NAME}.txt` when the install ships one,
+  `get_controls`, `conf/` creation, `cd` to the game folder, the
+  `log.txt` redirection through `tee`, the environment exports,
+  `pm_platform_helper` on the executable, the run, `pm_finish`.
+  Additions over the template, each defensive and commented in the file: a
+  guarded `cd`, an explicit binary-name check with a `pm_message` failure
+  path, the `stackfall.aarch64` fallback when the device reports another
+  architecture name, `$ESUDO chmod +x` on the executable, the game's exit
+  status echoed into `log.txt`, and argument forwarding to the game
+  (PortMaster passes nothing; a shell run can reach the game's own
+  developer options).
+- Save paths of section 9: the launcher exports both
+  `XDG_DATA_HOME="$GAMEDIR/conf"` and `STACKFALL_SAVE_DIR="$GAMEDIR/conf"`.
+  The game resolves the explicit variable first, so the record, settings,
+  and the game's own session log land in the port's `conf/`, while the
+  launcher's `tee` keeps `log.txt` at the game-folder root: the two sinks
+  never share a file.
+- gptokeyb, section 10.3: started as `$GPTOKEYB "$EXEC" &` with the
+  process name and no mapping file, which is gptokeyb's exit-hotkey-only
+  mode (no `-c`, so no keyboard injection; the gamepad stays native SDL
+  input and the platform's Select and Start chord is never captured by the
+  game). It starts only when the installed PortMaster defines `$GPTOKEYB`
+  and ships its `gptokeyb` binary, which is the detectable form of "as
+  appropriate to the installed version"; an empty `$GPTOKEYB` would
+  otherwise expand to running the game binary itself. `pm_finish` cleans
+  the process up.
+- `tools/portmaster/install-tree.sh`: stages the section 10.3 layout
+  (`Stackfall.sh` plus `stackfall/stackfall.<arch>`) from a built binary,
+  refuses a binary of the wrong machine, and stages no runtime files.
+- `tests/harness/t017.sh` and `tests/harness/check_t017.py`: the driver and
+  the independent checker, described in `docs/AGENT_TESTING.md`.
+
+One command runs the check:
+
+```bash
+tests/harness/t017.sh
+```
+
+The recorded run is `build/agent-checks/t017-launcher-2026-11-04-final/`
+(a clean run from its own configure and build, 167 checks, 0 failures),
+re-verified by running the checker again against the evidence directory
+alone. The evidence also holds `official-template.sh`, the reviewed
+official template verbatim, so the template review can be reproduced
+later. Results, all passed:
+
+- Template review: the discovery block is the official template's, byte
+  for byte; `control.txt`, the CFW modifier, `get_controls`, `conf/` before
+  the run, the `log.txt` redirection, every environment export,
+  `pm_platform_helper` before the run, and `pm_finish` after it are all
+  present; no `.gptk` mapping file or option argument appears anywhere in
+  the launcher.
+- Six stub runs: base (exit 0, control folder discovered through
+  `$XDG_DATA_HOME/PortMaster`, modifier sourced, `get_controls` called,
+  `gptokeyb` argv exactly `['stackfall.aarch64']`, `pm_platform_helper`
+  receiving the executable path, game cwd the game folder,
+  `XDG_DATA_HOME`/`STACKFALL_SAVE_DIR` at `conf/`,
+  `SDL_GAMECONTROLLERCONFIG` equal to the mapping `get_controls` built,
+  `LD_LIBRARY_PATH` leading with `libs.aarch64`, one launch adding only
+  `conf/` and `log.txt`); argument forwarding (`--frames 12 --seed 7`
+  reached the game verbatim); a repeat launch replacing `log.txt` instead
+  of appending; an install with no CFW modifier (sourced nothing, ran
+  fine); an install defining no `GPTOKEYB` (no background process, the
+  launcher says so in `log.txt`, the game still ran); and a port folder
+  with no binary (exit 1, a `pm_message` naming the missing file, no
+  gptokeyb, no game run).
+- `/roms/ports` run: the same launcher at the literal device paths
+  (`/roms/ports/Stackfall.sh`, `/roms/ports/stackfall/`, control folder
+  discovered at `/roms/ports/PortMaster` through the fallback branch). The
+  driver created `/roms` through sudo after registering a marker-checked,
+  idempotent cleanup in the Looper cleanup file, and removed the tree when
+  the run ended; `/roms` no longer exists on this host.
+- Real binary run: the desktop build staged by `install-tree.sh` as
+  `stackfall/stackfall.x86_64` and launched by the script under the dummy
+  video and audio drivers with `--seed 20261103 --frames 240`. Exit 0; the
+  banner, `Architecture: x86_64`, and a renderer line reached
+  `stackfall/log.txt`; the game's own startup line resolved its session
+  log to `stackfall/conf/log.txt`, which exists and carries the same
+  startup block; the launch added only `conf/`, `conf/log.txt`, and
+  `log.txt` to the staged tree.
+- The five `ctest` suites pass at this source identity.
+
+Failure found and fixed before the recorded pass: the first `/roms` run
+failed (evidence kept in the overwritten run directory) because the driver
+never created the stub `/roms/ports/PortMaster` folder before writing
+`control.txt` into it, so the launcher sourced nothing and exited 1 at the
+`cd`. The checker caught it as 5 failures; the driver now creates the
+folder and fails loudly if it cannot.
+
+Findings and open questions:
+
+- The launcher is architecture-independent shell, so the stub binary and
+  the x86-64 desktop build prove its behavior. The AArch64 binary is
+  T016's evidence; launching it on a real RG503, the real PortMaster
+  `control.txt`, and the platform exit chord stay with the blocked device
+  task (T018).
+- The gptokeyb condition is the launcher's detectable proxy for "the
+  installed version requires it". Confirm on the device that a current
+  ROCKNIX PortMaster both defines `$GPTOKEYB` and needs the process; if
+  the platform delivers the chord itself, the launcher's guard keeps it
+  from starting anything.
+- `port.json`, `gameinfo.xml`, the screenshot, and the player readme are
+  T019's release-archive work; `portmaster/` holds the launcher and its
+  readme.
+
+## T045: options-expansion harness coverage and six-settings documentation (2026-11-04)
+
+Task T045, the review repair of the M3 window: the harness ran seven
+sessions and none drove GRID, HOLD, NEXT PIECES, or GRAYSCALE end to end,
+and three documents named six preferences but called them five. Tested in
+the detached worktree of `d67272d` plus uncommitted task changes; every
+harness run below wrote its own `source.sha256`.
+
+What landed:
+
+- Eleven scripts, three stage manifests, and two settings templates under
+  `tests/harness/scripts/` and `tests/harness/settings/`:
+  `options-six-keyboard` and `options-six-pad` walk the six rows on both
+  inputs, select each of the four new rows, and wrap the cursor past
+  GRAYSCALE back to SOUND; `hold-off` turns HOLD off, proves C and Left
+  Shift (or Y and the left shoulder) move nothing while the Hold group
+  draws nothing, then turns HOLD back on and proves the once-per-piece
+  rule intact; `grayscale` captures a play scene with settled cells, an
+  active piece, a ghost, and previews in both palettes; the four
+  `options-relaunch-*` stages each toggle one preference and quit; the
+  two `options-legacy-*` stages start from staged legacy files; and the
+  five `next-count` stages share one script that advances the preview
+  ring by one, so the shared save directory walks 5 -> 1 -> 2 -> 3 -> 4
+  -> 5 across five processes.
+- `tests/harness/run.sh`: fourteen sessions through the new `run_pair`
+  helper (one reference-and-game pair) and `run_stages` (one game process
+  per manifest line over one shared save directory, `settings=<name>`
+  stages a legacy file, and every stage snapshots the settings bytes
+  before and after); `source.sha256` now covers the scripts, manifests,
+  and settings templates.
+- `tests/harness/reference_replay.cpp`: `--settings FILE` loads the hold
+  preference at startup, the loop drops hold edges exactly as the
+  platform layer does, and a select on options row 3 flips the mirror -
+  without this the reference cannot replay any HOLD-off session.
+- `tests/harness/check_harness.py`: 209 to 660 checks. The staged
+  sessions compare every stage's record stream, the exact settings bytes
+  each stage started from and left behind, and the startup log line of
+  every relaunch; the hold sessions prove the active piece, queue, board,
+  and counters are untouched by ignored hold inputs; the grayscale
+  session reads the captured frames with a dependency-free BMP reader and
+  checks every preview and settled cell against the fixed gray palette
+  while the text, frame, and ghost keep their specification colors; the
+  next-count session proves the five observation streams byte-identical
+  and the five screenshots hold exactly 1 to 5 previews.
+- `README.md`, `docs/SPEC.md` (sections 4.7, 5, 6.1, 6.3, and 9), and
+  `docs/AGENT_TESTING.md` now say six preferences everywhere, name the
+  six rows and their keys, and describe the staged manifests.
+
+Verification, under `build/agent-checks/`:
+
+- Passed: `tests/harness/run.sh` (`t045-final`, recorded 2026-11-04
+  03:33 UTC) - all fourteen sessions green, 660 of 660 checker pins, 527
+  evidence files, evidence in `build/agent-checks/t045-final/`. An
+  earlier full pass at the same sources is `t045-new`.
+- Passed: `ctest` 5 of 5 in Debug (`build`, also rerun inside the
+  harness) and Release (`build-rel`).
+- Passed: the staged relaunch chain ends with exactly
+  `version=1\nsound=on\nghost=on\ngrid=off\nhold=off\nnext=1\ngrayscale=on\n`
+  (the single NEXT select wraps 5 to 1); every intermediate stage starts
+  from the bytes the earlier stage wrote.
+- Passed: the legacy three-line stage logs both saved values plus the
+  four defaults and rewrites the file in the six-line form; the legacy
+  two-line stage changes nothing and the file still holds the exact
+  legacy bytes at exit - a read never rewrites it.
+- Screenshots, converted to PNG and inspected one by one: the options
+  screen shows six labeled rows with the marker on the visited row and
+  the wrap back to SOUND (`options-grid-row`, `options-wrapped-to-sound`,
+  both inputs); the hold-off round shows no HOLD label or held-piece box
+  anywhere and the statistics directly below the empty corner, while the
+  hold-on round shows the boxed held piece (`hold-group-absent`,
+  `hold-group-present`); the grayscale round renders every piece, stack
+  cell, and preview in grays with the text and outlines unchanged, and
+  the same round shape in color shows the distinct piece hues back
+  (`gray-scene`, `color-scene`); the five next-count stages show exactly
+  1, 2, 3, 4, and 5 filled preview slots (`next1-playing-start`,
+  `next3-after-lock`, `next5-after-lock` shown here).
+
+Commands:
+
+```bash
+HARNESS_RUN_ID=t045-final tests/harness/run.sh
+ctest --test-dir build --output-on-failure
+cmake --build build-rel && ctest --test-dir build-rel --output-on-failure
+```
+
+Open questions: none. The physical-device pass and publication stay with
+their blocked tasks.
+
+## T046: shared bounded file loading between the stores (2026-11-04)
+
+Task T046, refactor-review item 1: `HighScoreStore::load` and
+`SettingsStore::load` repeated the directory check, the file-status check,
+the regular-file check, and the bounded read. Tested in the detached
+worktree of `62476cf` plus uncommitted task changes; the worktree carries
+no commit for this change, so the tested sources are
+`src/storage.cpp` `b0e6a7d763cfba3dc746a35fc162af764e5ff8fc4f5d1d6793afc07f5b9cb0cf`
+and `tests/test_storage.cpp` `1d808717a2ece5369b21f7b66661d7a371d611183b3cbb86cb241b0450d84371`.
+
+What landed:
+
+- `src/storage.cpp`: one private helper, `readSaveFile(directory,
+  fileName)`, returns a `SaveFileBytes` (a `SaveStatus` plus the bytes) and
+  owns the absent-directory, missing-file, not-a-regular-file, and
+  unreadable mappings beside the `readSmallFile` cap. Both `load` methods
+  call it and keep their own parser, their own default values, and their
+  own `catch (...)` recovery boundary, so a parser exception still cannot
+  escape the store that threw it. No store framework, no template, and no
+  change to the public header.
+- `tests/test_storage.cpp`: `testSharedFileLoading` pins the shared
+  mapping for both stores at once - no directory, fresh install, a
+  directory at a file's name, a file with the read bit removed, an
+  oversized file, and a good record beside a good, then legacy, settings
+  file - including that a read changes nothing on disk and that both
+  files load again once the read bit returns. The unreadable case skips
+  under root, as the write-side case already does.
+
+Verification, under `build/agent-checks/`:
+
+- Passed: `ctest` 5 of 5 in Debug (`build`) and Release (`build-rel`),
+  339,394 checks and zero failures in the headless suite.
+- Passed: a differential probe. A driver that walks 34 on-disk
+  conditions - both files valid, either one empty, partial, foreign,
+  duplicated, NUL-bearing, binary, oversized, a directory, or unreadable,
+  an absent save directory, a read-only save directory, and the six
+  legacy settings renderings beside a good record - was linked once
+  against `HEAD:src/storage.cpp` and once against the changed file.
+  The two outputs are byte-identical, so every status and every default
+  is unchanged. The same probe under AddressSanitizer and
+  UndefinedBehaviorSanitizer reports nothing and stays identical.
+- Passed: `tests/harness/run.sh` (`t046-storage-refactor`) - all fourteen
+  sessions green, 660 of 660 checker pins, 132 evidence files. The three
+  staged persistence sessions ran through the shared read: the four
+  relaunch stages, both legacy stages (the two-line file still holds its
+  exact legacy bytes at exit), and the five next-count stages.
+- No change to gameplay, pinned hashes, save formats, input timing, or
+  any log or observation string: the harness compares both observation
+  streams field by field and pins the scenario hashes, and `storage.cpp`
+  writes no log line of its own.
+
+Commands:
+
+```bash
+ctest --test-dir build --output-on-failure
+cmake --build build-rel && ctest --test-dir build-rel --output-on-failure
+HARNESS_RUN_ID=t046-storage-refactor tests/harness/run.sh
+git show HEAD:src/storage.cpp > storage_old.cpp
+g++ -std=c++17 -Wall -Wextra -I include storage_old.cpp probe.cpp -o probe_old
+g++ -std=c++17 -Wall -Wextra -I include src/storage.cpp probe.cpp -o probe_new
+g++ -std=c++17 -g -fsanitize=address,undefined -fno-sanitize-recover=all \
+    -I include src/storage.cpp probe.cpp -o probe_san
+```
+
+The probe driver and its three outputs are kept beside this run's evidence
+in `build/agent-checks/t046-storage-refactor/storage-probe/`.
+
+Open questions: none. The remaining refactor-review items stay with their
+own tasks; this change touches the two loads only.
+
+## T047: scoped owners for the platform resources (2026-11-04)
+
+Task T047, refactor-review item 2 with its second validation pass: the
+normal shutdown, the script-load failure, and the three startup failures
+repeated file, controller, joystick, renderer, window, SDL, and log
+cleanup by hand. Tested in the detached worktree of `b1739ba` plus
+uncommitted task changes; the worktree carries no commit for this change,
+so the tested sources are
+`src/main.cpp` `f72abd889237194169e1915e64ce2f24034fef6f17f8a34e0c44546b8040ef3c`
+and `tests/harness/t025.sh` `47f662a6ce9b3f9eb8b6f96225632e964ab788f8b6fa86f4bdc736c3a32f4131`.
+The comparison side is `HEAD:src/main.cpp`
+`8b26df95f578770009689ce196dee6c263c3479a0615d69f81ef00a4a72837f8`.
+
+What landed:
+
+- `src/main.cpp`: six scoped owners in main, and no hand-written cleanup
+  block anywhere. `SessionLog` opens the sink first and closes it last;
+  `SdlLibrary` calls `SDL_Quit` and is declared before every SDL owner, so
+  the audio device, the virtual pad, the controller set, the renderer, and
+  the window all release first; `SdlWindow` and `SdlRenderer` wrap the
+  creation calls that already logged every attempt; `ControllerSet` closes
+  the handles it opened; `VirtualController` owns the attached virtual
+  device and its joystick handle, with an idempotent `reset()` the script
+  `detach` command calls, so no exit path can close the pad twice and a
+  pad whose `SDL_JoystickOpen` failed no longer stays attached;
+  `SessionFile` owns the three evidence streams and prints the same
+  warning per path that cannot open. `AudioDriver` keeps its own device
+  and now closes it through destruction order alone - declared after every
+  other owner, so its device still stops before `SDL_Quit`, as the second
+  validation pass requires - and the session log still writes the
+  clean-shutdown line after `SDL_Quit`, because the owners sit in an inner
+  block of main and the log owner sits outside it. A startup failure is
+  now one `return`.
+- `tests/harness/t025.sh`: the `san` phase gains the exit paths the
+  scoped cleanup owns, all under `ASAN_OPTIONS=detect_leaks=1`: a forced
+  renderer failure (exit 1), a script the parser rejects with every
+  evidence stream and the virtual pad open (exit 1), and the pad
+  scene-cycle with its mid-session detach (exit 0, and the removal must
+  still be logged). Until now the phase held one clean scripted session,
+  so a future owner that stops releasing its resource on an exit path
+  would not have failed it.
+
+Verification, under `build/agent-checks/`:
+
+- Passed: a differential probe (`t047-owners/`). Seven cases - a plain
+  bounded startup, both scene cycles (the pad one detaches mid-session), a
+  rejected script with every evidence stream open, a forced renderer
+  failure, a forced video failure, and `--help` - ran one game process per
+  side against HEAD and the candidate. Exit status, stdout, stderr,
+  `save/log.txt`, the input log, and the observations are identical in
+  every case after folding out the run's own directory path and the
+  unseeded session seed.
+- Passed: `tests/harness/run.sh` (`t047-harness`) - all fourteen sessions
+  green, 660 of 660 checker pins, both observation streams compared field
+  by field against the headless reference.
+- Passed: `tests/harness/t024.sh` under Xvfb (`t024-2026-11-04-060320`) -
+  288 of 288 checks, real X11 input, focus loss, and controller removal.
+- Passed: `tests/harness/t025.sh` phases `failures` (17 checks, including
+  renderer failure, software fallback, controller removal, and plain
+  startup), `restarts` (50 process restarts carrying one record forward,
+  every one exiting 0 through a logged clean shutdown), `cycles` (52
+  in-process restart and menu cycles at real-time pacing, one controller
+  open event, no removals, no growth in memory or threads), and `san`
+  (ctest, one scripted session, and the three new exit-path cases; both
+  sanitizers and leak detection silent).
+- Passed: the sanitizer build of HEAD shows nothing on the same three
+  exit paths either (`t047-owners/asan/baseline-head/`), which is what
+  the review predicted - this change removes repeated cleanup, not a
+  demonstrated leak - and the new phase cases keep it that way.
+- Passed: `ctest` 5 of 5 in Debug and Release, 339,399 headless checks and
+  zero failures, zero compiler warnings, and the five pinned replay
+  hashes identical across Debug and Release.
+
+Commands:
+
+```bash
+cmake --build build && ctest --test-dir build --output-on-failure
+cmake --build build-rel && ctest --test-dir build-rel --output-on-failure
+HARNESS_RUN_ID=t047-harness tests/harness/run.sh
+T025_RUN_ID=t047-t025 T025_PHASES="failures san restarts" tests/harness/t025.sh
+T025_RUN_ID=t047-t025-cycles T025_PHASES="cycles" tests/harness/t025.sh
+xvfb-run -a -s "-screen 0 960x544x24" tests/harness/t024.sh
+```
+
+Open questions: none. The remaining refactor-review items (script
+extraction, the CMake target, and the scene-name switch) stay with their
+own tasks. One handoff note for T048: `ScriptContext` now carries a
+`VirtualController*` instead of the raw joystick handle and device index,
+so moving the script driver out of `main.cpp` takes the pad owner - or a
+small interface to it - along.
+
+## T051: one scene-name mapping (2026-11-04)
+
+Task T051, refactor-review item 6: `main.cpp` kept a private `sceneName`
+switch whose body was identical to the public `observationSceneName`
+formatter in `observe.cpp`. Tested in the detached worktree of `c7affac`
+plus uncommitted task changes; the worktree carries no commit for this
+change, so the tested sources are `src/main.cpp`
+`b61b4d7e7b8dd96580cd1485ccbde0a371b263d85458b7cee3767ee79dab172f` and
+`include/stackfall/observe.hpp`
+`35afd153bc672120c55c6d2d04f2af879b4c277abbcad3c5048371a83e8d75d1`.
+
+What landed:
+
+- `src/main.cpp`: the private `sceneName` function is gone. The four
+  scene-transition call sites - the `Scene a -> b` session-log line and
+  the `scene a -> b` input-log line, each naming the old and the new
+  scene - now call `stackfall::observationSceneName`, reached through
+  the file's existing using-declaration list. `observe.hpp` was already
+  included; no new module.
+- `include/stackfall/observe.hpp`: one comment sentence records that the
+  platform session log prints these names on its transition lines.
+- `src/observe.cpp`: unchanged. One Scene-to-name mapping remains in the
+  application sources. The `sceneName` switch in
+  `tests/test_regression.cpp` stays: it prints different strings
+  ("pause-controls", "game-over") for the headless test report and was
+  never the duplicate this task removes.
+
+Verification, under `build/agent-checks/`:
+
+- Passed: `ctest` 5 of 5 in Debug (`build`) and Release (`build-rel`),
+  zero compiler warnings, and `stackfall_tests --seed 987654321`
+  byte-identical across both configurations with the five pinned replay
+  hashes unchanged.
+- Passed: a before-and-after harness pair. `t051-baseline` ran on the
+  unchanged tree first, then `t051-harness` ran after the change; both
+  passed all fourteen sessions with 660 of 660 checker pins. Every
+  evidence file of the two runs - each session log, both observation
+  streams per session, every input log, and every screenshot, 527 files
+  per run - is byte-identical once the run id inside recorded paths is
+  normalized. The two expected exceptions are `source.sha256`, which
+  names the changed sources, and the plain-startup log, which prints a
+  fresh random session seed because that run passes no `--seed`.
+- The compared logs cover every scene name - boot, title, controls,
+  options, playing, paused, pausecontrols, and gameover - on both the
+  session-log and the input-log transition lines, so the recorded scene
+  names are proven byte-identical, not merely unexercised.
+
+Commands:
+
+```bash
+HARNESS_RUN_ID=t051-baseline tests/harness/run.sh
+cmake --build build && ctest --test-dir build --output-on-failure
+cmake --build build-rel && ctest --test-dir build-rel --output-on-failure
+./build/stackfall_tests --seed 987654321
+./build-rel/stackfall_tests --seed 987654321
+HARNESS_RUN_ID=t051-harness tests/harness/run.sh
+```
+
+Open questions: none. The remaining refactor-review items (script
+extraction and the CMake target) stay with their own tasks.
+
+## T048: developer scripts and checkpoint capture in one module (2026-11-04)
+
+Task T048, refactor-review item 3 with its second validation pass:
+`src/main.cpp` held the script driver, the virtual pad, the checkpoint
+capture, and the three evidence streams, and `runMainLoop` took 18
+parameters. Tested in the detached worktree of `6a34283` plus uncommitted
+task changes; the worktree carries no commit for this change, so the tested
+sources are `src/main.cpp`
+`89610d42bf8b0a49b0e0a6596c87ff73953cb82c2d5c864c38632098d88536e9`,
+`src/developer_session.cpp`
+`d8d3243a1b76e9c02db935ee9e95b9125054dea426c2acfc491e909fc830224a`,
+`include/stackfall/developer_session.hpp`
+`a5c8ff4ceacd200ca059936410e32c0bc4e9881ecce8b28dbb9fa3fc3ccbcbcf`, and
+`CMakeLists.txt`
+`8c47e16402cf27e12cfbe1f971b580e3b7465903d5b0b713973a110e10d2122f`. The
+comparison side is `HEAD:src/main.cpp`
+`b61b4d7e7b8dd96580cd1485ccbde0a371b263d85458b7cee3767ee79dab172f`, the
+source T051 tested. One comment line of the header changed after the runs
+below (the member-order note; the hashes name the committed file), so every
+behavioral comparison ran on sources identical to these apart from that
+comment.
+
+What landed:
+
+- `include/stackfall/developer_session.hpp` and
+  `src/developer_session.cpp` (new): `stackfall::DeveloperSession` owns the
+  developer automation of one session and exposes it as the review asked,
+  input injection on one side (`attachPad`, `loadScript`, `pumpScript`) and
+  capture on the other (`captureCheckpoints`). The pad owner
+  (`VirtualController`) and the evidence-stream owner (`EvidenceFile`, the
+  old `SessionFile`) moved with it and are the module's own parts, the way
+  `audio_sdl.hpp` keeps its three. The script binds the two application
+  objects its `restart` and `fixture` commands act on - the round and the
+  cue detector - and nothing else; no context carries the renderers, the
+  stores, or the audio. Every line the module prints reaches stdout or
+  stderr and the session log main opened (`SessionLog::file()`), which it
+  never closes, so log.txt keeps its bytes.
+- `src/main.cpp`: 2,062 lines down to 1,508. The loop calls
+  `pumpScript()` before its event poll and `captureCheckpoints()` after its
+  render, and keeps the accumulator, the tick batch, the frame limiter, and
+  the render call where they were. `runMainLoop` takes 13 parameters, down
+  from 18: the script pointer, the script context, both evidence streams,
+  and the screenshot directory became the one `DeveloperSession&`, whose
+  streams the loop reads through `inputLog()` and `frameTimes()`. The
+  developer session is declared after the controller set, so its virtual
+  pad still releases before the controller handles close, as T047 ordered.
+- `CMakeLists.txt`: a `stackfall_developer` static library beside the
+  input, render, and audio ones, linking the core plus those three and SDL2
+  through the same imported-target block its neighbours use. The
+  executable links it; `stackfall_core` still carries no SDL and the test
+  suites link exactly what they did.
+- `tests/harness/reference_replay.cpp` is untouched: its parser, key table,
+  and pad table stay independent of the module they check, and only the
+  bounded count rule of `stackfall/script.hpp` remains shared.
+
+Verification, under `build/agent-checks/`:
+
+- Passed: `ctest` 5 of 5 in Debug (`build`) and Release (`build-rel`), zero
+  compiler warnings, 339,399 headless checks with zero failures, and
+  `stackfall_tests --seed 987654321` byte-identical across both
+  configurations with the five pinned replay hashes of
+  `tests/harness/check_t015.py` unchanged.
+- Passed: a differential probe (`t048-probe/run/`). Ten cases - every
+  script command in one session (keyboard and pad presses, waits, a forced
+  70 ms stall, a labeled fixture, a same-seed restart, checks with
+  screenshots, a shot, a mid-session detach, pad commands after the
+  detach, echo markers, the clean quit), a keyboard-only cycle, checks
+  with no screenshot directory, a fixture command with no fixture
+  directory, a script the parser rejects on its first line, a script whose
+  last line is malformed, a script path that does not exist, the
+  `--virtual-controller` option alone, a plain bounded startup, and a
+  real-time paced run with the frame-time record open - each ran one game
+  process per side against the pre-change binary and the candidate. Exit
+  status, stdout, stderr, `save/log.txt`, the input log, the observations,
+  and every screenshot are identical in all ten after folding the run's
+  own directory out of the recorded paths; the paced case compares the
+  frame-time record by line count and whole-microsecond format, because
+  its values are wall-clock measurements.
+- Passed: a before-and-after harness pair. `t048-baseline` ran on the
+  unchanged tree first, then `t048-harness` ran after the change; both
+  passed all fourteen sessions with 660 of 660 checker pins. Every
+  evidence file of the two runs - 527 per side: each session log, both
+  observation streams per session, every input log, and every screenshot -
+  is byte-identical once the run id inside recorded paths is normalized.
+  The two expected exceptions are `source.sha256`, which names the changed
+  sources, and `plain-startup/run.log`, which prints a fresh random session
+  seed because that run passes no `--seed`. The baseline copy was deleted
+  afterwards only to keep the evidence disk under its limit; this section
+  records the comparison, and `t048-harness` keeps the candidate side.
+- Passed: `tests/harness/t024.sh` under Xvfb (`t024-2026-11-04-065126`) -
+  288 of 288 checks, real X11 input, focus loss, and controller removal.
+- Passed: `tests/harness/t025.sh` phases `failures` (the forced-failure
+  matrix, including the renderer failure and the software fallback),
+  `restarts` (50 process restarts carrying one record forward, every one
+  exiting 0 through a logged clean shutdown), and `san` (ctest, a scripted
+  session, and the scoped-cleanup exit paths under both sanitizers with
+  leak detection on: `render-fail` and `script-reject` exit 1, `pad-detach`
+  exits 0, and the rejected script's report lands in stdout and log.txt
+  through the module's own dual sink).
+
+Commands:
+
+```bash
+cmake --build build && ctest --test-dir build --output-on-failure
+cmake --build build-rel && ctest --test-dir build-rel --output-on-failure
+./build/stackfall_tests --seed 987654321
+./build-rel/stackfall_tests --seed 987654321
+HARNESS_RUN_ID=t048-baseline tests/harness/run.sh
+HARNESS_RUN_ID=t048-harness tests/harness/run.sh
+build/agent-checks/t048-probe/probe.sh \
+  "$PWD/build/agent-checks/t048-baseline-bin/stackfall-debug" \
+  "$PWD/build/stackfall" "$PWD/build/agent-checks/t048-probe/run"
+xvfb-run -a -s "-screen 0 960x544x24" tests/harness/t024.sh
+T025_RUN_ID=t048-t025 T025_PHASES="failures san restarts" tests/harness/t025.sh
+```
+
+Open questions: none. The remaining refactor-review items stay with their
+own tasks: T049 (preference application, optional) and T050 (the SDL CMake
+target). One handoff note for T050: `stackfall_developer` repeats the same
+imported-target block as its four neighbours, so the one-variable
+resolution that task plans now covers five blocks.
+
+## T050: the SDL CMake dependency resolved once (2026-11-04)
+
+Task T050, refactor-review item 5 with its second validation pass:
+`CMakeLists.txt` repeated the `if(TARGET SDL2::SDL2)` imported-target check
+and its legacy variable fallback five times - for `stackfall_input`,
+`stackfall_render`, `stackfall_audio`, `stackfall_developer` (the block
+T048 copied), and the executable. Tested in the detached worktree of
+`252473f` plus uncommitted task changes; the worktree carries no commit for
+this change, so the tested source is `CMakeLists.txt`
+`471d9d5869ce455e33b4a7fc1fd596617b0f9c73b905ba257a2dff71baa1adb5`
+(baseline `8c47e16402cf27e12cfbe1f971b580e3b7465903d5b0b713973a110e10d2122f`,
+the file T048 tested). No C++ source changed, so gameplay, saves, input
+timing, and the log and observation formats carry their existing proofs.
+
+What landed:
+
+- `CMakeLists.txt`: one resolution block directly under
+  `find_package(SDL2 REQUIRED)`. When the package exports `SDL2::SDL2`,
+  the `STACKFALL_SDL` variable holds that target. When it does not, one
+  `stackfall_sdl2` interface target wraps the legacy
+  `SDL2_INCLUDE_DIRS` and `SDL2_LIBRARIES` variables, and the variable
+  holds that target instead - a fallback only when needed, as the review's
+  second pass asks, not a wrapper for every configuration.
+- The four platform libraries link
+  `stackfall_core ${STACKFALL_SDL}` in one line each and keep their
+  existing comments; nothing else in their blocks changed.
+- The executable states no SDL link of its own. It receives SDL2 through
+  the public dependencies of those libraries, as the review proposed. The
+  stale "Only this target links SDL2" comment is replaced by one that says
+  so. `stackfall_core` and the two headless executables
+  (`stackfall_tests`, `stackfall_reference`) keep no SDL dependency.
+
+Verification, under `build/agent-checks/t050/`:
+
+- Passed: clean Debug and Release builds. Both directories were removed
+  and reconfigured from scratch; the compile logs (`build-debug.log`,
+  `build-release.log`) hold zero warnings, and `ctest` passed 5 of 5 in
+  both configurations (`ctest-debug.log`, `ctest-release.log`).
+- Passed: the pinned replay hashes. `stackfall_tests --seed 987654321`
+  output, captured from the unchanged tree before the edit, is
+  byte-identical after it in Debug (`baseline-seed-debug.txt` vs
+  `candidate-seed-debug.txt`), in Release (`baseline-seed-release.txt` vs
+  `candidate-seed-release.txt`), and in the legacy-config build below.
+- Passed: the core tests have no SDL dependency. `ldd` lists no libSDL2
+  for `stackfall_tests` or `stackfall_reference`, and the core test link
+  line carries no SDL entry, while the game binary lists
+  `libSDL2-2.0.so.0` through the transitive link alone.
+- Passed: the game binary runs on that transitive link - smoke runs under
+  the dummy video and audio drivers exit 0 with the logged "Clean
+  shutdown" (`smoke/`, `smoke-legacy/`).
+- Passed: the legacy package path, as far as this host allows. The host
+  `libsdl2-dev` 2.30 config always defines `SDL2::SDL2`, so no genuine
+  variables-only package is installed. A synthetic
+  `legacy-prefix/SDL2Config.cmake` mimics one: no imported target, only
+  `SDL2_INCLUDE_DIRS` and `SDL2_LIBRARIES` pointing at the real host SDL
+  files. Against it (`legacy-build/`), the project configures, builds with
+  zero warnings, passes `ctest` 5 of 5 (`ctest-legacy.log`), replays the
+  seed byte-identically, and passes the same `ldd` and smoke checks. The
+  graphviz exports prove which branch ran: `graph-legacy.dot` shows the
+  `stackfall_sdl2` interface target carrying SDL, `graph-target.dot` shows
+  `SDL2::SDL2` alone and no `stackfall_sdl2`.
+- Unavailable: a real vendor legacy SDL2 package. Only its synthetic
+  equivalent ran; a distribution that truly ships one (SDL 2.0.8-era
+  configs) remains untested.
+- The ARM64 environment needs no fallback either: its guide-pinned
+  source-built SDL 2.26.2 and the docker cross-check's SDL 2.32.0 both
+  export `SDL2::SDL2` (task T016), so `STACKFALL_SDL` resolves to the
+  imported target there too. The native build task re-verifies on its next
+  run.
+
+Commands:
+
+```bash
+ctest --test-dir build --output-on-failure   # baseline, before the edit
+ctest --test-dir build-rel --output-on-failure
+rm -rf build build-rel
+cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Debug
+cmake --build build && ctest --test-dir build --output-on-failure
+cmake -S . -B build-rel -G Ninja -DCMAKE_BUILD_TYPE=Release
+cmake --build build-rel && ctest --test-dir build-rel --output-on-failure
+./build/stackfall_tests --seed 987654321
+./build-rel/stackfall_tests --seed 987654321
+cmake -S . -B build/agent-checks/t050/legacy-build -G Ninja \
+  -DCMAKE_BUILD_TYPE=Debug \
+  -DSDL2_DIR=$PWD/build/agent-checks/t050/legacy-prefix
+cmake --build build/agent-checks/t050/legacy-build
+ctest --test-dir build/agent-checks/t050/legacy-build --output-on-failure
+```
+
+Open questions: none. The refactor-review items are now all landed or
+downgraded: T046 (storage loading), T047 (resource owners), T051
+(scene-name mapping), T048 (developer module), and this task; T049 stays
+optional by the second validation pass.
+
+## T049: one preference path for startup, shortcuts, and options (2026-11-04)
+
+Task T049, refactor-review item 4 with its second validation pass. The
+pass downgraded the item to optional: with two preferences, startup and
+both toggle paths kept their consumers in step and no synchronization
+defect existed, so a new owner could add more machinery than it removes.
+The review names the resume condition itself: revisit when settings are
+added. Task T044's options expansion had added four settings since, so
+the platform carried six preferences and three change routes - startup,
+the M-key and controller-Select shortcut, and six options rows - each
+setting its consumers by hand. Tested in the detached worktree of
+`a09a54b` plus uncommitted task changes; the tested sources are
+`src/main.cpp`
+`74890e61fe0ece395aad06e3518928a5324c909be6a043827a9085af949cf2e2`,
+`include/stackfall/storage.hpp`
+`b23c1a9afa7e96f5e325d42e161d1cbc7568be3ef52d1097ee3ba9c576869375`, and
+`include/stackfall/game.hpp`
+`203419a3495a61a759df90e2d552edbe622b57af9aad23bfa933d8e45ab7d85c`.
+
+What landed:
+
+- `src/main.cpp`: one `applyPreferences(prefs, audio, renderer)` function
+  is now the only place that maps the six preference values onto their
+  owners - the audio mute and the renderer's option gates. Startup calls
+  it right after the settings load, and every change route flips its
+  value in `prefs` first and then calls the same function. A future
+  preference needs one field, one line here, and one toggle function.
+- `toggleSound` no longer flips the audio mute and reads the value back:
+  it flips `prefs.soundOn` like every other route, so no route can leave
+  the file value and the mute disagreeing. `savePreference` stays the one
+  persistence path every route already shared, so each change still
+  writes the whole settings file at once.
+- The preference value is the existing `SettingsValues` of
+  `include/stackfall/storage.hpp`. No new struct, no settings framework,
+  and no change to the rules core: `game.hpp` and `storage.hpp` carry
+  comment fixes only (the set grew from five to six), and the options
+  screen still reads its row labels from the renderer alone.
+
+Verification, under `build/agent-checks/t049/`:
+
+- Passed: `ctest` 5 of 5 in Debug (`build`) and Release (`build-rel`).
+  The seed replay `stackfall_tests --seed 987654321` is byte-identical
+  between the two builds; the core sources changed in comments only.
+- Passed: `tests/harness/run.sh` (`HARNESS_RUN_ID=t049-harness`) - 660 of
+  660 checker pins over all fourteen sessions, including the options and
+  persistence sessions this task names: `options-ghost`,
+  `options-six-keyboard`, `options-six-pad`, `hold-off`, `grayscale`, the
+  four staged relaunches of `options-relaunch`, both `options-legacy`
+  stages, and the five `next-count` stages, each compared field by field
+  against the headless reference.
+- Passed: the T049 probe (`probe.sh`, `check_probe.py`, 42 checks) over
+  the three acceptance shapes the pinned sessions leave open:
+  - Consistency. A save directory seeded with `sound=off`; startup
+    applies the mute; the M key unmutes through the shortcut route; the
+    options SOUND row then shows ON - the pixel census of the row band
+    reads 1152 pixels for ON and 1251 for OFF with the marker on the row
+    in both shots - and one select mutes again through the options row.
+    The input log carries each change exactly once with `status=ok`, no
+    other preference line appears, and the file ends at the canonical
+    `sound=off` rendering. A relaunch over the same directory restores
+    the value, and a stage that only opens Options and leaves writes
+    nothing: no preference save line, `settings.dat` byte-identical, and
+    the same OFF label pixels.
+  - Missing audio. With `SDL_AUDIODRIVER=stackfall-missing-driver` the
+    subsystem line reports the failure, both change routes still flip,
+    apply, and save, the cue summary reports the count without a device,
+    and the session exits 0 through a clean shutdown.
+  - Immediate persistence. A session toggles GHOST off, then a SIGKILL
+    ends it during a long idle with no clean shutdown. `settings.dat`
+    already holds the canonical `ghost=off` rendering, so the toggle
+    tick's own save wrote it, not an exit path.
+- Passed: baseline equivalence. A binary built from `git archive HEAD`
+  ran the consistency stage with the same seed and save seed file: the
+  per-tick input log, the observation stream (shot paths stripped), the
+  stdout log (paths normalized), and the written settings file are all
+  byte-identical to the candidate's, so the refactor changed no log or
+  observation format.
+
+Commands:
+
+```bash
+ctest --test-dir build --output-on-failure
+cmake --build build-rel && ctest --test-dir build-rel --output-on-failure
+./build/stackfall_tests --seed 987654321
+./build-rel/stackfall_tests --seed 987654321
+HARNESS_RUN_ID=t049-harness tests/harness/run.sh
+build/agent-checks/t049/probe.sh
+```
+
+Open questions: none. The refactor-review list is closed: T046, T047,
+T048, T050, T051, and this task landed; every other item kept its
+documented no-change or downgrade.
+
+## T052: the record persists when a round is abandoned, closed, or killed (2026-11-04)
+
+Task T052, owner approved 2026-11-04. Before the change the record saved
+only on the tick the scene became game over (the `lastScene` check in
+`src/main.cpp`), so Quit to Title, a window close, or a power loss
+discarded a running best; a live abandon session at score 68 wrote no
+`highscore.dat`. Tested in the detached task worktree of `dbb5dcc` plus
+uncommitted task changes; the tested sources are `src/main.cpp`
+`0281b97915c831f79385d452b12401803bb5332fa79c1ee734c6bf47d93482a8`,
+`tests/harness/reference_replay.cpp`
+`9f4525b76da25a497ef1f275a59ae608852a545f9c100b6c35cd16825ef65493`,
+`tests/harness/run.sh`
+`721b8db0aa065f9766e03ab69355423ab4a775d0c59416d0d198ac695859c0a2`,
+`tests/harness/check_harness.py`
+`dc68f8a94f05c35418957bf6982a4dd5c18218118c57e85ec4ad38fce5b6b9a1`,
+`tests/harness/scripts/record-abandon-save.script.txt`
+`a170999622e6127d7ef9793a18d548d42b8993c73f276c6892e27b97f1af0cc4`,
+`docs/SPEC.md`
+`edfbda480323288157ca1d046b9ad7f22f7a3493d6cd97e930d9faaf4aac809f`, and
+`docs/AGENT_TESTING.md`
+`85adcd4bacb52615f6134ce6a0c7e237f2ee1f3deada187dda3fbf82398a5684`.
+
+What landed:
+
+- `src/main.cpp`: the rules core is untouched. After every simulated tick
+  the platform layer compares `game.score()` with a locally tracked
+  `savedRecord` - seeded from the load that opened the session - and, the
+  moment the score passes it, writes it through `HighScoreStore` (the
+  atomic temp+fsync+rename write) and raises `savedRecord`. Between rounds
+  only - at game over, Quit to Title, or Restart, detected per tick from
+  the scene and the round's tick count - it feeds the best record back
+  with `game.setHighScore(savedRecord)`, never mid-round, so `endRound`'s
+  `newRecord` flag still compares against the record the round began with
+  and Play Again compares against the best so far. The existing game-over
+  save path is unchanged; a session with no save directory writes nothing
+  and its in-session feedback still works. New evidence lines only:
+  `Record <score> saved to <path>` in the session log (the failure line
+  stays `Saving the high score <score> failed: <status>`, so the T025
+  contention grep still catches a failed record write) and
+  `record save=<score> tick=<tick> status=<status>` in the input log.
+- `tests/harness/reference_replay.cpp`: the reference mirrors the platform
+  persistence, the same way it mirrors the HOLD gate. `--high-score FILE`
+  seeds its record from the session's `highscore.dat` (record 0 when the
+  file is absent), its in-memory record rises with every score that passes
+  it, and the feedback runs at the same round boundaries, so every
+  checkpoint's `high` field still names what the application must show -
+  including titles reached by abandoning or restarting a scoring round.
+  The mirror never writes the record file.
+- `tests/harness/run.sh` + the new session
+  `tests/harness/scripts/record-abandon-save.script.txt` (keyboard, seed
+  20261103): the round scores 36 and 68 through two hard drops, pauses,
+  and leaves through QUIT TO TITLE with no game over. The checker
+  (`tests/harness/check_harness.py`) asserts `highscore.dat` holds
+  `high_score=68`, the input log carries `record save=36 tick=6` and
+  `record save=68 tick=14` - both before the `scene paused -> title` tick
+  43 - no game-over save line exists, and the title after the abandon
+  shows `high=68` while the abandoned round's counters reset. `run.sh`
+  passes the reference `--high-score "$pair_save/highscore.dat"`.
+- Checkers refreshed to the approved persistence semantics, none of them
+  weakened: `next-count` compares its five stages outside the two
+  storage-dependent fields (`strip_storage_fields`, the pattern the T015
+  high-score session already used) while every stage's own reference
+  stream still proves those two for exactly the file it loaded, and five
+  new pins carry the persistence itself (stage 1 loads 0, stages 2-5 load
+  the 36 the abandoned round persisted). `check_t024.py` re-pins
+  `t024-shapes-keyboard`: the seven-shapes round reaches 229 and is then
+  dropped by the pause-menu RESTART, so the restarted round's 194 game
+  over is not a record and the file holds the abandoned 229 - pinned at
+  `after-t-lock`, `restart-first-frame`, both game overs, and the file.
+  `t025.sh` hard-kill accepts the standing record: since a killed run now
+  leaves a canonical mid-round best, the verify run that loads it and
+  finishes below it saves nothing, and that is checked instead of a
+  mandatory save line.
+- `docs/SPEC.md` sections 4.7 and 9 and `docs/AGENT_TESTING.md` state the
+  persistence timing, the new session, and the reference mirror.
+- Comment-only touches beside the change: `include/stackfall/game.hpp`
+  (the `highScore()` contract now names the load, the mid-round save, and
+  the between-rounds feedback) and `include/stackfall/storage.hpp` (the
+  `save()` contract names both save moments). No code moved in either
+  header.
+
+Verification:
+
+- Passed: `ctest` 5 of 5 in Debug (`build`) and Release (`build-rel`);
+  `stackfall_tests --seed 987654321` is byte-identical between the two
+  builds (the rules core did not move).
+- Passed: `HARNESS_RUN_ID=t052-harness tests/harness/run.sh` - 689 of 689
+  checker pins over all fifteen sessions, every session's observation
+  stream byte-identical to its reference (shot paths stripped), including
+  the new `record-abandon-save` session, the two scene cycles, the three
+  fixtures, and all staged options sessions. The last rerun used the final
+  binaries after the comment touches.
+- Passed: `T015_PHASES=sessions tests/harness/t015.sh` after rebuilding
+  `build-rel` - all seven M3 sessions (DAS/ARR, lock delay, three bag
+  seeds, `m3-restart` with its pause-restart, quit-to-title, and
+  play-again paths, and the four-process `m3-highscore`) match their
+  reference streams, repeat byte-identically, and replay identically in
+  the Release build. `check_t015.py` over the sessions evidence: 416
+  checks passed; the only failures are the phases this subset did not run.
+  `m3-highscore` evidence: run1 saves 202 (10 mid-round saves plus the
+  game-over save), run2 replays the same seed, loads 202, writes nothing
+  (an equal score is not a record), run3 beats it to 212 (2 mid-round
+  saves plus the game-over save), run4 recovers from the damaged file to
+  0 and saves 196.
+- Passed: the complete M3 desktop gate, `tests/harness/t015.sh` - M3 GATE
+  PASS, every phase included (clean Debug and Release builds, pinned
+  hashes byte-identical, all seven sessions, the retained `run.sh` and
+  `t024.sh` suites in both configurations, the T025 `failures`, `restarts`,
+  and `san` phases, and the T026 `verify` phase), evidence
+  `build/agent-checks/t015-2026-11-04-090807/`. The gate's Release build
+  carries the final sources; its Debug build predates only the two
+  comment-only header touches, and the final reruns above used the final
+  binaries.
+- Passed: `T024_RUN_ID=t052-t024 tests/harness/t024.sh` - 291 of 291.
+- Passed: `T025_PHASES="hardkill restarts" tests/harness/t025.sh` and
+  `T025_PHASES="failures cycles" tests/harness/t025.sh` - 24 SIGKILLs
+  during the delayed saves leave 24 canonical records and 0 damaged, the
+  verify run loads the standing 230, two instances on one directory end
+  with the record grown from 10 to 204, 50 process restarts carry the
+  record to 224, the failure matrix passes 17 checks, and 52 real-time
+  restart cycles hold resources flat.
+- Passed: `T026_PHASES=verify tests/harness/t026.sh` - every benchmark
+  scenario proves its content claim.
+- Passed probes (commands below): a SIGKILL mid-round at score 122 leaves
+  `high_score=122` (saves at 36, 68, 96, 122); an SDL_QUIT window close
+  mid-round at 96 leaves `high_score=96` with a clean shutdown and no
+  game over; both lose at most the piece in play.
+
+Commands:
+
+```bash
+ctest --test-dir build --output-on-failure
+ctest --test-dir build-rel --output-on-failure
+./build/stackfall_tests --seed 987654321
+./build-rel/stackfall_tests --seed 987654321
+HARNESS_RUN_ID=t052-harness tests/harness/run.sh
+T024_RUN_ID=t052-t024 tests/harness/t024.sh
+T015_PHASES=sessions T015_RUN_ID=t052-t015-sessions tests/harness/t015.sh
+python3 tests/harness/check_t015.py build/agent-checks/t052-t015-sessions
+tests/harness/t015.sh
+T025_PHASES="hardkill restarts" T025_RUN_ID=t052-t025 tests/harness/t025.sh
+T025_PHASES="failures cycles" T025_RUN_ID=t052-t025-fc tests/harness/t025.sh
+T026_PHASES=verify T026_TAG=t052 T026_RUN_ID=t052-t026-verify tests/harness/t026.sh
+# evidence: build/agent-checks/{t052-harness,t052-t024,t052-t015-sessions,
+#   t015-2026-11-04-090807,t052-t025,t052-t025-hardkill,t052-t025-fc,
+#   t052-t026-verify}
+```
+
+Open questions: none for the desktop software. The device pass (T018)
+should watch one thing this change adds: a soft-drop hold raises the score
+by 1 per tick, so a player holding soft drop past the stored record costs
+one atomic save (fsync plus rename) per tick on the RG503's storage. The
+desktop frame-time measurements of the T026 verify phase show no claim
+broken; the panel-side pacing check stays with the final device
+acceptance.
+
+## T053: the DAS charge carries across a lock (2026-11-04)
+
+Task T053; the owner chose DAS preservation on 2026-11-04.
+`spawnPiece` (`src/game.cpp`) resets the gravity timer, the grounded
+streak, and the reset budget, but not `shiftDir_` and `shiftTicks_`, so a
+held direction keeps its charge into the next piece and slides it by ARR
+with no new press. That is the intended behavior, but neither the section
+4.5 table nor the suite pinned it, so a refactor could have changed the
+feel silently. No production code changed. Tested in the detached worktree
+of `d24692a` plus uncommitted task changes; the tested sources are
+`docs/SPEC.md`
+`7596df0d680c536483dd5e2a8f5f46c0d8e4af57cb5d77e1ce7dd0a28367b4cb` and
+`tests/test_game.cpp`
+`e82c78656106834f052e5ea9bd133c4cb1296b34e36cd816c051986fc774cef5`.
+
+What landed:
+
+- `docs/SPEC.md`: one row in the section 4.5 table, "Held direction across
+  a lock". The row states the carry - the held direction and its DAS/ARR
+  charge cross a lock into the piece that lock spawns, and a charged carry
+  slides that piece by ARR with no new press, within two ticks of spawn -
+  and keeps the two override rules beside it: a fresh press or a reversal
+  still restarts the charge, and both directions held park it.
+- `tests/test_game.cpp`: three tests in the DAS/ARR group plus one shared
+  setup, `startOAgainstRightWall`. The setup parks an O on the floor
+  against the right wall, where every right repeat fails, so no
+  lock-delay reset is spent and the piece locks on its thirtieth grounded
+  tick while the charge keeps cycling at the ARR pace:
+  - `test_das_charge_carries_across_a_lock`: thirty held-right ticks lock
+    the O and spawn the queue head. The new piece sits exactly at its
+    spawn on the lock tick, the direction (`+1`) and the charge (nine of
+    ten) crossed unchanged, and with no new press the carried charge
+    slides the new piece right on its first tick, holds one ARR gap, and
+    slides again two ticks later.
+  - `test_reversal_across_a_lock_moves_immediately`: the same carried
+    charge, then a reversal on the first tick after the spawn. The new
+    piece moves left immediately, the charge restarts at zero, and nothing
+    moves for the next nine ticks, so the carried ARR cadence is gone and
+    a full DAS wait runs again.
+  - `test_both_directions_held_across_a_lock_move_nothing`: both halves of
+    the rule. With both directions held before the lock, no move ever
+    happens and the spawned piece keeps the parked charge; with a charge
+    that did cross the lock, holding both on the far side discards it
+    without one step. Each half still names the spawned piece, so a lock
+    in between cannot mask the result.
+- `src/game.cpp` and every other production source are untouched; the
+  diff names only the two files above and this note. The suite grew from
+  339399 to 339433 checks (`--seed 987654321` run).
+
+Verification:
+
+- Passed: clean Debug rebuild and `ctest` 5 of 5 in Debug (`build`) and
+  Release (`build-rel`), zero compiler warnings in both.
+- Passed: `stackfall_tests --seed 987654321` byte-identical between Debug
+  and Release, and all ten printed replay hashes - the five pinned
+  scenarios at their pinned seeds plus the same five at seed 987654321 -
+  identical to a pre-change run of the unmodified tree. Only the check
+  count moved.
+- Passed: `HARNESS_RUN_ID=t053-harness tests/harness/run.sh` - 689 of 689
+  checker pins over all fifteen sessions, every session's observation
+  stream byte-identical to its headless reference.
+- Passed: the complete M3 desktop gate on the final sources
+  (`T015_RUN_ID=t053-t015-final`), M3 GATE PASS with 434 of 434 checker
+  checks: clean Debug and Release builds behind the warning gate, pinned
+  hashes byte-identical, all seven M3 sessions repeating byte-identically
+  and replaying in the Release build, the retained `run.sh` and `t024.sh`
+  suites in both configurations, the T025 `failures`, `restarts`, and
+  `san` phases - the new test code ran clean under AddressSanitizer and
+  UndefinedBehaviorSanitizer - and the T026 `verify` phase.
+- Passed: baseline equivalence. A binary built from `git archive d24692a`
+  (evidence `build/agent-checks/t053-baseline/`) replayed the
+  `m3-das-arr` and `m3-lock-delay` sessions at seed 20261103 with the same
+  script, save directory, screenshots, and input log options: both
+  observation streams, both input logs, and all 169 screenshots are
+  byte-identical to the candidate's, so no observation format moved.
+
+Commands:
+
+```bash
+ctest --test-dir build --output-on-failure
+ctest --test-dir build-rel --output-on-failure
+./build/stackfall_tests --seed 987654321
+./build-rel/stackfall_tests --seed 987654321
+HARNESS_RUN_ID=t053-harness tests/harness/run.sh
+T015_RUN_ID=t053-t015-final tests/harness/t015.sh
+```
+
+Open questions: none. The row states the behavior the core already had; a
+future change to it now breaks a pin on purpose.
+
+## T054: bounded, palettized checkpoint screenshots (2026-11-04)
+
+Sources: the task contract of T054, papercut
+`pc_01M6JJR4BAFHC9KZM6GQ1EKK04`, and
+[docs/AGENT_TESTING.md](../docs/AGENT_TESTING.md). Tested at HEAD `479d176`
+plus uncommitted task changes; the tested sources are
+`src/developer_session.cpp`
+`afb55cff67f584ee957c790cf948d9e4e8803a50637e37ea000f75f221b24752`,
+`include/stackfall/developer_session.hpp`
+`ca8476dd808428cb912425cdcc55b32af245de8160c067e6f59b8de31fe8b601`, and
+`src/main.cpp`
+`da1abad5134928ce0cbc2e2e5cd4f42328c15d196da6bbb184511a1d5e0ca800`.
+
+What landed:
+
+- The checkpoint writer in `src/developer_session.cpp` replaces
+  `SDL_SaveBMP`. It builds each frame's palette, writes one 8-bit BI_RLE8
+  BMP, and falls back to the uncompressed 8-bit form when RLE would grow
+  the rows and to the 24-bit form when a frame passes 256 colors. Every
+  image stays lossless; no image library is involved.
+- `--screenshot-budget BYTES` bounds the images one session writes. The
+  default is 256 MiB; 0 removes the cap. When the next image would pass
+  the budget, the session logs one line, skips that image, and the record
+  reads `shot=none` exactly as when a save fails. `main.cpp` parses the
+  option, `--help` documents it, and `docs/AGENT_TESTING.md` carries both
+  halves.
+- `read_bmp_pixels` in `tests/harness/check_harness.py` gained the RLE8
+  decode path plus the uncompressed 8-bit and palette reads, still with no
+  image library. `check_bmp` and the `check_bmp_size` copy in
+  `tests/harness/check_t024.py` accept the 8-bit depth. PIL reads RLE8
+  BMPs natively, so visual review keeps working.
+
+Sizes on the 960x544 canvas: the old writer spent 1,566,774 bytes per
+image. The new one spends 21,942 to 46,550 (median 21,942) on these
+frames; no frame of the runs below hit a fallback.
+
+Verification (all on the final sources unless noted):
+
+- Passed: `HARNESS_RUN_ID=t054-harness-final tests/harness/run.sh` - 689
+  of 689 checker pins, every session's observation stream byte-identical
+  to its headless reference. The fifteen sessions wrote 350 BMPs totaling
+  8,089,658 bytes, far under the 268,435,456-byte default, and every pixel
+  scan (the ghost well scan, the options page, the previews, the grayscale
+  proof, the letterbox check) read the new form.
+- Passed: the budget refusal. A six-check session under
+  `--screenshot-budget 100000` wrote 5 images (94,070 bytes), logged one
+  skip line each for the remaining two, and still wrote all six records -
+  the two refused ones with `shot=none`. Under `--screenshot-budget 0` the
+  same script wrote all 7 images and skipped nothing. Evidence:
+  `build/agent-checks/t054-budget/`.
+- Passed: the order-of-magnitude drop. A 320-piece scripted session with
+  one image per piece (`build/agent-checks/t054-long/`) wrote 322 images:
+  504,501,228 bytes from a binary built at HEAD `479d176` (the SDL_SaveBMP
+  baseline) against 7,600,944 bytes from the candidate, 66 times less. The
+  two observation streams are byte-identical after the `shot=` path, and
+  sampled frames (title, spawn, mid-stack, late checks) hold identical
+  pixels in PIL, so only the container changed.
+- Passed: the BMP decoder cross-check. `read_bmp_pixels` agreed with PIL
+  on old 24-bit and new RLE8 files, and synthetic BMPs pinned the
+  uncompressed 8-bit rows (bottom-up and top-down), absolute runs of odd
+  length, the pair flush, and the refusal paths.
+- Passed: `T024_RUN_ID=t054-t024-final tests/harness/t024.sh` - 291 of 291
+  checks, including the I-spawn and 640x480 letterbox pixel proofs.
+- Passed: the complete M3 desktop gate (`T015_RUN_ID=t054-t015`), M3 GATE
+  PASS with 434 of 434 checker checks, zero compiler warnings in both
+  configurations. The gate built a binary that differs from the final one
+  only by one `--help` wording and a line wrap, so the two suites above
+  were rerun on the exact final sources.
+- Passed: preservation. `ctest` 5 of 5 in Debug and Release;
+  `stackfall_tests --seed 987654321` reports 339,433 checks and zero
+  failures, byte-identical between Debug, Release, and the pre-change
+  baseline binary, with all ten replay hashes unchanged. Gameplay, save
+  formats, and input timing are untouched: the rules core, the stores, and
+  the loop did not change.
+
+Commands:
+
+```bash
+ctest --test-dir build --output-on-failure
+ctest --test-dir build-rel --output-on-failure
+./build/stackfall_tests --seed 987654321
+./build-rel/stackfall_tests --seed 987654321
+HARNESS_RUN_ID=t054-harness-final tests/harness/run.sh
+T024_RUN_ID=t054-t024-final tests/harness/t024.sh
+T015_RUN_ID=t054-t015 tests/harness/t015.sh
+SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy ./build/stackfall --seed 20261103 \
+  --tick-per-frame --input-script build/agent-checks/t054-budget/script.txt \
+  --save-dir build/agent-checks/t054-budget/save \
+  --screenshot-dir build/agent-checks/t054-budget/shots \
+  --screenshot-budget 100000 \
+  --observations build/agent-checks/t054-budget/obs.txt --frames 400
+```
+
+Open questions: none. The papercut's tmpfs workaround is no longer needed:
+the same 322-image session now costs 7.2 MB under the default budget.
+
+## T019: PortMaster release package assembled locally (2026-11-04)
+
+Task T019, round M5, local preparation only; publication stays with the
+blocked operator task T021 and the device pass with T018. Sources:
+[game specification](../docs/SPEC.md) sections 10.2 to 10.4,
+[agent testing contract](../AGENT_TESTING.md), and the current PortMaster
+packaging guide (<https://portmaster.games/packaging.html>) with the build
+system that defines the archive layout
+(<https://github.com/PortsMaster/PortMaster-New> `tools/build_release.py`,
+both reviewed 2026-11-04; the guide's structure and the referenced
+`ports/defblade` port were fetched and compared entry by entry). Tested in
+the detached worktree of `155c7e6` plus uncommitted task changes; the runs
+wrote their own `source.sha256`.
+
+What landed:
+
+- `portmaster/port.json`: package metadata, format version 4, following the
+  upstream field list and example (`name` `stackfall.zip`, `items`
+  `["Stackfall.sh", "stackfall"]`, title STACKFALL, genre `puzzle` from the
+  upstream genre list, `rtr` true, `runtime` empty, `arch` `["aarch64"]`,
+  `min_glibc` `2.34` from the binary's own symbol versions).
+- `portmaster/gameinfo.xml`: one game entry, `path` at the launcher,
+  `image` at the archived screenshot, description equal to the port.json
+  description, release date 2026-11-04.
+- `portmaster/README.md`: rewritten as the readme that ships inside the
+  archive (what the game is, controls, options, saves, the port contents,
+  credits); the developer documentation of the portmaster directory moved
+  to `tools/portmaster/README.md`.
+- `portmaster/release-notes.md` and `portmaster/BUILDING.md`: the changes
+  of release 1.0.0 and the reproduction steps that ship in the archive.
+  BUILDING.md records the environment, the one-command build, the
+  step-by-step commands, the binary's `file` form, its runtime libraries,
+  the glibc span 2.17 to 2.34, and the SHA-256 of the binary it shipped
+  with. `portmaster/licenses/` carries the MIT license and the SDL 2.26.2
+  zlib license, the only linked third-party library.
+- `tools/portmaster/capture-screenshot.sh` and `bmp2png.py`: the 4:3
+  screenshot, captured from the desktop build. The driver runs the real
+  application under a private `Xvfb` display with `openbox`, drives the
+  rehearsed nine-placement opening of the `normal-game-clears` session
+  (`tests/harness/scripts/t019-screenshot.script.txt`, seed 20261103),
+  resizes the window to 640x480 at the `screenshot-ready` checkpoint, and
+  takes the game's own checkpoint capture of the following frame: a real
+  letterboxed render, not a scaled copy of the 960x544 canvas. `bmp2png.py`
+  converts the checkpoint BMP (8-bit BI_RLE8 in this run) to PNG with the
+  standard library alone; this host ships `unzip` but no `zip` binary and
+  no image library, which is logged as a papercut.
+- `tools/portmaster/package.sh`: assembles `build/portmaster-package/`
+  (staged port directory plus `stackfall.zip`) from the ARM64 binary, the
+  package sources, and a captured screenshot, and writes the package
+  report (entry list, per-file SHA-256, archive SHA-256, source commit)
+  into the run's evidence directory. The archive entry list reproduces
+  what the upstream build system writes: launch script and game folder at
+  the archive root, metadata inside the game folder, the readme renamed to
+  `stackfall.md`. Entries are sorted, timestamps pinned, and modes fixed,
+  so the archive bytes follow deterministically from its files.
+- `tests/harness/t019.sh` and `check_t019.py`: the driver and the
+  independent gate checker, described in `docs/AGENT_TESTING.md`.
+- Documentation: specification section 10.4 now records the assembled
+  layout, the capture method, and the determinism rule; the testing guide
+  documents the check; the front-page status and the packaging sections of
+  `README.md` match the repository (the standing rule of T022).
+- The version bump to 1.0.0, which task T035 requires to land before this
+  package: `include/stackfall/version.hpp`, `CMakeLists.txt`, and the
+  `tests/test_sanity.cpp` pin now say 1.0.0. The version string leads the
+  state hash by design, so the five pinned replay hashes of
+  `tests/test_regression.cpp` and the second pin set in
+  `tests/harness/check_t015.py` were refreshed from the suite's own
+  printed values; scores, lines, and tick counts are unchanged. T035's
+  scope is complete except for its own record keeping.
+
+One command assembles and checks the package:
+
+```bash
+tests/harness/t019.sh
+```
+
+The recorded run is `build/agent-checks/t019-package-2026-11-04/` (78
+checks, 0 failures), re-verified by running the checker again against the
+evidence directory alone. Package identity:
+
+- archive `build/portmaster-package/stackfall.zip`, SHA-256
+  `7d5e0f6382662b248933b8d9d45c2da5ae448480fc862cb17e404fd21146fa25`;
+- binary `stackfall/stackfall.aarch64`, SHA-256
+  `dc5343c2d6c68b7ccb113dc6bc9a74c9bb489c81cc8ecc5f818c96f210567c89`,
+  `file` reports `ELF 64-bit LSB pie executable, ARM aarch64`, and the
+  BUILDING.md inside the archive names the same hash.
+
+Results, all passed:
+
+- Metadata: `port.json` parses with every upstream field in place and
+  genres from the upstream list; `gameinfo.xml` parses with one entry,
+  title and description equal to the port.json values, the ES date form,
+  and the image pointing at the archived screenshot.
+- Archive: ten entries and only those ten; every CRC passes; the launcher,
+  the metadata, the readme, the notes, the build instructions, and both
+  licenses are byte-equal to the repository sources; the readme carries
+  the upstream rename to `stackfall.md`.
+- Unpacking into a fresh directory reproduces the section 10.3 install
+  layout (`Stackfall.sh` plus `stackfall/stackfall.aarch64`) with the
+  section 10.4 items beside the binary, and ships no runtime `conf/` or
+  `log.txt`.
+- Binary: `ARM aarch64`, no x86 executable in the archive, the archived
+  bytes equal the ARM64 build's product, and the shipped BUILDING.md names
+  that hash and the SDL2 dependency.
+- Reproduction: the documented step-by-step commands of BUILDING.md,
+  re-run in a fresh container from the pinned image into a fresh build
+  directory, printed the same SHA-256 `dc5343c2...` as the archived
+  binary. Two earlier full builds (the release build of
+  `build/agent-checks/t019-arm64-2026-11-04-v100/` and a second clean
+  container build) had already agreed byte for byte at 0.1.0 and again at
+  1.0.0.
+- Screenshot, measured with no image library: 640x480 (4:3), PNG
+  truecolor; centered letterbox bars of 59 rows above and below the scene;
+  the board column of the 27 px geometry holds a settled stack of at least
+  four rows with pieces of at least three colors and a piece in flight
+  above it; both HUD columns carry readable text pixels and the right
+  column shows the Next previews; no title screen and no blank frame.
+- Launcher: the archive's own `Stackfall.sh`, run against a stub PortMaster
+  control folder from the unpacked tree with the desktop binary staged
+  beside the archived one (an ARM64 binary cannot run on this host), under
+  the dummy video and audio drivers: exit 0, `get_controls`,
+  `pm_platform_helper`, `pm_finish`, `conf/` created, `log.txt` written,
+  the game's session log in `conf/` closing cleanly with the banner
+  `STACKFALL 1.0.0`.
+- Naming: no shipped file uses the forbidden name or trade dress; the
+  launcher and the readme name STACKFALL.
+- Determinism: the checker rebuilt the archive bytes from the staged files
+  with the pinned rules and got the same SHA-256.
+- Regression after the version bump: `ctest` 5 of 5 in Debug and Release
+  (339,433 checks, the five re-pinned replay hashes); the full harness
+  `tests/harness/run.sh` passed 689 checks over its fifteen sessions
+  (`build/agent-checks/harness-2026-11-04-123351/`); the launcher check
+  `tests/harness/t017.sh` passed its 167 checks again
+  (`build/agent-checks/t017-launcher-2026-11-04/`, its own section records
+  the method), and the desktop gate `tests/harness/t015.sh` passed at this
+  source identity (`build/agent-checks/t015-2026-11-04-123954/`: rules
+  hashes identical in Debug and Release, all sessions green, 434 gate
+  checks at zero failures, with the re-pinned replay hashes).
+
+Dogfooding commands for the local handoff:
+
+```bash
+tools/arm64/build-arm64.sh                 # build-arm64/stackfall.aarch64
+tools/portmaster/package.sh                # build/portmaster-package/stackfall.zip
+cat build/agent-checks/t019-package-2026-11-04/package-report.txt  # the identity
+tests/harness/t019.sh                      # the 78-check acceptance gate
+unzip build/portmaster-package/stackfall.zip -d /tmp/ports   # inspect by hand
+```
+
+Findings and open questions:
+
+- The screenshot is a real-time-paced capture, so the exact fall row of
+  the piece in flight can differ by a row between captures; the board, the
+  HUD, and the letterbox layout do not. Re-running `package.sh` refreshes
+  `screenshot.png` and the archive hash; the checker re-derives every
+  property from the fresh capture.
+- The launcher and the environment it exports are proven with the desktop
+  binary standing in for the ARM64 one. Running the archived ARM64
+  binary itself, the real `control.txt`, and the platform exit chord stay
+  with the blocked device task T018, as does the fresh-install gate T020
+  and the publication T021.
+- Upstream's `build_release.py` moves `port.json`, `gameinfo.xml`, the
+  screenshot, and the readme into the game folder when it writes the zip.
+  `package.sh` reproduces that mapping directly, so the local archive and
+  a future upstream-built release unpack identically.
+
+## T035: release version 1.0.0 owned and gated (2026-11-04)
+
+Task T035, round M5, the release-prep round of T019. Sources: the task
+contract of T035, [agent testing contract](../AGENT_TESTING.md), and the
+version rule `include/stackfall/version.hpp` states for itself (its three
+constants compose to one dotted string, kept in sync with the
+`project(... VERSION ...)` of `CMakeLists.txt`). Tested in the detached
+worktree of `94139ae` plus uncommitted task changes; the run wrote its own
+`source.sha256`.
+
+What T035 owns, and where it landed:
+
+- The bump itself landed inside the T019 package assembly, so the archive
+  shipped self-consistent; see the T019 section above for that record.
+  `include/stackfall/version.hpp`, `src/version.cpp` (which hands out the
+  constant and states no literal of its own), `CMakeLists.txt`, and the
+  `tests/test_sanity.cpp` pin all say 1.0.0. The version string leads the
+  state hash by design, so the five pinned replay hashes of
+  `tests/test_regression.cpp` and the second pin set of
+  `tests/harness/check_t015.py` were refreshed with it; scores, lines, and
+  tick counts are unchanged.
+- What this task adds is the standing gate, so the bump keeps an owner
+  after closure: `tests/harness/t035.sh` and `tests/harness/check_t035.py`.
+  The driver builds the desktop tree, runs the headless suites, starts a
+  bounded headless session for the startup banner, and hands the evidence
+  to the checker. The checker re-derives every expectation from the
+  sources alone: the three constants compose to `kVersionString`;
+  `version.cpp` holds no second literal; the CMake project version equals
+  the header; the header, `CMakeLists.txt`, the sanity pin, and the
+  release notes state exactly the shipped version and no other dotted
+  value; no file that ships in the archive contradicts it; the state hash
+  still folds `kVersionString` (so a later bump again breaks the pins
+  instead of passing silently) and the t015 gate holds the same pin set as
+  the suite; the release notes headline the version with their date and
+  `gameinfo.xml` carries the same date; the banner run exits 0 with a clean
+  shutdown and both the stdout banner and the session `log.txt` report
+  `STACKFALL 1.0.0`.
+
+One command runs the gate:
+
+```bash
+tests/harness/t035.sh
+```
+
+The recorded run is `build/agent-checks/t035-version-2026-11-04/`
+(31 checks, 0 failures). Results, all passed:
+
+- Version sources: the constants compose to `1.0.0`; `version.cpp` states
+  no literal of its own; the CMake `project()` version is `1.0.0`; the
+  header, `CMakeLists.txt`, `test_sanity.cpp`, and `release-notes.md` each
+  carry `1.0.0` and no other dotted value (`cmake_minimum_required` names
+  the two-part `3.16`, which is not a dotted triple).
+- Shipped files: `port.json`, `gameinfo.xml`, the port readme, and
+  `Stackfall.sh` state no version that contradicts the shipped one.
+  `port.json` carries no version field at all, because the upstream format
+  version 4 has none; the release notes are the version metadata a package
+  browser reads, and they headline `## 1.0.0 (2026-11-04)`.
+- Pins: the state hash folds `kVersionString`; the suite pins five replay
+  scenarios and `check_t015.py` holds the same five values.
+- Banner: exit 0, clean shutdown, `STACKFALL 1.0.0` on stdout and in the
+  session `log.txt` beside the record.
+- Suites at this version: `ctest` 5 of 5 in Debug and in Release (the
+  sanity pin and the five re-pinned replay hashes).
+
+The gate was tested against drift, not only against the passing tree. With
+copies under `/tmp` the checker failed every planted fault: a CMake version
+left behind (2 failures), a header bumped with nothing following it (10),
+a sanity pin left at the old value (2), one t015 pin not refreshed with the
+suite (1), a banner run reporting the old version (2), and release notes
+never updated (2). The restored tree passed all 31 again.
+
+Findings and open questions:
+
+- The ARM64 binary's own banner is not re-proven here: it cannot run on
+  this x86-64 host, `build-arm64/` is not present in this worktree, and
+  rebuilding the PortMaster environment image is T019's recorded scope.
+  The binary is compiled from the same `version.hpp`, the T019 record
+  holds its ARM64 build, hash parity with the desktop state hashes, and a
+  clean-container reproduction at 1.0.0, and the T019 checker reads this
+  same header for the shipped release notes and the launcher banner.
+- The banner on the physical device stays with the blocked device task
+  T018, as do the fresh-install gate T020 and the publication T021.

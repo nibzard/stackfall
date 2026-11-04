@@ -26,7 +26,7 @@ void check_version_string() {
   // The out-of-line call proves that the stackfall_core archive links.
   const char* version = stackfall::versionString();
   SC_CHECK(version != nullptr);
-  SC_CHECK(std::strcmp(version, "0.1.0") == 0);
+  SC_CHECK(std::strcmp(version, "1.0.0") == 0);
   SC_CHECK(std::strcmp(version, stackfall::kVersionString) == 0);
 }
 

@@ -1,7 +1,9 @@
 # Fixture session: lock-out game over (seed 20261103).
-# The fixture lockout-ready fills columns 3..6 to the top, so the forced
-# I is grounded in the hidden rows and its lock commits hidden cells:
-# the lock-out rule of specification section 4.5.
+# The fixture lockout-ready grounds the forced T at visible row 0, so the
+# session rotates once first: the SRS (-1, -1) candidate of the 0->R turn
+# lifts one cell into hidden row -1, and the hard drop that follows commits
+# that hidden cell. The lock-out rule of specification section 4.5, reached
+# through the immediate-spawn rule of task T029.
 check title-first
 wait 1
 key enter down
@@ -13,6 +15,12 @@ wait 1
 fixture lockout-ready
 wait 2
 check fixture-loaded
+wait 1
+key x down
+wait 2
+key x up
+wait 2
+check rotated
 wait 1
 check before-drop
 wait 1

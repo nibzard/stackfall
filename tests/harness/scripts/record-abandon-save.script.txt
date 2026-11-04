@@ -1,0 +1,75 @@
+# T052 session: the record persists while the round runs, so an abandoned
+# round keeps its best (keyboard driver, seed 20261103). The round scores
+# through two hard drops, then pauses and leaves through QUIT TO TITLE. The
+# round never reaches a game over, so the record file can hold only what a
+# mid-round save wrote: the platform layer saves the moment the score passes
+# the stored record (SPEC sections 4.7 and 9).
+check title-fresh
+wait 1
+key enter down
+wait 2
+key enter up
+wait 2
+check playing-start
+wait 1
+key space down
+wait 2
+key space up
+wait 2
+wait 2
+check first-lock
+wait 2
+key space down
+wait 2
+key space up
+wait 2
+wait 2
+check second-lock
+wait 2
+key esc down
+wait 2
+key esc up
+wait 2
+check paused-before-abandon
+wait 2
+# QUIT TO TITLE is the fourth overlay item
+key down down
+wait 2
+key down up
+wait 2
+key down down
+wait 2
+key down up
+wait 2
+key down down
+wait 2
+key down up
+wait 2
+check paused-at-quit-title
+wait 2
+key enter down
+wait 2
+key enter up
+wait 2
+check back-at-title
+wait 2
+# leave through the fourth title item
+key down down
+wait 2
+key down up
+wait 2
+key down down
+wait 2
+key down up
+wait 2
+key down down
+wait 2
+key down up
+wait 2
+check title-at-quit
+wait 1
+check quit-confirmed
+key enter down
+wait 2
+key enter up
+wait 2

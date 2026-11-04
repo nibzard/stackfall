@@ -60,6 +60,7 @@ void Game::openTitle(std::uint64_t seed) {
   nextSeed_ = seed;
   resetRound(seed);
   titleCursor_ = 0;
+  optionsCursor_ = 0;
   quitRequested_ = false;
   scene_ = Scene::Title;
 }
@@ -165,6 +166,12 @@ void Game::tick(const TickInput& input) {
     case Scene::Controls:
       tickControls(input.menu);
       return;
+    case Scene::Options:
+      tickOptions(input.menu);
+      return;
+    case Scene::PauseControls:
+      tickPauseControls(input.menu);
+      return;
     case Scene::Paused:
       tickPaused(input);
       return;
@@ -189,6 +196,9 @@ void Game::tickTitle(const MenuFrame& menu) {
     case 1:
       scene_ = Scene::Controls;
       break;
+    case 2:
+      scene_ = Scene::Options;
+      break;
     default:
       quitRequested_ = true;  // Quit: the platform layer exits
       break;
@@ -201,6 +211,20 @@ void Game::tickControls(const MenuFrame& menu) {
   if (menu.selectPressed || menu.backPressed) {
     scene_ = Scene::Title;
   }
+}
+
+void Game::tickOptions(const MenuFrame& menu) {
+  // Back returns to the title; the title cursor stays on the OPTIONS item,
+  // so B followed by A reopens the screen on the same row. A select changes
+  // nothing here: the row values are platform state the core never holds
+  // (specification section 7), so the platform layer reads the highlighted
+  // row and applies the change itself. The cursor wraps over the six rows
+  // (task T044).
+  if (menu.backPressed) {
+    scene_ = Scene::Title;
+    return;
+  }
+  moveCursor(optionsCursor_, kOptionsItemCount, menu);
 }
 
 void Game::tickPaused(const TickInput& input) {
@@ -221,6 +245,12 @@ void Game::tickPaused(const TickInput& input) {
       case 1:
         beginRound();  // Restart: a fresh seeded round
         return;
+      case 2:
+        // Controls: the mappings screen over the frozen round (task T037).
+        // The round and every counter stay exactly as they are; back returns
+        // to this overlay on the same item.
+        scene_ = Scene::PauseControls;
+        return;
       default:
         abandonToTitle();  // Quit to Title: the round is abandoned
         return;
@@ -228,6 +258,15 @@ void Game::tickPaused(const TickInput& input) {
   }
   if (input.game.pausePressed) {
     scene_ = Scene::Playing;
+  }
+}
+
+void Game::tickPauseControls(const MenuFrame& menu) {
+  // Confirm and back both return to the pause overlay (specification section
+  // 4.7). The cursor stays on the Controls item, so B followed by A reopens
+  // the screen, and no counter of the frozen round below moves (task T037).
+  if (menu.selectPressed || menu.backPressed) {
+    scene_ = Scene::Paused;
   }
 }
 
@@ -518,6 +557,8 @@ int Game::titleSelection() const { return titleCursor_; }
 int Game::pauseSelection() const { return pauseCursor_; }
 
 int Game::overSelection() const { return overCursor_; }
+
+int Game::optionsSelection() const { return optionsCursor_; }
 
 std::uint64_t Game::highScore() const { return highScore_; }
 

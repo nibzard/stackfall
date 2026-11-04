@@ -1,0 +1,242 @@
+# M3 gate session: restart behavior on every player path, keyboard
+# driver, seed 31337. Section 4.7 pins: the pause overlay's RESTART
+# begins a fresh seeded round (counters, board, hold, and queue reset),
+# QUIT TO TITLE abandons the round and the title starts another, PLAY
+# AGAIN after a game over does the same, and a direction held across a
+# restart moves on the fresh round's first ticks and stops on release
+# without leaking any other action.
+check title
+wait 1
+key enter down
+wait 2
+key enter up
+wait 3
+check round-1-start
+wait 1
+key space down
+wait 2
+key space up
+wait 4
+check round-1-lock-1
+wait 2
+key space down
+wait 2
+key space up
+wait 4
+check round-1-lock-2
+wait 2
+check round-1-state
+wait 2
+# pause -> RESTART: a fresh seeded round
+key esc down
+wait 2
+key esc up
+wait 2
+check paused
+wait 2
+key down down
+wait 2
+key down up
+wait 2
+check pause-at-restart
+wait 2
+key enter down
+wait 2
+key enter up
+wait 3
+check round-2-fresh
+wait 2
+key space down
+wait 2
+key space up
+wait 4
+check round-2-lock-1
+wait 2
+check round-2-state
+wait 2
+# pause -> QUIT TO TITLE, then start again
+key esc down
+wait 2
+key esc up
+wait 2
+check paused-again
+wait 2
+key down down
+wait 2
+key down up
+wait 2
+key down down
+wait 2
+key down up
+wait 2
+key down down
+wait 2
+key down up
+wait 2
+check pause-at-quit-title
+wait 2
+key enter down
+wait 2
+key enter up
+wait 3
+check back-at-title
+wait 2
+key enter down
+wait 2
+key enter up
+wait 3
+check round-3-start
+wait 2
+# restart with Left held: the fresh round sees the held level at once
+key left down
+wait 2
+check round-3-held-moves
+wait 2
+key esc down
+wait 2
+key esc up
+wait 2
+check round-3-paused
+wait 2
+key down down
+wait 2
+key down up
+wait 2
+key enter down
+wait 2
+key enter up
+wait 3
+check round-4-fresh
+wait 8
+check round-4-held-repeat
+wait 2
+key left up
+wait 2
+check round-4-release-stops
+wait 2
+key space down
+wait 2
+key space up
+wait 4
+check round-4-drop-01
+wait 2
+key space down
+wait 2
+key space up
+wait 4
+check round-4-drop-02
+wait 2
+key space down
+wait 2
+key space up
+wait 4
+check round-4-drop-03
+wait 2
+key space down
+wait 2
+key space up
+wait 4
+check round-4-drop-04
+wait 2
+key space down
+wait 2
+key space up
+wait 4
+check round-4-drop-05
+wait 2
+key space down
+wait 2
+key space up
+wait 4
+check round-4-drop-06
+wait 2
+key space down
+wait 2
+key space up
+wait 4
+check round-4-drop-07
+wait 2
+key space down
+wait 2
+key space up
+wait 4
+check round-4-drop-08
+wait 2
+key space down
+wait 2
+key space up
+wait 4
+check round-4-drop-09
+wait 2
+key space down
+wait 2
+key space up
+wait 4
+check round-4-drop-10
+wait 2
+key space down
+wait 2
+key space up
+wait 4
+check round-4-drop-11
+wait 2
+key space down
+wait 2
+key space up
+wait 4
+check round-4-drop-12
+wait 2
+wait 2
+check round-4-gameover
+wait 2
+key enter down
+wait 2
+key enter up
+wait 3
+check round-5-play-again
+wait 2
+# quit to title and out
+key esc down
+wait 2
+key esc up
+wait 2
+check round-5-paused
+wait 2
+key down down
+wait 2
+key down up
+wait 2
+key down down
+wait 2
+key down up
+wait 2
+key down down
+wait 2
+key down up
+wait 2
+check round-5-at-quit-title
+wait 2
+key enter down
+wait 2
+key enter up
+wait 3
+check final-title
+wait 2
+key down down
+wait 2
+key down up
+wait 2
+key down down
+wait 2
+key down up
+wait 2
+key down down
+wait 2
+key down up
+wait 2
+check title-at-quit
+wait 1
+key enter down
+wait 2
+key enter up
+wait 2
