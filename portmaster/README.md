@@ -10,6 +10,11 @@ files, and collects no data. Every block, outline, and letter is drawn by the
 game itself from rectangles and lines, and every sound is synthesized at run
 time. The rules, the look, and the sound are original work.
 
+The game carries a twelve-track soundtrack it composes and synthesizes at
+run time. Three collections of four tracks set the mood from the title screen
+through a round, and each track layers more voices as your level rises. No
+audio files ship.
+
 Thank you to the PortMaster project for the packaging format, the build
 environment, and the launcher template this port follows.
 
@@ -33,21 +38,31 @@ through the PortMaster exit chord of your device.
 
 ## Options
 
-Open **Options** from the title screen to change six settings:
+Open **Options** from the title screen to change eight settings:
 
-- Sound on or off.
+- Sound on or off. This is the master switch for all audio.
 - Ghost outline on or off.
 - Board grid on or off.
 - Hold preview on or off.
 - Next preview count from one to five.
 - Grayscale play scene on or off.
+- Orientation: landscape or portrait. The next launch turns the whole game
+  into a tall 544 x 960 frame with 40-pixel board squares. Hold the device
+  sideways; every control keeps the action it points at.
+- Music. Opens the music settings page.
 
-Your high score and all six settings persist between sessions.
+The music settings page carries four rows: Music (Auto, Arcade, Groove,
+Focus, Off), Music volume, Effects volume, and Next track. Auto draws from
+every collection; the other modes lock the pool; Off stops the music alone.
+Both volumes step through eleven levels, 0 silent. Next track plays another
+track of the pool right away. The page also names the track now playing.
+
+Your high score and all ten settings persist between sessions.
 
 ## Saves
 
 The game writes its save files into `ports/stackfall/conf/`. A save holds the
-high score and the six settings. A damaged save file costs only those values;
+high score and the ten settings. A damaged save file costs only those values;
 the game replaces it with defaults and keeps running.
 
 ## What is in this port

@@ -1,0 +1,325 @@
+# Portrait-pad stage two (T055, docs/AGENT_TESTING.md): the relaunch that
+# applied orientation=portrait at startup, on the developer virtual
+# controller, seed 20261103. A round on the rotated pad table - D-pad up
+# moves right, D-pad down moves left, B rotates clockwise and confirms, A
+# rotates counter-clockwise and goes back, Y hard drops, X holds - then
+# the pause overlay navigated on the reversed cluster's menu roles (D-pad
+# left and right move the cursor), a hard-drop spam to the game-over
+# screen, and the quit through the title menu. A `wait` follows every
+# check, so no record carries the tick of the input that comes after it.
+check title-start
+wait 1
+check title-at-start
+wait 1
+pad b down
+wait 2
+pad b up
+wait 2
+check playing-start
+wait 1
+# the rotated D-pad: up is move right, down move left
+pad up down
+wait 2
+pad up up
+wait 2
+check moved-right
+wait 1
+pad down down
+wait 2
+pad down up
+wait 2
+check moved-left
+wait 1
+# the reversed cluster: B rotates clockwise, A counter-clockwise
+pad b down
+wait 2
+pad b up
+wait 2
+check rotated-cw
+wait 1
+pad a down
+wait 2
+pad a up
+wait 2
+check rotated-ccw
+wait 1
+pad x down
+wait 2
+pad x up
+wait 2
+check hold-swapped
+wait 1
+pad y down
+wait 2
+pad y up
+wait 2
+check first-lock
+wait 1
+pad up down
+wait 2
+pad up up
+wait 2
+check moved-right-two
+wait 1
+pad y down
+wait 2
+pad y up
+wait 2
+check second-lock
+wait 1
+# the pause overlay on the rotated menu roles
+pad start down
+wait 2
+pad start up
+wait 2
+check paused
+wait 1
+pad left down
+wait 2
+pad left up
+wait 2
+check paused-at-quit
+wait 1
+pad left down
+wait 2
+pad left up
+wait 2
+check paused-at-controls
+wait 1
+pad b down
+wait 2
+pad b up
+wait 2
+check pause-controls-open
+wait 1
+pad a down
+wait 2
+pad a up
+wait 2
+check pause-controls-back
+wait 1
+pad right down
+wait 2
+pad right up
+wait 2
+pad right down
+wait 2
+pad right up
+wait 2
+pad right down
+wait 2
+pad right up
+wait 2
+check paused-at-restart
+wait 1
+pad left down
+wait 2
+pad left up
+wait 2
+check paused-at-resume
+wait 1
+pad b down
+wait 2
+pad b up
+wait 2
+check resumed
+wait 1
+# hard-drop spam until the round tops out
+pad y down
+wait 2
+pad y up
+wait 2
+pad y down
+wait 2
+pad y up
+wait 2
+pad y down
+wait 2
+pad y up
+wait 2
+pad y down
+wait 2
+pad y up
+wait 2
+pad y down
+wait 2
+pad y up
+wait 2
+pad y down
+wait 2
+pad y up
+wait 2
+pad y down
+wait 2
+pad y up
+wait 2
+pad y down
+wait 2
+pad y up
+wait 2
+pad y down
+wait 2
+pad y up
+wait 2
+pad y down
+wait 2
+pad y up
+wait 2
+pad y down
+wait 2
+pad y up
+wait 2
+pad y down
+wait 2
+pad y up
+wait 2
+pad y down
+wait 2
+pad y up
+wait 2
+pad y down
+wait 2
+pad y up
+wait 2
+pad y down
+wait 2
+pad y up
+wait 2
+pad y down
+wait 2
+pad y up
+wait 2
+pad y down
+wait 2
+pad y up
+wait 2
+pad y down
+wait 2
+pad y up
+wait 2
+pad y down
+wait 2
+pad y up
+wait 2
+pad y down
+wait 2
+pad y up
+wait 2
+check spam-mid
+wait 2
+pad y down
+wait 2
+pad y up
+wait 2
+pad y down
+wait 2
+pad y up
+wait 2
+pad y down
+wait 2
+pad y up
+wait 2
+pad y down
+wait 2
+pad y up
+wait 2
+pad y down
+wait 2
+pad y up
+wait 2
+pad y down
+wait 2
+pad y up
+wait 2
+pad y down
+wait 2
+pad y up
+wait 2
+pad y down
+wait 2
+pad y up
+wait 2
+pad y down
+wait 2
+pad y up
+wait 2
+pad y down
+wait 2
+pad y up
+wait 2
+pad y down
+wait 2
+pad y up
+wait 2
+pad y down
+wait 2
+pad y up
+wait 2
+pad y down
+wait 2
+pad y up
+wait 2
+pad y down
+wait 2
+pad y up
+wait 2
+pad y down
+wait 2
+pad y up
+wait 2
+pad y down
+wait 2
+pad y up
+wait 2
+pad y down
+wait 2
+pad y up
+wait 2
+pad y down
+wait 2
+pad y up
+wait 2
+pad y down
+wait 2
+pad y up
+wait 2
+pad y down
+wait 2
+pad y up
+wait 2
+wait 5
+check gameover-first
+wait 2
+pad right down
+wait 2
+pad right up
+wait 2
+check gameover-at-title
+wait 2
+pad b down
+wait 2
+pad b up
+wait 2
+check title-return
+wait 2
+pad right down
+wait 2
+pad right up
+wait 2
+pad right down
+wait 2
+pad right up
+wait 2
+pad right down
+wait 2
+pad right up
+wait 2
+check title-at-quit
+wait 1
+# the checkpoint rides the same frame as the confirm, because the quit ends
+# the loop right after that frame's tick, render, and flush
+check quit-confirmed
+pad b down
+wait 2
+pad b up
+wait 2

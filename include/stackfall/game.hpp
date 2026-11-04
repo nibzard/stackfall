@@ -54,9 +54,13 @@ enum class Scene : std::uint8_t {
   Paused,          // simulation frozen, no counter moves
   GameOver,        // round ended by block-out or lock-out
   Controls,        // the mappings screen, reached from and returning to Title
-  Options,         // SOUND, GHOST, GRID, HOLD, NEXT PIECES, GRAYSCALE; the
-                   // values are platform state (task T044)
+  Options,         // SOUND, GHOST, GRID, HOLD, NEXT PIECES, GRAYSCALE,
+                   // ORIENTATION, MUSIC; the values are platform state
+                   // (tasks T044, T055, and T062)
   PauseControls,   // the mappings screen over a frozen round (task T037)
+  MusicOptions,    // the music settings page behind the MUSIC row: MUSIC,
+                   // MUSIC VOLUME, EFFECTS VOLUME, NEXT TRACK (task T062,
+                   // MUSIC.md player controls)
 };
 
 // Tick-flow constants of section 4.5, all counted in 60 Hz simulation ticks.
@@ -71,8 +75,14 @@ inline constexpr int kLockDelayResets = 15; // lock timer resets per piece
 inline constexpr int kTitleItemCount = 4;
 inline constexpr int kPauseItemCount = 4;   // Resume, Restart, Controls, Quit
 inline constexpr int kOverItemCount = 2;    // Play Again, Title
-// SOUND, GHOST, GRID, HOLD, NEXT PIECES, GRAYSCALE (task T044).
-inline constexpr int kOptionsItemCount = 6;
+// SOUND, GHOST, GRID, HOLD, NEXT PIECES, GRAYSCALE (task T044), ORIENTATION
+// (task T055), and MUSIC (task T062), appended so every earlier row keeps its
+// index. The MUSIC row opens the music settings page below.
+inline constexpr int kOptionsItemCount = 8;
+inline constexpr int kOptionsMusicRow = 7;
+// The music settings page of MUSIC.md's player controls: the mode row, both
+// volume rows, and the Next track action.
+inline constexpr int kMusicOptionsItemCount = 4;
 
 class Game {
  public:
@@ -155,12 +165,15 @@ class Game {
   // The highlighted item of each menu, 0-based: title Start Game / Controls /
   // Options / Quit, pause Resume / Restart / Controls / Quit to Title, game
   // over Play Again / Title, options SOUND / GHOST / GRID / HOLD / NEXT
-  // PIECES / GRAYSCALE (specification section 4.7). Menu state only; a round
-  // never reads it and the state hash never folds it.
+  // PIECES / GRAYSCALE / ORIENTATION / MUSIC, and the music page MUSIC /
+  // MUSIC VOLUME / EFFECTS VOLUME / NEXT TRACK (specification section 4.7).
+  // Menu state only; a round never reads it and the state hash never folds
+  // it.
   int titleSelection() const;
   int pauseSelection() const;
   int overSelection() const;
   int optionsSelection() const;
+  int musicSelection() const;
 
   // The session high score shown on the title screen. The platform layer
   // loads it at startup, saves the record the moment a running score passes
@@ -246,11 +259,20 @@ class Game {
   void tickControls(const MenuFrame& menu);
 
   // OPTIONS: back returns to the title and the D-pad moves the cursor over
-  // the six rows. Select changes nothing here: the row values are platform
-  // state (the six player preferences), which the core never holds, so the
-  // platform layer applies the change of the highlighted row itself
+  // the eight rows. Select on the MUSIC row opens the music settings page;
+  // on any other row select changes nothing here, because the row values are
+  // platform state (the player preferences), which the core never holds, so
+  // the platform layer applies the change of the highlighted row itself
   // (specification section 7).
   void tickOptions(const MenuFrame& menu);
+
+  // MUSIC_OPTIONS: back returns to the options screen with the cursor still
+  // on the MUSIC row, and the D-pad moves the cursor over the four rows
+  // (MUSIC.md player controls). Select changes nothing here for the same
+  // reason as the options screen: the mode and both volumes are platform
+  // state, and Next track is a request the platform layer sends the music
+  // director.
+  void tickMusicOptions(const MenuFrame& menu);
 
   // PAUSED: back resumes, the D-pad moves the cursor, A runs the highlighted
   // item, and the pause key alone still resumes. Every gameplay counter stays
@@ -312,7 +334,8 @@ class Game {
   int titleCursor_ = 0;           // highlighted title item, 0..3
   int pauseCursor_ = 0;           // highlighted pause item, 0..3
   int overCursor_ = 0;            // highlighted game-over item, 0..1
-  int optionsCursor_ = 0;         // highlighted options row, 0..5
+  int optionsCursor_ = 0;         // highlighted options row, 0..7
+  int musicCursor_ = 0;           // highlighted music page row, 0..3
   bool newRecord_ = false;        // the ended round beat highScore_
   bool quitRequested_ = false;    // Quit confirmed on the title menu
 

@@ -424,15 +424,17 @@ Do not require a low-quality fallback until measurements establish that need.
 
 ## Completion checklist
 
-- [ ] The specification includes generated music and matches these controls.
-- [ ] All 12 original tracks have complete arrangements and intensity maps.
-- [ ] Music and effects share one audio device with separate volume controls.
-- [ ] Track selection, scene transitions, pause, and mute follow the behavior table.
-- [ ] Settings migrate without losing existing player choices.
-- [ ] Keyboard and controller can operate the music settings page.
-- [ ] Gameplay sequences and hashes remain unchanged.
-- [ ] Automated audio and relevant existing tests pass.
-- [ ] Native previews and listening findings exist for every track.
-- [ ] Desktop performance evidence is recorded.
-- [ ] Handheld listening and performance evidence is recorded, or remains an explicit release prerequisite.
-- [ ] User documentation explains music selection, volumes, and master mute.
+- [x] The specification includes generated music and matches these controls.
+- [x] All 12 original tracks have complete arrangements and intensity maps.
+- [x] Music and effects share one audio device with separate volume controls.
+- [x] Track selection, scene transitions, pause, and mute follow the behavior table.
+- [x] Settings migrate without losing existing player choices.
+- [x] Keyboard and controller can operate the music settings page.
+- [x] Gameplay sequences and hashes remain unchanged.
+- [x] Automated audio and relevant existing tests pass.
+- [x] Native previews exist for every track; listening findings stay pending
+      per track in `docs/music/` until the human pass.
+- [x] Desktop performance evidence is recorded.
+- [ ] Handheld listening and performance evidence is recorded, or remains an
+      explicit release prerequisite.
+- [x] User documentation explains music selection, volumes, and master mute.

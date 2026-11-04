@@ -17,11 +17,22 @@
 #include <SDL.h>
 
 #include "stackfall/input.hpp"
+#include "stackfall/types.hpp"
 
 namespace stackfall {
 
 class SdlInput {
  public:
+  // The orientation the tables translate into (task T055). Portrait remaps
+  // every direction into the rotated frame and reverses the two cluster
+  // pairs, exactly as notes/design-review.md pins it; landscape keeps the
+  // section 5 table. The platform layer sets this once at startup from the
+  // persisted preference, and the default is landscape.
+  void setOrientation(Orientation orientation) noexcept {
+    orientation_ = orientation;
+  }
+  Orientation orientation() const noexcept { return orientation_; }
+
   // Adds every mapping line of the SDL_GAMECONTROLLERCONFIG environment
   // variable through SDL_GameControllerAddMapping and returns how many lines
   // SDL accepted (added or updated). Empty or absent variables load nothing;
@@ -53,6 +64,7 @@ class SdlInput {
   }
 
   InputAdapter adapter_;
+  Orientation orientation_ = Orientation::Landscape;
 };
 
 // ---------------------------------------------------------------------------
@@ -106,8 +118,15 @@ int virtualPadButtonFromName(const char* name);
 // Resolves one mapped control to its actions, straight from the tables this
 // header's class uses. Writes at most two actions and returns how many; zero
 // means the control is unmapped. Tests and the controls screen read the same
-// translation the event path applies.
+// translation the event path applies. The orientation argument selects the
+// table: landscape is the section 5 mapping, portrait the rotated one of
+// notes/design-review.md (task T055); the two-argument forms are the landscape
+// table, which every pre-portrait caller used.
 int mapControllerButton(SDL_GameControllerButton button, GameAction* actions);
 int mapKeyboardScancode(SDL_Scancode scancode, GameAction* actions);
+int mapControllerButton(SDL_GameControllerButton button, Orientation orientation,
+                        GameAction* actions);
+int mapKeyboardScancode(SDL_Scancode scancode, Orientation orientation,
+                        GameAction* actions);
 
 }  // namespace stackfall

@@ -32,7 +32,8 @@ Install the development files for Simple DirectMedia Layer (SDL) 2.
 
 3. Select **Start Game**. Open **Controls** from the title screen to see the bindings.
    Open **Options** to change the sound, ghost outline, board grid, hold
-   preview, Next preview count, and grayscale play scene.
+   preview, Next preview count, grayscale play scene, and screen
+   orientation, and open **Music** from there for the soundtrack settings.
 
 ### Controls
 
@@ -52,7 +53,7 @@ On a controller, use the D-pad, A, and B.
 
 ### Your progress
 
-The game saves your high score and all six options settings between sessions.
+The game saves your high score and all ten options settings between sessions.
 A round you quit, close, or interrupt keeps every point it scored, so an
 abandoned run still counts toward the high score.
 On Linux, saves normally go in `~/.local/share/stackfall`.
@@ -67,6 +68,33 @@ Wall kicks let you rotate near an edge or another piece.
 Clearing rows earns points. Soft and hard drops add points for the distance traveled.
 The game advances one level every ten cleared lines, up to level 20.
 A round ends when a new piece cannot enter or a piece locks above the visible board.
+
+You can also play in portrait. Set **Options** to Portrait, and the next
+launch rotates the whole scene into a 544 × 960 frame with 40-pixel board
+squares. Hold the device sideways, and each control keeps the on-screen
+action it points at in the turned frame.
+
+### The soundtrack
+
+The game carries a twelve-track soundtrack it generates itself. No audio
+files ship: every track is composed from fixed patterns and synthesized at
+runtime. Three collections of four tracks each - Arcade, Groove, and Focus -
+set the mood from the title screen through a round, and each track layers
+more voices as your level rises.
+
+Open **Options**, choose **Music**, and the music settings page appears:
+
+| Row | What it does |
+| --- | --- |
+| MUSIC | Cycles Auto, Arcade, Groove, Focus, Off. Auto draws from all three collections; the others lock the pool; Off stops the music alone. |
+| MUSIC VOLUME | Steps the music through eleven levels; 0 is silent. |
+| EFFECTS VOLUME | Steps the sound effects through eleven levels; 0 is silent. |
+| NEXT TRACK | Plays another track from the selected pool right away. |
+
+The page also shows the title of the track now playing.
+The mode and both volumes are saved the moment you change them.
+The M key or the controller Select button stays the master switch: it mutes
+or unmutes both buses at once and remembers the mode and the volumes.
 
 Every block, outline, and letter is drawn from rectangles and lines on a 960 × 544 canvas.
 The game draws its own 5 × 7 font and generates its sound effects.
@@ -154,20 +182,25 @@ launcher does and how the two layouts relate.
 
 ### Project status
 
-The project has passed the milestone M3 desktop gate.
-The rules, menus, options screen, saves, sound, and the desktop
-verification harness are implemented. The options screen changes the sound,
-ghost outline, board grid, hold preview, Next preview count, and grayscale
-play scene, and all six preferences persist between sessions.
-Desktop stability checks, performance work, the 27-pixel board layout, and
-the focused gameplay HUD (statistics left, Next right, no gameplay legend,
-pause route to the controls screen) have landed.
-The unattended harness (`tests/harness/run.sh`) drives fifteen sessions
+The project stands in milestone M5, packaging and release: the M3 desktop gate
+and the M4 software checks passed, and the release package is assembled locally.
+The rules, menus, options screen, saves, sound, the generated twelve-track
+soundtrack, and the desktop verification harness are implemented. The options
+screen changes the sound, ghost outline, board grid, hold preview, Next
+preview count, grayscale play scene, and screen orientation, and the Music
+submenu selects the track pool, both volumes, and the next track; all ten
+preferences persist between sessions.
+Desktop stability checks, performance work, the 27-pixel board layout, the
+focused gameplay HUD (statistics left, Next right, no gameplay legend,
+pause route to the controls screen), and portrait play with its rotated
+controls have landed.
+The unattended harness (`tests/harness/run.sh`) drives nineteen sessions
 through the real application, covering both inputs on every options row, the
-settings file after each change and across relaunches and legacy files, the
-hold-off rules, the five Next preview counts at one seed, the grayscale play
-scene, and the record saved when a round is abandoned mid-game, each against
-a headless reference replay and pixel checks.
+music settings page and its saved mode and volumes, the settings file after
+each change and across relaunches and legacy files, the hold-off rules, the
+five Next preview counts at one seed, the grayscale play scene, the record
+saved when a round is abandoned mid-game, and a portrait round played on the
+rotated controls, each against a headless reference replay and pixel checks.
 The full desktop regression (`tests/harness/t015.sh`) covers the input
 repeat tuning, lock delay, the seven-bag randomizer, restart paths, and
 high-score persistence in Debug and Release, with deterministic hashes
@@ -185,7 +218,10 @@ and reproducible build instructions.
 The release version is 1.0.0, one value in the version constants, the CMake
 project version, the sanity pin, the state-hash pins, the startup banner,
 and the package release notes; `tests/harness/t035.sh` holds them together.
-Testing on the RG503 and public publication follow.
+Testing on the RG503 and public publication follow. The panel research in
+`notes/anbernic-resolutions.md` covers every Anbernic device class and the
+letterbox result on each; the owner's choice of a strategy per class sets
+the next rendering work.
 
 The reports record what was checked and which limits remain:
 
@@ -196,6 +232,7 @@ The reports record what was checked and which limits remain:
 | [Test report](notes/agent-testing.md) | Commands, results, and remaining checks |
 | [Design review](notes/design-review.md) | Screenshot findings and verified changes |
 | [Performance report](notes/performance.md) | Measurements, retained changes, and device limits |
+| [Panel research](notes/anbernic-resolutions.md) | Anbernic screens, letterbox results, and a strategy per class |
 | [PortMaster packaging](tools/portmaster/README.md) | Handheld launcher, install tree, and release archive |
 
 Source code is in `src/`, public headers in `include/stackfall/`, and tests in `tests/`.

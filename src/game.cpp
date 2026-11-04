@@ -61,6 +61,7 @@ void Game::openTitle(std::uint64_t seed) {
   resetRound(seed);
   titleCursor_ = 0;
   optionsCursor_ = 0;
+  musicCursor_ = 0;
   quitRequested_ = false;
   scene_ = Scene::Title;
 }
@@ -172,6 +173,9 @@ void Game::tick(const TickInput& input) {
     case Scene::PauseControls:
       tickPauseControls(input.menu);
       return;
+    case Scene::MusicOptions:
+      tickMusicOptions(input.menu);
+      return;
     case Scene::Paused:
       tickPaused(input);
       return;
@@ -215,16 +219,36 @@ void Game::tickControls(const MenuFrame& menu) {
 
 void Game::tickOptions(const MenuFrame& menu) {
   // Back returns to the title; the title cursor stays on the OPTIONS item,
-  // so B followed by A reopens the screen on the same row. A select changes
-  // nothing here: the row values are platform state the core never holds
-  // (specification section 7), so the platform layer reads the highlighted
-  // row and applies the change itself. The cursor wraps over the six rows
-  // (task T044).
+  // so B followed by A reopens the screen on the same row. A select on the
+  // MUSIC row opens the music settings page (task T062); on any other row a
+  // select changes nothing here, because the row values are platform state
+  // the core never holds (specification section 7), so the platform layer
+  // reads the highlighted row and applies the change itself. The cursor
+  // wraps over the eight rows (tasks T044 and T062).
   if (menu.backPressed) {
     scene_ = Scene::Title;
     return;
   }
+  if (menu.selectPressed && optionsCursor_ == kOptionsMusicRow) {
+    scene_ = Scene::MusicOptions;
+    musicCursor_ = 0;
+    return;
+  }
   moveCursor(optionsCursor_, kOptionsItemCount, menu);
+}
+
+void Game::tickMusicOptions(const MenuFrame& menu) {
+  // Back returns to the options screen; the options cursor stays on the MUSIC
+  // row, so B followed by A reopens the page on the same row (MUSIC.md player
+  // controls). A select changes nothing here: the mode and both volumes are
+  // platform state the core never holds, and Next track is a request the
+  // platform layer sends, so the platform layer reads the highlighted row and
+  // applies the row's action itself. The cursor wraps over the four rows.
+  if (menu.backPressed) {
+    scene_ = Scene::Options;
+    return;
+  }
+  moveCursor(musicCursor_, kMusicOptionsItemCount, menu);
 }
 
 void Game::tickPaused(const TickInput& input) {
@@ -559,6 +583,8 @@ int Game::pauseSelection() const { return pauseCursor_; }
 int Game::overSelection() const { return overCursor_; }
 
 int Game::optionsSelection() const { return optionsCursor_; }
+
+int Game::musicSelection() const { return musicCursor_; }
 
 std::uint64_t Game::highScore() const { return highScore_; }
 

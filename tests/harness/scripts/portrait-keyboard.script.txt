@@ -1,0 +1,327 @@
+# Portrait-keyboard stage two (T055, docs/AGENT_TESTING.md): the relaunch
+# that applied orientation=portrait at startup, seed 20261103. A round on
+# the rotated keyboard table - key up moves right, key down moves left, Z
+# rotates clockwise, X counter-clockwise, Space holds, C hard drops - then
+# the pause overlay navigated on the rotated menu roles (key left and key
+# right move the cursor, Enter confirms, Esc goes back), a hard-drop spam
+# to the game-over screen, and the quit through the title menu. A `wait`
+# follows every check, so no record carries the tick of the input that
+# comes after it.
+# the title cursor opens on START GAME, and in portrait key up and key down
+# carry no menu role, so no navigation precedes the start
+check title-start
+wait 1
+check title-at-start
+wait 1
+key enter down
+wait 2
+key enter up
+wait 2
+check playing-start
+wait 1
+# the rotated directions: key up is move right, key down move left
+key up down
+wait 2
+key up up
+wait 2
+check moved-right
+wait 1
+key down down
+wait 2
+key down up
+wait 2
+check moved-left
+wait 1
+# the reversed cluster: Z rotates clockwise, X counter-clockwise
+key z down
+wait 2
+key z up
+wait 2
+check rotated-cw
+wait 1
+key x down
+wait 2
+key x up
+wait 2
+check rotated-ccw
+wait 1
+key space down
+wait 2
+key space up
+wait 2
+check hold-swapped
+wait 1
+key c down
+wait 2
+key c up
+wait 2
+check first-lock
+wait 1
+key up down
+wait 2
+key up up
+wait 2
+check moved-right-two
+wait 1
+key c down
+wait 2
+key c up
+wait 2
+check second-lock
+wait 1
+# the pause overlay on the rotated menu roles
+key esc down
+wait 2
+key esc up
+wait 2
+check paused
+wait 1
+key left down
+wait 2
+key left up
+wait 2
+check paused-at-quit
+wait 1
+key left down
+wait 2
+key left up
+wait 2
+check paused-at-controls
+wait 1
+key enter down
+wait 2
+key enter up
+wait 2
+check pause-controls-open
+wait 1
+key esc down
+wait 2
+key esc up
+wait 2
+check pause-controls-back
+wait 1
+key right down
+wait 2
+key right up
+wait 2
+key right down
+wait 2
+key right up
+wait 2
+key right down
+wait 2
+key right up
+wait 2
+check paused-at-restart
+wait 1
+key left down
+wait 2
+key left up
+wait 2
+check paused-at-resume
+wait 1
+key enter down
+wait 2
+key enter up
+wait 2
+check resumed
+wait 1
+# hard-drop spam until the round tops out
+key c down
+wait 2
+key c up
+wait 2
+key c down
+wait 2
+key c up
+wait 2
+key c down
+wait 2
+key c up
+wait 2
+key c down
+wait 2
+key c up
+wait 2
+key c down
+wait 2
+key c up
+wait 2
+key c down
+wait 2
+key c up
+wait 2
+key c down
+wait 2
+key c up
+wait 2
+key c down
+wait 2
+key c up
+wait 2
+key c down
+wait 2
+key c up
+wait 2
+key c down
+wait 2
+key c up
+wait 2
+key c down
+wait 2
+key c up
+wait 2
+key c down
+wait 2
+key c up
+wait 2
+key c down
+wait 2
+key c up
+wait 2
+key c down
+wait 2
+key c up
+wait 2
+key c down
+wait 2
+key c up
+wait 2
+key c down
+wait 2
+key c up
+wait 2
+key c down
+wait 2
+key c up
+wait 2
+key c down
+wait 2
+key c up
+wait 2
+key c down
+wait 2
+key c up
+wait 2
+key c down
+wait 2
+key c up
+wait 2
+check spam-mid
+wait 2
+key c down
+wait 2
+key c up
+wait 2
+key c down
+wait 2
+key c up
+wait 2
+key c down
+wait 2
+key c up
+wait 2
+key c down
+wait 2
+key c up
+wait 2
+key c down
+wait 2
+key c up
+wait 2
+key c down
+wait 2
+key c up
+wait 2
+key c down
+wait 2
+key c up
+wait 2
+key c down
+wait 2
+key c up
+wait 2
+key c down
+wait 2
+key c up
+wait 2
+key c down
+wait 2
+key c up
+wait 2
+key c down
+wait 2
+key c up
+wait 2
+key c down
+wait 2
+key c up
+wait 2
+key c down
+wait 2
+key c up
+wait 2
+key c down
+wait 2
+key c up
+wait 2
+key c down
+wait 2
+key c up
+wait 2
+key c down
+wait 2
+key c up
+wait 2
+key c down
+wait 2
+key c up
+wait 2
+key c down
+wait 2
+key c up
+wait 2
+key c down
+wait 2
+key c up
+wait 2
+key c down
+wait 2
+key c up
+wait 2
+wait 5
+check gameover-first
+wait 2
+key right down
+wait 2
+key right up
+wait 2
+check gameover-at-title
+wait 2
+key enter down
+wait 2
+key enter up
+wait 2
+check title-return
+wait 2
+key right down
+wait 2
+key right up
+wait 2
+key right down
+wait 2
+key right up
+wait 2
+key right down
+wait 2
+key right up
+wait 2
+check title-at-quit
+wait 1
+# the checkpoint rides the same frame as the confirm, because the quit ends
+# the loop right after that frame's tick, render, and flush
+check quit-confirmed
+key enter down
+wait 2
+key enter up
+wait 2

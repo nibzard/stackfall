@@ -5,9 +5,10 @@
 // each tick both halves of the input, the menu edges and the gameplay frame.
 // Every screen, cursor, and transition of section 4.7 is checked without SDL:
 // TITLE (Start Game / Controls / Options / Quit over the high score),
-// CONTROLS, OPTIONS (SOUND / GHOST / GRID / HOLD / NEXT PIECES / GRAYSCALE,
-// cursor only; the values are platform state), PLAYING, the PAUSED overlay
-// (Resume / Restart / Quit to Title with
+// CONTROLS, OPTIONS (SOUND / GHOST / GRID / HOLD / NEXT PIECES / GRAYSCALE /
+// ORIENTATION / MUSIC; cursor only; the values are platform state) with its
+// MUSIC_OPTIONS page behind the MUSIC row, PLAYING, the
+// PAUSED overlay (Resume / Restart / Quit to Title with
 // every counter frozen exactly), and GAME_OVER (final values, record note,
 // Play Again / Title). The session seed stream and the screen determinism of
 // specification section 7 are checked here too, because the pinned replay
@@ -32,7 +33,9 @@ using stackfall::Game;
 using stackfall::GameTestPeer;
 using stackfall::InputFrame;
 using stackfall::MenuFrame;
+using stackfall::kMusicOptionsItemCount;
 using stackfall::kOptionsItemCount;
+using stackfall::kOptionsMusicRow;
 using stackfall::PieceId;
 using stackfall::Scene;
 using stackfall::TickInput;
@@ -247,24 +250,29 @@ void test_title_options_round_trip() {
   g.tick(gameplay(pressPause()));
   SC_CHECK(g.scene() == Scene::Options);
 
-  // The cursor walks every one of the six rows and wraps at both ends: down
-  // reaches GHOST, GRID, HOLD, NEXT PIECES, and GRAYSCALE, down again wraps
-  // back to SOUND, and up wraps from SOUND straight to GRAYSCALE (task T044).
+  // The cursor walks every one of the eight rows and wraps at both ends: down
+  // reaches GHOST, GRID, HOLD, NEXT PIECES, GRAYSCALE, ORIENTATION, and MUSIC,
+  // down again wraps back to SOUND, and up wraps from SOUND straight to MUSIC
+  // (tasks T044, T055, and T062).
   for (int row = 1; row < kOptionsItemCount; ++row) {
     g.tick(session(menuDown()));
     SC_CHECK(g.optionsSelection() == row);
   }
-  SC_CHECK(kOptionsItemCount == 6);
+  SC_CHECK(kOptionsItemCount == 8);
+  SC_CHECK(kOptionsMusicRow == 7);
   g.tick(session(menuDown()));
-  SC_CHECK(g.optionsSelection() == 0);  // wraps past GRAYSCALE
+  SC_CHECK(g.optionsSelection() == 0);  // wraps past MUSIC
   g.tick(session(menuUp()));
-  SC_CHECK(g.optionsSelection() == 5);  // wraps back up past SOUND
+  SC_CHECK(g.optionsSelection() == 7);  // wraps back up past SOUND
 
-  // Select changes nothing in the core: the row values are platform state
-  // (specification section 7), so the screen stays put and the cursor holds.
+  // Select on a setting row changes nothing in the core: the row values are
+  // platform state (specification section 7), so the screen stays put and the
+  // cursor holds.
+  g.tick(session(menuUp()));
+  SC_CHECK(g.optionsSelection() == 6);  // ORIENTATION
   g.tick(session(menuSelect()));
   SC_CHECK(g.scene() == Scene::Options);
-  SC_CHECK(g.optionsSelection() == 5);
+  SC_CHECK(g.optionsSelection() == 6);
 
   // Back returns to the title with the cursor still on the OPTIONS item, so
   // A reopens the screen.
@@ -273,7 +281,7 @@ void test_title_options_round_trip() {
   SC_CHECK(g.titleSelection() == 2);
   g.tick(session(menuSelect()));
   SC_CHECK(g.scene() == Scene::Options);
-  SC_CHECK(g.optionsSelection() == 5);  // the row survived the round trip
+  SC_CHECK(g.optionsSelection() == 6);  // the row survived the round trip
 
   // A fresh session opens the screen on the SOUND row again.
   g.openTitle(2);
@@ -282,6 +290,76 @@ void test_title_options_round_trip() {
   g.tick(session(menuSelect()));
   SC_CHECK(g.scene() == Scene::Options);
   SC_CHECK(g.optionsSelection() == 0);
+}
+
+// The music settings page behind the MUSIC row (task T062, MUSIC.md player
+// controls): select on the MUSIC row opens it, its four rows take the same
+// cursor moves, select changes nothing in the core for the same reason as the
+// options screen, and back returns to the options screen with the cursor
+// still on the MUSIC row, so B followed by A reopens the page.
+void test_music_options_page() {
+  Game g;
+  g.openTitle(7);
+  g.tick(session(menuDown()));
+  g.tick(session(menuDown()));
+  g.tick(session(menuSelect()));  // OPTIONS
+  SC_CHECK(kMusicOptionsItemCount == 4);
+  for (int row = 0; row < kOptionsMusicRow; ++row) {
+    g.tick(session(menuDown()));
+  }
+  SC_CHECK(g.optionsSelection() == kOptionsMusicRow);
+
+  // The opening select belongs to the options screen, exactly as the options
+  // screen's own opening press belongs to the title.
+  g.tick(session(menuSelect()));
+  SC_CHECK(g.scene() == Scene::MusicOptions);
+  SC_CHECK(g.musicSelection() == 0);  // MUSIC is the opening row
+
+  // The screen takes no gameplay input, exactly like the options screen.
+  g.tick(gameplay(pressPause()));
+  SC_CHECK(g.scene() == Scene::MusicOptions);
+
+  // The cursor walks the four rows and wraps at both ends.
+  for (int row = 1; row < kMusicOptionsItemCount; ++row) {
+    g.tick(session(menuDown()));
+    SC_CHECK(g.musicSelection() == row);
+  }
+  g.tick(session(menuDown()));
+  SC_CHECK(g.musicSelection() == 0);  // wraps past NEXT TRACK
+  g.tick(session(menuUp()));
+  SC_CHECK(g.musicSelection() == 3);  // wraps back up past MUSIC
+
+  // Select changes nothing in the core: the mode and both volumes are
+  // platform state and Next track is a platform request.
+  g.tick(session(menuSelect()));
+  SC_CHECK(g.scene() == Scene::MusicOptions);
+  SC_CHECK(g.musicSelection() == 3);
+
+  // Back returns to the options screen on the MUSIC row, so A reopens the
+  // page on its opening row.
+  g.tick(session(menuBack()));
+  SC_CHECK(g.scene() == Scene::Options);
+  SC_CHECK(g.optionsSelection() == kOptionsMusicRow);
+  g.tick(session(menuSelect()));
+  SC_CHECK(g.scene() == Scene::MusicOptions);
+  SC_CHECK(g.musicSelection() == 0);
+
+  // Back twice leaves the whole settings stack: the title keeps its cursor on
+  // the OPTIONS item, and a fresh session starts the page over.
+  g.tick(session(menuBack()));
+  g.tick(session(menuBack()));
+  SC_CHECK(g.scene() == Scene::Title);
+  SC_CHECK(g.titleSelection() == 2);
+  g.openTitle(8);
+  g.tick(session(menuDown()));
+  g.tick(session(menuDown()));
+  g.tick(session(menuSelect()));
+  for (int row = 0; row < kOptionsMusicRow; ++row) {
+    g.tick(session(menuDown()));
+  }
+  g.tick(session(menuSelect()));
+  SC_CHECK(g.scene() == Scene::MusicOptions);
+  SC_CHECK(g.musicSelection() == 0);
 }
 
 // ---------------------------------------------------------------------------
@@ -627,6 +705,7 @@ void run_screens_tests() {
   test_title_controls_round_trip();
   test_title_quit();
   test_title_options_round_trip();
+  test_music_options_page();
   test_pause_overlay_resume_paths();
   test_pause_overlay_restart_and_quit_to_title();
   test_pause_controls_round_trip();

@@ -110,6 +110,45 @@ const ScriptBinding kPadTable[] = {
     {"right", stackfall::GameAction::Right, kNone},
 };
 
+// The portrait tables of task T055, transcribed from the rotation
+// notes/design-review.md pins, not from src/input_sdl.cpp, so a wrong or
+// missing rotation in the SDL layer shows up as a record mismatch exactly as
+// a wrong section 5 mapping does. The turned device points every direction
+// at the on-screen direction of the rotated frame: the D-pad's up, down,
+// left, and right become move right, move left, menu up, and soft drop plus
+// menu down. The cluster reverses each pair under the left thumb - B rotates
+// clockwise and confirms, A rotates the other way and goes back, Y hard
+// drops, X holds - while the left shoulder and Start, and the keyboard's
+// Enter and Esc, keep their own roles. The name sets match the landscape
+// tables, so the script parser validates one set for both orientations.
+const ScriptBinding kPortraitKeyTable[] = {
+    {"left", stackfall::GameAction::MenuUp, kNone},
+    {"right", stackfall::GameAction::Down, stackfall::GameAction::MenuDown},
+    {"down", stackfall::GameAction::Left, kNone},
+    {"up", stackfall::GameAction::Right, kNone},
+    {"z", stackfall::GameAction::RotateCW, kNone},
+    {"x", stackfall::GameAction::RotateCCW, kNone},
+    {"c", stackfall::GameAction::HardDrop, kNone},
+    {"lshift", stackfall::GameAction::HardDrop, kNone},
+    {"space", stackfall::GameAction::Hold, kNone},
+    {"enter", stackfall::GameAction::Pause, stackfall::GameAction::MenuSelect},
+    {"esc", stackfall::GameAction::Pause, stackfall::GameAction::MenuBack},
+    {"m", kNone, kNone},
+};
+
+const ScriptBinding kPortraitPadTable[] = {
+    {"a", stackfall::GameAction::RotateCCW, stackfall::GameAction::MenuBack},
+    {"b", stackfall::GameAction::RotateCW, stackfall::GameAction::MenuSelect},
+    {"x", stackfall::GameAction::Hold, kNone},
+    {"y", stackfall::GameAction::HardDrop, kNone},
+    {"l1", stackfall::GameAction::Hold, kNone},
+    {"start", stackfall::GameAction::Pause, kNone},
+    {"up", stackfall::GameAction::Right, kNone},
+    {"down", stackfall::GameAction::Left, kNone},
+    {"left", stackfall::GameAction::MenuUp, kNone},
+    {"right", stackfall::GameAction::Down, stackfall::GameAction::MenuDown},
+};
+
 const ScriptBinding* findBinding(const ScriptBinding* table, std::size_t count,
                                  const std::string& name) {
   for (std::size_t i = 0; i < count; ++i) {
@@ -252,9 +291,10 @@ void printUsage() {
       "  Replays a session script through the rules core and writes one\n"
       "  checkpoint record per `check` command, in the format of the game\n"
       "  binary's --observations file. Headless: no SDL.\n"
-      "  --settings FILE reads the session's settings.dat for the hold\n"
-      "  preference the platform layer gates hold edges on; a missing file is\n"
-      "  the fresh-installation default of every preference.\n"
+      "  --settings FILE reads the session's settings.dat for the hold and\n"
+      "  orientation preferences the platform layer owns; a missing file is\n"
+      "  the fresh-installation default of every preference, and portrait\n"
+      "  swaps the key and pad tables for the rotated ones of task T055.\n"
       "  --high-score FILE reads the session's highscore.dat for the record\n"
       "  the game binary loads, saves mid-round, and feeds back between\n"
       "  rounds (task T052); a missing file is the record 0 of a fresh\n"
@@ -262,8 +302,9 @@ void printUsage() {
 }
 
 // The options row of the HOLD preference (specification section 4.7): SOUND,
-// GHOST, GRID, HOLD, NEXT PIECES, GRAYSCALE.
+// GHOST, GRID, HOLD, NEXT PIECES, GRAYSCALE, ORIENTATION (task T055).
 constexpr int kOptionsHoldRow = 3;
+constexpr int kOptionsOrientationRow = 6;
 
 }  // namespace
 
@@ -367,15 +408,48 @@ int main(int argc, char** argv) {
   // state is the session's settings file, exactly as the game binary reads it
   // at startup, and a select on the HOLD row of the options screen flips it,
   // exactly as src/main.cpp's applyOptionsSelect does on the same edge.
+  //
+  // The orientation the platform layer applies once at startup (task T055):
+  // portrait swaps the two script tables below for the rotated ones, exactly
+  // as src/main.cpp's applyOrientation() swaps the tables of SdlInput. The
+  // ORIENTATION row of the options screen flips only the stored preference
+  // and never the tables of the running process, because the game binary
+  // applies the saved value at the next launch; the mirror below tracks that
+  // preference for its log line and changes nothing else.
   bool holdEnabled = true;
+  bool portraitTables = false;
+  bool orientationPortrait = false;
+  stackfall::SettingsResult loaded;
   if (settingsPath != nullptr) {
-    const stackfall::SettingsStore settings(settingsPath);
-    const stackfall::SettingsResult loaded = settings.load();
+    // The harness names the settings file itself; the store wants its
+    // directory, exactly like the record file below.
+    const std::filesystem::path settingsFile(settingsPath);
+    const stackfall::SettingsStore settings(
+        settingsFile.has_parent_path() ? settingsFile.parent_path().string()
+                                       : std::string());
+    loaded = settings.load();
     holdEnabled = loaded.holdOn;
     std::fprintf(stderr, "reference: hold preference %s at startup (%s)\n",
                  holdEnabled ? "on" : "off",
                  stackfall::saveStatusName(loaded.status));
   }
+  portraitTables = loaded.orientation == stackfall::Orientation::Portrait;
+  orientationPortrait = portraitTables;
+  const ScriptBinding* keyTable =
+      portraitTables ? kPortraitKeyTable : kKeyTable;
+  const ScriptBinding* padTable =
+      portraitTables ? kPortraitPadTable : kPadTable;
+  const std::size_t keyCount =
+      portraitTables ? sizeof(kPortraitKeyTable) / sizeof(kPortraitKeyTable[0])
+                     : sizeof(kKeyTable) / sizeof(kKeyTable[0]);
+  const std::size_t padCount =
+      portraitTables ? sizeof(kPortraitPadTable) / sizeof(kPortraitPadTable[0])
+                     : sizeof(kPadTable) / sizeof(kPadTable[0]);
+  std::fprintf(stderr, "reference: orientation %s at startup (%s)\n",
+               portraitTables ? "portrait" : "landscape",
+               settingsPath != nullptr
+                   ? stackfall::saveStatusName(loaded.status)
+                   : "not found");
 
   // The record persistence mirror of task T052 (specification sections 4.7
   // and 9): `savedRecord` holds what the game binary's store holds, seeded
@@ -436,10 +510,8 @@ int main(int argc, char** argv) {
             break;  // the detached pad no longer exists; the game ignores it
           }
           const ScriptBinding* binding = findBinding(
-              command.kind == Command::Kind::Key ? kKeyTable : kPadTable,
-              command.kind == Command::Kind::Key
-                  ? sizeof(kKeyTable) / sizeof(kKeyTable[0])
-                  : sizeof(kPadTable) / sizeof(kPadTable[0]),
+              command.kind == Command::Kind::Key ? keyTable : padTable,
+              command.kind == Command::Kind::Key ? keyCount : padCount,
               command.name);
           if (binding == nullptr) {
             break;  // an unmapped control changes nothing, as in the game
@@ -521,6 +593,16 @@ int main(int argc, char** argv) {
       holdEnabled = !holdEnabled;
       std::fprintf(stderr, "reference: hold preference %s (options row %d)\n",
                    holdEnabled ? "on" : "off", kOptionsHoldRow);
+    }
+    if (sceneBeforeTick == stackfall::Scene::Options &&
+        tickInput.menu.selectPressed &&
+        game.optionsSelection() == kOptionsOrientationRow) {
+      orientationPortrait = !orientationPortrait;
+      std::fprintf(stderr,
+                   "reference: orientation preference %s (options row %d, "
+                   "applies at the next launch)\n",
+                   orientationPortrait ? "portrait" : "landscape",
+                   kOptionsOrientationRow);
     }
     // The persistence mirror, tick by tick: the saved record rises the
     // moment the running score passes it (the game's save; this replay only

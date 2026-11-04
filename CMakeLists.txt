@@ -26,11 +26,17 @@ endif()
 # docs/AGENT_TESTING.md); both are SDL-free so the headless reference replay
 # shares them with the game binary. script.cpp holds the bounded count rule
 # the two mirrored script parsers share (task T025's fuzz repair).
+# music.cpp, music_tracks.cpp, and music_director.cpp hold the generated
+# soundtrack (MUSIC.md, task T062): engine, catalogue, and scene policy,
+# all SDL-free so the music suite and the offline preview tool run headless.
 # ---------------------------------------------------------------------------
 add_library(stackfall_core STATIC
   src/board.cpp
   src/fixture.cpp
   src/game.cpp
+  src/music.cpp
+  src/music_director.cpp
+  src/music_tracks.cpp
   src/observe.cpp
   src/pieces.cpp
   src/randomizer.cpp
@@ -139,6 +145,7 @@ add_executable(stackfall_tests
   tests/test_font.cpp
   tests/test_game.cpp
   tests/test_input.cpp
+  tests/test_music.cpp
   tests/test_pieces.cpp
   tests/test_randomizer.cpp
   tests/test_regression.cpp
@@ -154,6 +161,18 @@ add_test(NAME stackfall_tests COMMAND stackfall_tests)
 # pinned scenario at that seed and requires the same hash twice
 # (specification section 7, section 11 item 18 desktop half).
 add_test(NAME stackfall_tests_seed COMMAND stackfall_tests --seed 987654321)
+
+# ---------------------------------------------------------------------------
+# stackfall_music_preview: the offline developer renderer of MUSIC.md phase
+# M2. Not a test and not shipped: it renders any track, duration, sample
+# rate, and intensity through the same engine the audio callback runs, and
+# writes review WAVs into an ignored build directory.
+# ---------------------------------------------------------------------------
+add_executable(stackfall_music_preview
+  tools/music/render_previews.cpp
+)
+target_link_libraries(stackfall_music_preview PRIVATE stackfall_core)
+target_compile_features(stackfall_music_preview PRIVATE cxx_std_17)
 
 # ---------------------------------------------------------------------------
 # stackfall_reference: the headless reference replay of the unattended harness

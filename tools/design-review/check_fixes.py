@@ -18,6 +18,11 @@ of the findings accepted in T027 and the approved composition of T037:
   focused-hud-next-right   the right column carries the NEXT heading and
                            the five preview pieces alone - no score text -
                            with its gap to the board frame quiet as well
+  gameover-panel-nests     the game-over panel's solid face stays inside
+                           the gap between the two columns, so neither
+                           column holds a panel pixel and the dimmed
+                           statistics and previews read whole beside it
+                           (task T043)
   ghost-outline-contrast   the ghost outline holds at least a 3:1
                            luminance contrast against the board well
   letterbox-scene-centered the letterboxed frame splits its slack bars
@@ -65,6 +70,7 @@ WELL = (10, 12, 19)  # kBoardWell
 TEXT = (232, 236, 246)        # kText
 TEXT_DIM = (138, 148, 172)    # kTextDim
 BACKGROUND = (16, 18, 26)     # kBackground
+PANEL_FILL = (40, 46, 62)     # kPanelFill, mixToward(BACKGROUND, kFrame, 2, 5)
 # The S ghost of seed 31337 at board columns 3..6 and rows 18..19, in canvas
 # pixels: x = 345 + 3*27 .. 345 + 7*27 and y = 2 + 18*27 .. 2 + 20*27.
 GHOST_REGION = (BOARD_ORIGIN[0] + 3 * BOARD_CELL,
@@ -150,6 +156,16 @@ def count_not_background(image, box):
     return count
 
 
+def count_color(image, box, color):
+    x0, y0, x1, y1 = box
+    count = 0
+    for y in range(y0, min(y1, image.height)):
+        for x in range(x0, min(x1, image.width)):
+            if image.getpixel((x, y)) == color:
+                count += 1
+    return count
+
+
 def check_stats_left(image, scale_with_window=True, required=True):
     """The statistics column of the focused HUD, from pixels.
 
@@ -220,6 +236,36 @@ def check_next_right(image, scale_with_window=True, required=True):
                      "every one of the five slots holds its preview piece, "
                      "and the gap to the board frame stays quiet",
         "passed": passed if required else None,
+    }
+
+
+def check_gameover_nests(image):
+    """The game-over panel nests between the HUD columns, from pixels.
+
+    The overlay draws one solid panel face over the veiled round. Nesting
+    (task T043, owner decision 2026-11-04) means that face stays inside the
+    gap between the two columns: neither the statistics column nor the
+    preview column holds a panel pixel, so the dimmed labels of the frozen
+    round read whole beside the modal instead of fragments peeking out at
+    the panel's edge, exactly as the pause overlay has nested since T037.
+    """
+    left = count_color(image, (LEFT_COLUMN[0], 0, LEFT_COLUMN[1] + 1, 544),
+                       PANEL_FILL)
+    right = count_color(image, (RIGHT_COLUMN[0], 0, RIGHT_COLUMN[1] + 1, 544),
+                        PANEL_FILL)
+    # The gap between the columns, frame-edge to frame-edge: the panel's
+    # face covers most of it on the game-over frame.
+    gap = count_color(image, (LEFT_COLUMN[1] + 1, 0, RIGHT_COLUMN[0], 544),
+                      PANEL_FILL)
+    passed = left == 0 and right == 0 and gap > 10000
+    return {
+        "name": "gameover-panel-nests",
+        "measured": {"panel_pixels_left_column": left,
+                     "panel_pixels_right_column": right,
+                     "panel_pixels_between_columns": gap},
+        "criterion": "no panel pixel in either HUD column, the panel face "
+                     "inside the gap between them (x=320..639)",
+        "passed": passed,
     }
 
 
@@ -319,8 +365,10 @@ def main():
     gameplay = Image.open(images / "gameplay-early.png").convert("RGB")
     locked = Image.open(images / "hold-locked.png").convert("RGB")
     letterbox = Image.open(images / "letterbox-640x480.png").convert("RGB")
+    gameover = Image.open(images / "gameover.png").convert("RGB")
     results.append(check_stats_left(gameplay))
     results.append(check_next_right(gameplay))
+    results.append(check_gameover_nests(gameover))
     for image, label in ((letterbox, "letterbox"),):
         stats = check_stats_left(image, required=False)
         stats["name"] = "focused-hud-stats-left (%s)" % label

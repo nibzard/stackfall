@@ -106,6 +106,7 @@
 #include "stackfall/game.hpp"
 #include "stackfall/input.hpp"
 #include "stackfall/input_sdl.hpp"
+#include "stackfall/music_director.hpp"
 #include "stackfall/observe.hpp"
 #include "stackfall/renderer_sdl.hpp"
 #include "stackfall/storage.hpp"
@@ -135,6 +136,11 @@ using stackfall::DeveloperSession;
 using stackfall::Game;
 using stackfall::HighScoreStore;
 using stackfall::LoadResult;
+using stackfall::MusicDirector;
+using stackfall::MusicMode;
+using stackfall::MusicSnapshot;
+using stackfall::musicModeName;
+using stackfall::Orientation;
 using stackfall::Renderer;
 using stackfall::SaveStatus;
 using stackfall::Scene;
@@ -879,6 +885,46 @@ void applyPreferences(const SettingsValues& prefs, AudioDriver& audio,
   renderer.setShowHold(prefs.holdOn);
   renderer.setNextPreviews(prefs.nextPreviews);
   renderer.setGrayscale(prefs.grayscaleOn);
+  // The ORIENTATION row's value, not the layout: the row always names what
+  // the next launch draws (task T055). The layout itself moves once, in
+  // applyOrientation() at startup.
+  renderer.setOrientationPreference(prefs.orientation);
+}
+
+// The music settings' half of the same rule (task T062): the volumes reach
+// the driver, which publishes the music gain and applies the effects gain
+// itself; the mode reaches the director, which owns the pool policy; and the
+// renderer mirrors all three for the rows that show them. The track title
+// mirror is per-frame state the main loop feeds from the director.
+void applyMusicPreferences(const SettingsValues& prefs, AudioDriver& audio,
+                           Renderer& renderer,
+                           MusicDirector& musicDirector) {
+  audio.setMusicVolume(prefs.musicVolume);
+  audio.setEffectsVolume(prefs.effectsVolume);
+  renderer.setMusicMode(prefs.musicMode);
+  renderer.setMusicVolume(prefs.musicVolume);
+  renderer.setEffectsVolume(prefs.effectsVolume);
+  musicDirector.setMode(prefs.musicMode);
+}
+
+// The one place the orientation reaches the session's owners: the renderer's
+// layout and the input tables. Startup calls it once, right after the
+// settings load, and nothing else ever does, because a mid-session turn would
+// leave the drawn scene and the mapped controls describing two different
+// frames. Selecting the ORIENTATION row changes the stored preference alone;
+// the next launch reads it here (task T055, notes/design-review.md).
+void applyOrientation(Orientation orientation, Renderer& renderer,
+                      SdlInput& input) {
+  renderer.setOrientation(orientation);
+  input.setOrientation(orientation);
+  logf("Orientation: %s (%d x %d canvas, %d px cells)\n",
+       orientation == Orientation::Portrait ? "portrait" : "landscape",
+       orientation == Orientation::Portrait ? stackfall::kPortraitCanvasWidth
+                                            : stackfall::kCanvasWidth,
+       orientation == Orientation::Portrait ? stackfall::kPortraitCanvasHeight
+                                            : stackfall::kCanvasHeight,
+       orientation == Orientation::Portrait ? stackfall::kPortraitBoardCellSize
+                                            : stackfall::kBoardCellSize);
 }
 
 // Every preference change writes the whole settings file through one atomic
@@ -988,9 +1034,109 @@ void toggleGrayscale(AudioDriver& audio, const SettingsStore& settings,
   savePreference(settings, prefs, "grayscale", line, inputLog);
 }
 
+// The ORIENTATION row of the options screen (task T055): select walks
+// landscape -> portrait -> landscape, the stored preference changes at once,
+// and the layout of the running session does not, because the scene, the
+// controls, and the composition all turn together. The next launch reads the
+// saved value and applies it in applyOrientation() at startup, so the row
+// always names what that launch draws.
+void cycleOrientation(AudioDriver& audio, const SettingsStore& settings,
+                      SettingsValues& prefs, Renderer& renderer,
+                      std::FILE* inputLog) {
+  prefs.orientation = prefs.orientation == Orientation::Portrait
+                          ? Orientation::Landscape
+                          : Orientation::Portrait;
+  applyPreferences(prefs, audio, renderer);
+  const bool portrait = prefs.orientation == Orientation::Portrait;
+  logf("Orientation preference %s; it applies at the next launch\n",
+       portrait ? "portrait" : "landscape");
+  char line[48];
+  std::snprintf(line, sizeof(line), "orientation %s",
+                portrait ? "portrait" : "landscape");
+  savePreference(settings, prefs, "orientation", line, inputLog);
+}
+
+// The MUSIC row of the music settings page (task T062, MUSIC.md player
+// controls): select cycles Auto, Arcade, Groove, Focus, Off, and back to
+// Auto. The mode change reaches the director through one
+// applyMusicPreferences call, and the settings file keeps it at once.
+void cycleMusicMode(AudioDriver& audio, const SettingsStore& settings,
+                    SettingsValues& prefs, Renderer& renderer,
+                    MusicDirector& musicDirector, std::FILE* inputLog) {
+  prefs.musicMode = static_cast<MusicMode>(
+      (static_cast<int>(prefs.musicMode) + 1) %
+      (static_cast<int>(MusicMode::Off) + 1));
+  applyMusicPreferences(prefs, audio, renderer, musicDirector);
+  char line[48];
+  std::snprintf(line, sizeof(line), "music %s",
+                musicModeName(prefs.musicMode));
+  savePreference(settings, prefs, "music mode", line, inputLog);
+}
+
+// One volume row of the music settings page: select steps up one step of the
+// eleven-step table and wraps past 10 back to 0, which is exactly silent
+// (MUSIC.md player controls). `which` is 0 for music and 1 for effects.
+void cycleMusicVolume(AudioDriver& audio, const SettingsStore& settings,
+                      SettingsValues& prefs, Renderer& renderer,
+                      int which, std::FILE* inputLog) {
+  if (which == 0) {
+    prefs.musicVolume = prefs.musicVolume >= stackfall::kSettingsVolumeMax
+                            ? stackfall::kSettingsVolumeMin
+                            : prefs.musicVolume + 1;
+  } else {
+    prefs.effectsVolume =
+        prefs.effectsVolume >= stackfall::kSettingsVolumeMax
+            ? stackfall::kSettingsVolumeMin
+            : prefs.effectsVolume + 1;
+  }
+  renderer.setMusicVolume(prefs.musicVolume);
+  renderer.setEffectsVolume(prefs.effectsVolume);
+  audio.setMusicVolume(prefs.musicVolume);
+  audio.setEffectsVolume(prefs.effectsVolume);
+  char line[48];
+  std::snprintf(line, sizeof(line), "%s %d",
+                which == 0 ? "musicvolume" : "effectsvolume",
+                which == 0 ? prefs.musicVolume : prefs.effectsVolume);
+  savePreference(settings, prefs,
+                which == 0 ? "music volume" : "effects volume", line,
+                inputLog);
+}
+
+// The NEXT TRACK row of the music settings page: one request to the director,
+// which never repeats the playing track while another is available. The
+// action writes nothing, because no setting changed (MUSIC.md player
+// controls).
+void requestNextTrack(MusicDirector& musicDirector, std::FILE* inputLog) {
+  musicDirector.nextTrack();
+  if (inputLog != nullptr) {
+    std::fprintf(inputLog, "music next track\n");
+  }
+}
+
 // A on one row of the options screen changes that row's value. The rules core
 // keeps the highlighted row and changes nothing itself; this platform half
-// applies the change (tasks T040 and T044, specification section 7).
+// applies the change (tasks T040, T044, and T055, specification section 7).
+void applyMusicSelect(Renderer& renderer, AudioDriver& audio,
+                      MusicDirector& musicDirector,
+                      const SettingsStore& settings, SettingsValues& prefs,
+                      int row, std::FILE* inputLog) {
+  switch (row) {
+    case 0:
+      cycleMusicMode(audio, settings, prefs, renderer, musicDirector,
+                     inputLog);
+      break;
+    case 1:
+      cycleMusicVolume(audio, settings, prefs, renderer, 0, inputLog);
+      break;
+    case 2:
+      cycleMusicVolume(audio, settings, prefs, renderer, 1, inputLog);
+      break;
+    default:
+      requestNextTrack(musicDirector, inputLog);
+      break;
+  }
+}
+
 void applyOptionsSelect(Renderer& renderer, AudioDriver& audio,
                         const SettingsStore& settings, SettingsValues& prefs,
                         int row, std::FILE* inputLog) {
@@ -1010,8 +1156,11 @@ void applyOptionsSelect(Renderer& renderer, AudioDriver& audio,
     case 4:
       cycleNextPreviews(audio, settings, prefs, renderer, inputLog);
       break;
-    default:
+    case 5:
       toggleGrayscale(audio, settings, prefs, renderer, inputLog);
+      break;
+    default:
+      cycleOrientation(audio, settings, prefs, renderer, inputLog);
       break;
   }
 }
@@ -1149,8 +1298,9 @@ int runMainLoop(Renderer& renderer, SDL_Renderer* sdlRenderer,
                 ControllerSet& controllers, SdlInput& input, Game& game,
                 const HighScoreStore& highScores, const SettingsStore& settings,
                 SettingsValues& prefs, AudioDriver& audio,
-                CueDetector& cueDetector, DeveloperSession& developer,
-                bool tickPerFrame, Uint64 frameLimit) {
+                MusicDirector& musicDirector, CueDetector& cueDetector,
+                DeveloperSession& developer, bool tickPerFrame,
+                Uint64 frameLimit) {
   std::FILE* const inputLog = developer.inputLog();
   std::FILE* const frameTimes = developer.frameTimes();
   const Uint64 frequency = SDL_GetPerformanceFrequency();
@@ -1172,6 +1322,11 @@ int runMainLoop(Renderer& renderer, SDL_Renderer* sdlRenderer,
   // other one. Without it, a scripted session never records that the round
   // reached playing (docs/AGENT_TESTING.md relies on these markers).
   Scene lastScene = Scene::Boot;
+  // The music director's own scene tracker. It starts from the scene the
+  // session opened on, not Boot, because begin() already applied the title
+  // policy: the first real transition the director sees is the one away from
+  // the title screen (task T062).
+  Scene musicScene = game.scene();
 
   // The persisted record this session owns (task T052, specification
   // sections 4.7 and 9). It seeds from the load that opened the session -
@@ -1255,10 +1410,34 @@ int runMainLoop(Renderer& renderer, SDL_Renderer* sdlRenderer,
       // opening press never toggles one (task T040).
       const Scene sceneBeforeTick = game.scene();
       game.tick(tickInput);
-      if (sceneBeforeTick == Scene::Options && tickInput.menu.selectPressed) {
+      // The MUSIC row's select opened the music settings page inside the
+      // core, so a select that left the options screen is navigation, not a
+      // value change; only a select on the screen that still shows reaches
+      // the value rows (tasks T040 and T062).
+      if (sceneBeforeTick == Scene::Options && tickInput.menu.selectPressed &&
+          game.scene() == Scene::Options) {
         applyOptionsSelect(renderer, audio, settings, prefs,
                            game.optionsSelection(), inputLog);
       }
+      // The music settings page's own rows: the opening press that entered
+      // the page belonged to the options screen, so the first select here is
+      // the first row action (MUSIC.md player controls).
+      if (sceneBeforeTick == Scene::MusicOptions &&
+          tickInput.menu.selectPressed) {
+        applyMusicSelect(renderer, audio, musicDirector, settings, prefs,
+                         game.musicSelection(), inputLog);
+      }
+      // The music policy of MUSIC.md's playback table: scene transitions
+      // reach the director once, the level feed rides every tick, and the
+      // per-frame update retries a queued command and lines up the next
+      // track before the arrangement loops. All of it stays outside the
+      // rules core, so the gameplay hash and randomizer never see it.
+      if (game.scene() != musicScene) {
+        musicDirector.onScene(musicScene, game.scene());
+        musicScene = game.scene();
+      }
+      musicDirector.setLevel(game.level());
+      musicDirector.update();
       // The record persists the moment the running score passes the best
       // the store holds (task T052): every save runs through the atomic
       // temporary-file, flush, and rename write, so a quit to the title, a
@@ -1362,6 +1541,9 @@ int runMainLoop(Renderer& renderer, SDL_Renderer* sdlRenderer,
       running = false;
     }
 
+    // The music settings page shows the playing track's title, fed from the
+    // director every frame; it stays empty while music is silent (MUSIC.md).
+    renderer.setMusicTrackTitle(musicDirector.currentTrackTitle());
     renderFrame(renderer, game, sdlRenderer);
     ++framesRendered;
 
@@ -1388,6 +1570,24 @@ int runMainLoop(Renderer& renderer, SDL_Renderer* sdlRenderer,
        static_cast<unsigned long long>(framesRendered),
        static_cast<unsigned long long>(ticksSimulated));
   logSoundCounts(audio, inputLog);
+  // The music half of the session evidence: what played, how far, and the
+  // voice ceiling the engine really reached (MUSIC.md, task T062).
+  const MusicSnapshot music = audio.musicEngine().snapshot();
+  logf("Music: mode %s, track %s, bar %u of %u, loops %u, max voices %u\n",
+       musicModeName(musicDirector.mode()),
+       music.transportRunning
+           ? stackfall::musicTrackId(music.track)
+           : "(silent)",
+       music.bar, music.totalBars, music.loopCount,
+       audio.musicEngine().voiceHighWater());
+  if (inputLog != nullptr) {
+    std::fprintf(inputLog,
+                 "music end mode=%s running=%d track=%d bar=%u loops=%u "
+                 "voices=%u\n",
+                 musicModeName(musicDirector.mode()),
+                 music.transportRunning ? 1 : 0, music.track, music.bar,
+                 music.loopCount, audio.musicEngine().voiceHighWater());
+  }
   return EXIT_SUCCESS;
 }
 
@@ -1567,13 +1767,21 @@ int main(int argc, char** argv) {
     const stackfall::SettingsResult preferences = settings.load();
     SettingsValues prefs = preferences;
     applyPreferences(prefs, audio, sceneRenderer);
+    // The orientation is read once, here, and holds for the whole session: the
+    // layout and both input tables turn together, and the ORIENTATION row the
+    // options screen offers changes the stored value alone (task T055).
+    applyOrientation(prefs.orientation, sceneRenderer, input);
     if (settings.hasDirectory()) {
       logf("Settings: sound %s, ghost preview %s, grid %s, hold %s, next "
-           "previews %d, grayscale %s (%s) from %s\n",
+           "previews %d, grayscale %s, orientation %s, music %s, volumes "
+           "%d/%d (%s) from %s\n",
            prefs.soundOn ? "on" : "off", prefs.ghostOn ? "on" : "off",
            prefs.gridOn ? "on" : "off", prefs.holdOn ? "on" : "off",
            prefs.nextPreviews, prefs.grayscaleOn ? "on" : "off",
-           saveStatusName(preferences.status), settings.filePath().c_str());
+           prefs.orientation == Orientation::Portrait ? "portrait" : "landscape",
+           musicModeName(prefs.musicMode), prefs.musicVolume,
+           prefs.effectsVolume, saveStatusName(preferences.status),
+           settings.filePath().c_str());
     } else {
       logf("No save directory: the player settings stay in memory this "
            "session\n");
@@ -1586,9 +1794,31 @@ int main(int argc, char** argv) {
       std::fprintf(inputLog, "next start=%d\n", prefs.nextPreviews);
       std::fprintf(inputLog, "grayscale start=%s\n",
                    prefs.grayscaleOn ? "on" : "off");
+      std::fprintf(inputLog, "orientation start=%s\n",
+                   prefs.orientation == Orientation::Portrait ? "portrait"
+                                                              : "landscape");
     }
     audio.open();
     logf("Sound toggle: M key or controller Select\n");
+
+    // The music session of task T062 (MUSIC.md, playback behavior): the
+    // director owns the policy table over the driver's own engine, starts
+    // from the stored mode - Off stays silent, everything else opens the
+    // title theme at low intensity - and takes its shuffle stream from the
+    // session seed, so a scripted --seed session replays the same track
+    // order while the gameplay randomizer never sees one of its draws. The
+    // volume mirrors reach the driver and the renderer in the same call, so
+    // the settings rows and the bus gains agree from the first frame.
+    MusicDirector musicDirector(audio.musicEngine());
+    musicDirector.setMode(prefs.musicMode);
+    musicDirector.begin(seed);
+    applyMusicPreferences(prefs, audio, sceneRenderer, musicDirector);
+    if (inputLog != nullptr) {
+      std::fprintf(inputLog, "music start=%s\n",
+                   musicModeName(prefs.musicMode));
+      std::fprintf(inputLog, "musicvolume start=%d\n", prefs.musicVolume);
+      std::fprintf(inputLog, "effectsvolume start=%d\n", prefs.effectsVolume);
+    }
 
     // The script binds the round and the cue detector itself, the two
     // application objects its `restart` and `fixture` commands act on; no
@@ -1610,8 +1840,8 @@ int main(int argc, char** argv) {
 
     exitCode = runMainLoop(sceneRenderer, renderer.get(), controllers, input,
                            game, highScores, settings, prefs, audio,
-                           cueDetector, developer, options.tickPerFrame,
-                           options.frameLimit);
+                           musicDirector, cueDetector, developer,
+                           options.tickPerFrame, options.frameLimit);
   }
 
   // EXIT state (specification section 4.7): the block above released every

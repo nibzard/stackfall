@@ -207,6 +207,95 @@ void check_keyboard_table() {
   pump(input);
 }
 
+// The portrait keyboard table of task T055, as notes/design-review.md pins
+// it: every arrow takes the action whose on-screen direction in the rotated
+// frame matches where the turned device points it, Z and X carry the reversed
+// cluster pair, C or left Shift hard drops, Space holds, and Enter and Esc
+// keep their own select and back roles.
+void check_portrait_keyboard_table() {
+  SdlInput input;
+  SC_CHECK(input.orientation() == stackfall::Orientation::Landscape);
+  input.setOrientation(stackfall::Orientation::Portrait);
+  SC_CHECK(input.orientation() == stackfall::Orientation::Portrait);
+
+  struct KeyCase {
+    SDL_Scancode scancode;
+    GameAction held;
+    GameAction edge;
+    GameAction menuEdge;
+  };
+  const KeyCase cases[] = {
+      {SDL_SCANCODE_LEFT, kNoGameAction, kNoGameAction, GameAction::MenuUp},
+      {SDL_SCANCODE_RIGHT, GameAction::Down, kNoGameAction,
+       GameAction::MenuDown},
+      {SDL_SCANCODE_DOWN, GameAction::Left, kNoGameAction, kNoGameAction},
+      {SDL_SCANCODE_UP, GameAction::Right, kNoGameAction, kNoGameAction},
+      {SDL_SCANCODE_Z, kNoGameAction, GameAction::RotateCW, kNoGameAction},
+      {SDL_SCANCODE_X, kNoGameAction, GameAction::RotateCCW, kNoGameAction},
+      {SDL_SCANCODE_C, kNoGameAction, GameAction::HardDrop, kNoGameAction},
+      {SDL_SCANCODE_LSHIFT, kNoGameAction, GameAction::HardDrop,
+       kNoGameAction},
+      {SDL_SCANCODE_SPACE, kNoGameAction, GameAction::Hold, kNoGameAction},
+      {SDL_SCANCODE_RETURN, kNoGameAction, GameAction::Pause,
+       GameAction::MenuSelect},
+      {SDL_SCANCODE_ESCAPE, kNoGameAction, GameAction::Pause,
+       GameAction::MenuBack},
+  };
+
+  for (const KeyCase& entry : cases) {
+    pushKey(entry.scancode, true);
+    pump(input);
+    if (entry.held != kNoGameAction) {
+      SC_CHECK(input.adapter().isHeld(entry.held));
+    }
+    if (entry.edge != kNoGameAction) {
+      SC_CHECK(input.adapter().edgePending(entry.edge));
+    }
+
+    const TickInput tick = input.takeTickInput();
+    SC_CHECK(tick.game.leftHeld == (entry.held == GameAction::Left));
+    SC_CHECK(tick.game.rightHeld == (entry.held == GameAction::Right));
+    SC_CHECK(tick.game.downHeld == (entry.held == GameAction::Down));
+    SC_CHECK(tick.game.rotateCWPressed ==
+             (entry.edge == GameAction::RotateCW));
+    SC_CHECK(tick.game.rotateCCWPressed ==
+             (entry.edge == GameAction::RotateCCW));
+    SC_CHECK(tick.game.hardDropPressed ==
+             (entry.edge == GameAction::HardDrop));
+    SC_CHECK(tick.game.holdPressed == (entry.edge == GameAction::Hold));
+    SC_CHECK(tick.game.pausePressed == (entry.edge == GameAction::Pause));
+    SC_CHECK(tick.menu.upPressed == (entry.menuEdge == GameAction::MenuUp));
+    SC_CHECK(tick.menu.downPressed ==
+             (entry.menuEdge == GameAction::MenuDown));
+    SC_CHECK(tick.menu.selectPressed ==
+             (entry.menuEdge == GameAction::MenuSelect));
+    SC_CHECK(tick.menu.backPressed ==
+             (entry.menuEdge == GameAction::MenuBack));
+
+    // The next tick carries no edge again; a held level stays a level.
+    const TickInput next = input.takeTickInput();
+    SC_CHECK(noGameplayEdge(next));
+    SC_CHECK(next.game.leftHeld == tick.game.leftHeld);
+    SC_CHECK(next.game.downHeld == tick.game.downHeld);
+
+    pushKey(entry.scancode, false);
+    pump(input);
+    if (entry.held != kNoGameAction) {
+      SC_CHECK(!input.adapter().isHeld(entry.held));
+    }
+  }
+
+  // Switching back to landscape restores the section 5 table.
+  input.setOrientation(stackfall::Orientation::Landscape);
+  pushKey(SDL_SCANCODE_UP, true);
+  pump(input);
+  const TickInput landscapeTick = input.takeTickInput();
+  SC_CHECK(!landscapeTick.game.rightHeld);
+  SC_CHECK(landscapeTick.game.rotateCWPressed);
+  pushKey(SDL_SCANCODE_UP, false);
+  pump(input);
+}
+
 // ---------------------------------------------------------------------------
 // SDL_GAMECONTROLLERCONFIG loading and the controller half of the table.
 // ---------------------------------------------------------------------------
@@ -324,6 +413,139 @@ void check_controller_table() {
       SC_CHECK(!input.adapter().isHeld(entry.held));
     }
   }
+
+  SDL_GameControllerClose(controller);
+  SDL_JoystickDetachVirtual(device);
+}
+
+// The portrait controller table of task T055, as notes/design-review.md pins
+// it: the D-pad's up, down, left, and right become move right, move left,
+// menu up, and soft drop plus menu down, the cluster reverses both pairs so B
+// rotates clockwise and confirms while A rotates the other way and goes back,
+// Y hard drops, X holds, and the left shoulder and Start keep their roles.
+void check_portrait_controller_table() {
+  const int device = stackfall::attachVirtualController();
+  SC_CHECK(device >= 0);
+  if (device < 0) {
+    return;
+  }
+  SDL_GameController* controller = SDL_GameControllerOpen(device);
+  SC_CHECK(controller != nullptr);
+  if (controller == nullptr) {
+    return;
+  }
+  SDL_Joystick* joystick = SDL_GameControllerGetJoystick(controller);
+  SdlInput input;
+  input.setOrientation(stackfall::Orientation::Portrait);
+
+  struct PadCase {
+    int button;
+    GameAction held;
+    GameAction edge;
+    GameAction menuEdge;
+  };
+  const PadCase cases[] = {
+      {stackfall::kVirtualButtonDpadLeft, kNoGameAction, kNoGameAction,
+       GameAction::MenuUp},
+      {stackfall::kVirtualButtonDpadRight, GameAction::Down, kNoGameAction,
+       GameAction::MenuDown},
+      {stackfall::kVirtualButtonDpadDown, GameAction::Left, kNoGameAction,
+       kNoGameAction},
+      {stackfall::kVirtualButtonDpadUp, GameAction::Right, kNoGameAction,
+       kNoGameAction},
+      {stackfall::kVirtualButtonB, kNoGameAction, GameAction::RotateCW,
+       GameAction::MenuSelect},
+      {stackfall::kVirtualButtonA, kNoGameAction, GameAction::RotateCCW,
+       GameAction::MenuBack},
+      {stackfall::kVirtualButtonY, kNoGameAction, GameAction::HardDrop,
+       kNoGameAction},
+      {stackfall::kVirtualButtonX, kNoGameAction, GameAction::Hold,
+       kNoGameAction},
+      {stackfall::kVirtualButtonLeftShoulder, kNoGameAction, GameAction::Hold,
+       kNoGameAction},
+      {stackfall::kVirtualButtonStart, kNoGameAction, GameAction::Pause,
+       kNoGameAction},
+  };
+
+  for (const PadCase& entry : cases) {
+    padButton(joystick, entry.button, true);
+    pump(input);
+    if (entry.held != kNoGameAction) {
+      SC_CHECK(input.adapter().isHeld(entry.held));
+    }
+
+    const TickInput tick = input.takeTickInput();
+    SC_CHECK(tick.game.leftHeld == (entry.held == GameAction::Left));
+    SC_CHECK(tick.game.rightHeld == (entry.held == GameAction::Right));
+    SC_CHECK(tick.game.downHeld == (entry.held == GameAction::Down));
+    SC_CHECK(tick.game.rotateCWPressed ==
+             (entry.edge == GameAction::RotateCW));
+    SC_CHECK(tick.game.rotateCCWPressed ==
+             (entry.edge == GameAction::RotateCCW));
+    SC_CHECK(tick.game.hardDropPressed ==
+             (entry.edge == GameAction::HardDrop));
+    SC_CHECK(tick.game.holdPressed == (entry.edge == GameAction::Hold));
+    SC_CHECK(tick.game.pausePressed == (entry.edge == GameAction::Pause));
+    SC_CHECK(tick.menu.upPressed == (entry.menuEdge == GameAction::MenuUp));
+    SC_CHECK(tick.menu.downPressed ==
+             (entry.menuEdge == GameAction::MenuDown));
+    SC_CHECK(tick.menu.selectPressed ==
+             (entry.menuEdge == GameAction::MenuSelect));
+    SC_CHECK(tick.menu.backPressed ==
+             (entry.menuEdge == GameAction::MenuBack));
+
+    const TickInput next = input.takeTickInput();
+    SC_CHECK(noGameplayEdge(next));
+    SC_CHECK(!next.menu.upPressed && !next.menu.downPressed);
+    SC_CHECK(!next.menu.selectPressed && !next.menu.backPressed);
+
+    padButton(joystick, entry.button, false);
+    pump(input);
+    if (entry.held != kNoGameAction) {
+      SC_CHECK(!input.adapter().isHeld(entry.held));
+    }
+  }
+
+  SDL_GameControllerClose(controller);
+  SDL_JoystickDetachVirtual(device);
+}
+
+// The portrait table drives the real game in the rotated frame: a physical
+// D-pad up moves the piece toward the player's right, the on-screen direction
+// that press points to in the turned grip, and B rotates clockwise where the
+// landscape table would have used A.
+void check_portrait_controller_drives_game() {
+  const int device = stackfall::attachVirtualController();
+  SC_CHECK(device >= 0);
+  if (device < 0) {
+    return;
+  }
+  SDL_GameController* controller = SDL_GameControllerOpen(device);
+  SC_CHECK(controller != nullptr);
+  if (controller == nullptr) {
+    return;
+  }
+  SDL_Joystick* joystick = SDL_GameControllerGetJoystick(controller);
+  SdlInput input;
+  input.setOrientation(stackfall::Orientation::Portrait);
+  Game game;
+  game.start(35);
+  const int startX = game.activePiece().x;
+  const auto startRotation = game.activePiece().rotation;
+
+  // D-pad up is move right in the rotated frame: one press-tick move.
+  padButton(joystick, stackfall::kVirtualButtonDpadUp, true);
+  runBatch(input, game, 3);
+  SC_CHECK(game.activePiece().x == startX + 1);
+  padButton(joystick, stackfall::kVirtualButtonDpadUp, false);
+  pump(input);
+
+  // B rotates clockwise: one step, not the counter-clockwise of landscape.
+  padButton(joystick, stackfall::kVirtualButtonB, true);
+  runBatch(input, game, 1);
+  SC_CHECK(rotationSteps(startRotation, game.activePiece().rotation) == 1);
+  padButton(joystick, stackfall::kVirtualButtonB, false);
+  pump(input);
 
   SDL_GameControllerClose(controller);
   SDL_JoystickDetachVirtual(device);
@@ -576,7 +798,10 @@ int main() {
 
   check_environment_mapping_load();
   check_keyboard_table();
+  check_portrait_keyboard_table();
   check_controller_table();
+  check_portrait_controller_table();
+  check_portrait_controller_drives_game();
   check_keyboard_drives_game();
   check_controller_drives_game();
   check_pause_consumes_pending_input();

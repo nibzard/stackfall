@@ -623,21 +623,33 @@ void testFailedWrites() {
 }
 
 // ---------------------------------------------------------------------------
-// The settings file of the player preferences (tasks T013, T039, and T044,
-// specification section 6.3). A damaged settings file may cost the
+// The settings file of the player preferences (tasks T013, T039, T044, and
+// T062, specification section 6.3). A damaged settings file may cost the
 // preferences, never the game: every outcome except a valid value leaves each
 // preference at its default (sound, ghost, grid, and hold on, five previews,
-// grayscale off).
+// grayscale off, landscape, the Auto music pool, music volume 6, effects
+// volume 8).
 // ---------------------------------------------------------------------------
 
-// True when `values` holds exactly the five expected preference states.
+// True when `values` holds exactly the expected preference states. The
+// orientation defaults to landscape and the music settings to the MUSIC.md
+// defaults, the recovery values, so the callers that never set them keep
+// reading as before (tasks T055 and T062).
 bool valuesAre(const stackfall::SettingsValues& values, bool soundOn,
                bool ghostOn, bool gridOn, bool holdOn, int nextPreviews,
-               bool grayscaleOn) {
+               bool grayscaleOn,
+               stackfall::Orientation orientation =
+                   stackfall::Orientation::Landscape,
+               stackfall::MusicMode musicMode = stackfall::MusicMode::Auto,
+               int musicVolume = stackfall::kSettingsMusicVolumeDefault,
+               int effectsVolume = stackfall::kSettingsEffectsVolumeDefault) {
   return values.soundOn == soundOn && values.ghostOn == ghostOn &&
          values.gridOn == gridOn && values.holdOn == holdOn &&
          values.nextPreviews == nextPreviews &&
-         values.grayscaleOn == grayscaleOn;
+         values.grayscaleOn == grayscaleOn &&
+         values.orientation == orientation &&
+         values.musicMode == musicMode && values.musicVolume == musicVolume &&
+         values.effectsVolume == effectsVolume;
 }
 
 // ---------------------------------------------------------------------------
@@ -781,10 +793,12 @@ void testSettingsFormatAndParse() {
 
   // The canonical rendering of specification sections 6.3 and 9: one line per
   // preference, grid, hold, next, and grayscale after the sound and ghost of
-  // the earlier eras (task T044).
+  // the earlier eras (task T044), orientation next (task T055), and the music
+  // mode and both volume lines last (task T062, MUSIC.md persistence).
   SC_CHECK(formatSettingsFile(SettingsValues{}) ==
            "version=1\nsound=on\nghost=on\ngrid=on\nhold=on\nnext=5\n"
-           "grayscale=off\n");
+           "grayscale=off\norientation=landscape\nmusic=auto\nmusicvolume=6\n"
+           "effectsvolume=8\n");
   {
     SettingsValues all;
     all.soundOn = false;
@@ -793,27 +807,86 @@ void testSettingsFormatAndParse() {
     all.holdOn = false;
     all.nextPreviews = 1;
     all.grayscaleOn = true;
+    all.orientation = stackfall::Orientation::Portrait;
+    all.musicMode = stackfall::MusicMode::Focus;
+    all.musicVolume = 0;
+    all.effectsVolume = 10;
     SC_CHECK(formatSettingsFile(all) ==
              "version=1\nsound=off\nghost=off\ngrid=off\nhold=off\nnext=1\n"
-             "grayscale=on\n");
+             "grayscale=on\norientation=portrait\nmusic=focus\nmusicvolume=0\n"
+             "effectsvolume=10\n");
   }
 
   // Every canonical combination parses with the values it carries and
-  // renders back to exactly the same bytes: the five toggles (sound, ghost,
-  // grid, hold, grayscale) cross every next count 1..5.
-  for (int booleans = 0; booleans < 32; ++booleans) {
+  // renders back to exactly the same bytes: the six toggles (sound, ghost,
+  // grid, hold, grayscale, orientation) cross every next count 1..5, and the
+  // music settings cross every mode and both volume steps.
+  for (int booleans = 0; booleans < 64; ++booleans) {
     for (int next = kSettingsNextMin; next <= kSettingsNextMax; ++next) {
-      const SettingsValues written{(booleans & 1) != 0, (booleans & 2) != 0,
-                                   (booleans & 4) != 0, (booleans & 8) != 0,
-                                   next, (booleans & 16) != 0};
+      const SettingsValues written{
+          (booleans & 1) != 0,  (booleans & 2) != 0, (booleans & 4) != 0,
+          (booleans & 8) != 0,  next,                (booleans & 16) != 0,
+          (booleans & 32) != 0 ? stackfall::Orientation::Portrait
+                               : stackfall::Orientation::Landscape};
       const std::string bytes = formatSettingsFile(written);
-      SettingsValues read{false, true, false, true, 3, true};  // sentinels
+      SettingsValues read{false, true, false, true, 3, true,
+                          stackfall::Orientation::Portrait};  // sentinels
       SC_CHECK(parseSettingsFile(bytes, &read));
       SC_CHECK(valuesAre(read, written.soundOn, written.ghostOn,
                          written.gridOn, written.holdOn, written.nextPreviews,
-                         written.grayscaleOn));
+                         written.grayscaleOn, written.orientation));
       SC_CHECK(formatSettingsFile(read) == bytes);
     }
+  }
+  for (int mode = 0; mode <= static_cast<int>(stackfall::MusicMode::Off);
+       ++mode) {
+    for (int music = stackfall::kSettingsVolumeMin;
+         music <= stackfall::kSettingsVolumeMax; ++music) {
+      for (int effects = stackfall::kSettingsVolumeMin;
+           effects <= stackfall::kSettingsVolumeMax; ++effects) {
+        SettingsValues written;
+        written.musicMode = static_cast<stackfall::MusicMode>(mode);
+        written.musicVolume = music;
+        written.effectsVolume = effects;
+        const std::string bytes = formatSettingsFile(written);
+        SettingsValues read;  // sentinels
+        read.musicMode = stackfall::MusicMode::Groove;
+        read.musicVolume = 1;
+        read.effectsVolume = 2;
+        SC_CHECK(parseSettingsFile(bytes, &read));
+        SC_CHECK(valuesAre(read, true, true, true, true, 5, false,
+                           stackfall::Orientation::Landscape, written.musicMode,
+                           music, effects));
+        SC_CHECK(formatSettingsFile(read) == bytes);
+      }
+    }
+  }
+
+  // The legacy six-line file of the grayscale era (task T044) keeps every
+  // saved value and receives the landscape default (task T055).
+  {
+    SettingsValues read{false, false, false, false, 1, true,
+                        stackfall::Orientation::Portrait};  // sentinels
+    SC_CHECK(parseSettingsFile("version=1\nsound=off\nghost=on\ngrid=on\n"
+                               "hold=on\nnext=3\ngrayscale=on\n",
+                               &read));
+    SC_CHECK(valuesAre(read, false, true, true, true, 3, true));
+  }
+
+  // The legacy eight-line file of the orientation era (task T055, the form
+  // before T062) keeps every saved value and receives the MUSIC.md defaults,
+  // which is the upgrade every player with a saved settings file makes.
+  {
+    SettingsValues read;  // sentinels
+    read.musicMode = stackfall::MusicMode::Groove;
+    read.musicVolume = 1;
+    read.effectsVolume = 2;
+    SC_CHECK(parseSettingsFile("version=1\nsound=off\nghost=on\ngrid=on\n"
+                               "hold=on\nnext=3\ngrayscale=on\n"
+                               "orientation=portrait\n",
+                               &read));
+    SC_CHECK(valuesAre(read, false, true, true, true, 3, true,
+                       stackfall::Orientation::Portrait));
   }
 
   // The four legacy three-line files of the sound-and-ghost era (T039) keep
@@ -951,6 +1024,75 @@ void testSettingsFormatAndParse() {
       "grayscale=off\r\n",
       "version=2\nsound=on\nghost=on\ngrid=on\nhold=on\nnext=5\n"
       "grayscale=off\n",
+      // The orientation line of task T055: the same damage shapes, plus the
+      // two values the line accepts and nothing else.
+      "version=1\nsound=on\nghost=on\ngrid=on\nhold=on\nnext=5\n"
+      "grayscale=off\norientation=",
+      "version=1\nsound=on\nghost=on\ngrid=on\nhold=on\nnext=5\n"
+      "grayscale=off\norientation=\n",
+      "version=1\nsound=on\nghost=on\ngrid=on\nhold=on\nnext=5\n"
+      "grayscale=off\norientation=maybe\n",
+      "version=1\nsound=on\nghost=on\ngrid=on\nhold=on\nnext=5\n"
+      "grayscale=off\norientation=Portrait\n",
+      "version=1\nsound=on\nghost=on\ngrid=on\nhold=on\nnext=5\n"
+      "grayscale=off\norientation=up\n",
+      "version=1\nsound=on\nghost=on\ngrid=on\nhold=on\nnext=5\n"
+      "grayscale=off\norientation=landscape\norientation=portrait\n",
+      "version=1\norientation=portrait\nsound=on\nghost=on\ngrid=on\n"
+      "hold=on\nnext=5\ngrayscale=off\n",
+      "version=1\nsound=on\nghost=on\ngrid=on\nhold=on\nnext=5\n"
+      "grayscale=off\norientation=landscape\nextra=1\n",
+      "version=2\nsound=on\nghost=on\ngrid=on\nhold=on\nnext=5\n"
+      "grayscale=off\norientation=portrait\n",
+      // The music lines of task T062: the same damage shapes, plus mode
+      // names the enum never had and volumes outside 0..10. A file that
+      // stops between the new lines never shipped, so it is damaged too.
+      "version=1\nsound=on\nghost=on\ngrid=on\nhold=on\nnext=5\n"
+      "grayscale=off\norientation=landscape\nmusic=",
+      "version=1\nsound=on\nghost=on\ngrid=on\nhold=on\nnext=5\n"
+      "grayscale=off\norientation=landscape\nmusic=\n",
+      "version=1\nsound=on\nghost=on\ngrid=on\nhold=on\nnext=5\n"
+      "grayscale=off\norientation=landscape\nmusic=maybe\n",
+      "version=1\nsound=on\nghost=on\ngrid=on\nhold=on\nnext=5\n"
+      "grayscale=off\norientation=landscape\nmusic=Auto\n",
+      "version=1\nsound=on\nghost=on\ngrid=on\nhold=on\nnext=5\n"
+      "grayscale=off\norientation=landscape\nmusic=auto \n",
+      "version=1\nsound=on\nghost=on\ngrid=on\nhold=on\nnext=5\n"
+      "grayscale=off\norientation=landscape\nmusic=jazz\n",
+      "version=1\nsound=on\nghost=on\ngrid=on\nhold=on\nnext=5\n"
+      "grayscale=off\norientation=landscape\nmusic=auto\nmusicvolume=11\n",
+      "version=1\nsound=on\nghost=on\ngrid=on\nhold=on\nnext=5\n"
+      "grayscale=off\norientation=landscape\nmusic=auto\nmusicvolume=-1\n",
+      "version=1\nsound=on\nghost=on\ngrid=on\nhold=on\nnext=5\n"
+      "grayscale=off\norientation=landscape\nmusic=auto\nmusicvolume=06\n",
+      "version=1\nsound=on\nghost=on\ngrid=on\nhold=on\nnext=5\n"
+      "grayscale=off\norientation=landscape\nmusic=auto\nmusicvolume=1x\n",
+      "version=1\nsound=on\nghost=on\ngrid=on\nhold=on\nnext=5\n"
+      "grayscale=off\norientation=landscape\nmusic=auto\nmusicvolume=\n",
+      "version=1\nsound=on\nghost=on\ngrid=on\nhold=on\nnext=5\n"
+      "grayscale=off\norientation=landscape\nmusic=auto\nmusicvolume=6\n"
+      "effectsvolume=11\n",
+      "version=1\nsound=on\nghost=on\ngrid=on\nhold=on\nnext=5\n"
+      "grayscale=off\norientation=landscape\nmusic=auto\nmusicvolume=6\n"
+      "effectsvolume=\n",
+      "version=1\nsound=on\nghost=on\ngrid=on\nhold=on\nnext=5\n"
+      "grayscale=off\norientation=landscape\nmusicvolume=6\n",
+      "version=1\nsound=on\nghost=on\ngrid=on\nhold=on\nnext=5\n"
+      "grayscale=off\norientation=landscape\nmusic=auto\n",
+      "version=1\nsound=on\nghost=on\ngrid=on\nhold=on\nnext=5\n"
+      "grayscale=off\norientation=landscape\nmusic=auto\nmusicvolume=6\n",
+      "version=1\nsound=on\nghost=on\ngrid=on\nhold=on\nnext=5\n"
+      "grayscale=off\norientation=landscape\nmusic=auto\nmusicvolume=6\n"
+      "effectsvolume=8\nmusic=off\n",
+      "version=1\nsound=on\nghost=on\ngrid=on\nhold=on\nnext=5\n"
+      "grayscale=off\norientation=landscape\nmusicvolume=6\nmusic=auto\n"
+      "musicvolume=6\neffectsvolume=8\n",
+      "version=2\nsound=on\nghost=on\ngrid=on\nhold=on\nnext=5\n"
+      "grayscale=off\norientation=landscape\nmusic=off\nmusicvolume=1\n"
+      "effectsvolume=2\n",
+      "version=1\r\nsound=on\r\nghost=on\r\ngrid=on\r\nhold=on\r\nnext=5\r\n"
+      "grayscale=off\r\norientation=landscape\r\nmusic=auto\r\n"
+      "musicvolume=6\r\neffectsvolume=8\r\n",
   };
   {
     SettingsValues read;  // any state; a rejection must not touch it
@@ -1021,7 +1163,8 @@ void testSettingsStores() {
     SC_CHECK(store.save(values) == SaveStatus::Ok);
     SC_CHECK(readRawFile(store.filePath()) ==
              "version=1\nsound=off\nghost=on\ngrid=on\nhold=on\nnext=5\n"
-             "grayscale=off\n");
+             "grayscale=off\norientation=landscape\nmusic=auto\n"
+             "musicvolume=6\neffectsvolume=8\n");
     SettingsResult result = SettingsStore(dir.path()).load();
     SC_CHECK(result.ok());
     SC_CHECK(valuesAre(result, false, true, true, true, 5, false));
@@ -1041,7 +1184,8 @@ void testSettingsStores() {
     SC_CHECK(valuesAre(result, false, false, false, false, 2, true));
     SC_CHECK(readRawFile(store.filePath()) ==
              "version=1\nsound=off\nghost=off\ngrid=off\nhold=off\nnext=2\n"
-             "grayscale=on\n");
+             "grayscale=on\norientation=landscape\nmusic=auto\n"
+             "musicvolume=6\neffectsvolume=8\n");
 
     values = SettingsValues{};
     values.nextPreviews = 1;
@@ -1066,7 +1210,8 @@ void testSettingsStores() {
     SC_CHECK(store.save(SettingsValues{}) == SaveStatus::Ok);
     SC_CHECK(readRawFile(store.filePath()) ==
              "version=1\nsound=on\nghost=on\ngrid=on\nhold=on\nnext=5\n"
-             "grayscale=off\n");
+             "grayscale=off\norientation=landscape\nmusic=auto\n"
+             "musicvolume=6\neffectsvolume=8\n");
     result = SettingsStore(dir.path()).load();
     SC_CHECK(result.ok());
     SC_CHECK(valuesAre(result, true, true, true, true, 5, false));
@@ -1091,7 +1236,8 @@ void testSettingsStores() {
     SC_CHECK(store.save(kept) == SaveStatus::Ok);
     SC_CHECK(readRawFile(store.filePath()) ==
              "version=1\nsound=off\nghost=on\ngrid=on\nhold=on\nnext=5\n"
-             "grayscale=on\n");
+             "grayscale=on\norientation=landscape\nmusic=auto\n"
+             "musicvolume=6\neffectsvolume=8\n");
     result = SettingsStore(dir.path()).load();
     SC_CHECK(result.ok());
     SC_CHECK(valuesAre(result, false, true, true, true, 5, true));

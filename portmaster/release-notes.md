@@ -14,11 +14,19 @@ First release. The binary reports the version `1.0.0` in its startup log.
 - Line clears score by count; the level rises every ten cleared lines up to
   level 20 and multiplies the clear score. Soft and hard drops score by the
   distance traveled.
-- Six settings on the Options screen: sound, ghost outline, board grid, hold
-  preview, Next preview count, and grayscale play scene. All six persist.
+- Eight settings on the Options screen: sound, ghost outline, board grid,
+  hold preview, Next preview count, grayscale play scene, orientation, and
+  music. All ten persisted values survive between sessions.
+- Portrait play: set Options to Portrait and the next launch turns the whole
+  game into a tall 544 x 960 frame with 40-pixel board squares and controls
+  that keep the action they point at.
+- A generated twelve-track soundtrack in three collections, composed and
+  synthesized at run time. The Music settings page selects the collection
+  pool, both volumes, and the next track; each track layers more voices as
+  the level rises. The sound switch stays the master mute for both buses.
 - High score persists, and a round you leave keeps every point it scored.
 - Procedural graphics drawn from rectangles and lines, a drawn 5 x 7 font,
-  and synthesized sound. No asset files.
+  and synthesized sound and music. No asset files.
 - Offline only: no network, no telemetry.
 
 ### Port

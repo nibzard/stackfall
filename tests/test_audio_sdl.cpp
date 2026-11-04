@@ -31,6 +31,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <chrono>
 #include <filesystem>
 #include <string>
 #include <vector>
@@ -44,6 +45,7 @@
 #include <SDL.h>
 
 #include "stackfall/audio_sdl.hpp"
+#include "stackfall/music_director.hpp"
 #include "stackfall/game.hpp"
 #include "stackfall/input.hpp"
 #include "stackfall/pieces.hpp"
@@ -793,6 +795,191 @@ void testMixerSaturatesAndFallsSilent() {
   audio.close();
 }
 
+// The music bus beside the cues (MUSIC.md, mixing and integration checks).
+// Every check drives the driver's own engine through mixFrames with the
+// device paused, so the mixer body - the callback - is the only thing under
+// test and no wall-clock timing can leak in.
+void testMusicBusOnTheDevice() {
+  AudioDriver audio;
+  if (!openDummyDevice(audio)) {
+    std::printf(
+        "audio: the SDL dummy driver is unavailable on this host; the music "
+        "device checks are reported as unavailable\n");
+    return;
+  }
+  audio.setPaused(true);
+  const int channels = audio.channels();
+  stackfall::MusicEngine& engine = audio.musicEngine();
+
+  // The engine plays through the device mixer: the title theme at low
+  // intensity, the exact first request the session makes.
+  stackfall::MusicCommand play;
+  play.type = stackfall::MusicCommandType::Play;
+  play.track = stackfall::kMusicTitleTrack;
+  play.intensity = static_cast<std::uint8_t>(stackfall::MusicIntensity::Low);
+  play.fadeMs = 100;
+  SC_CHECK(engine.tryPushCommand(play));
+
+  const std::size_t frames = 512;
+  std::vector<std::int16_t> buffer(frames * static_cast<std::size_t>(channels));
+  long long peak = 0;
+  for (int block = 0; block < 40; ++block) {  // about half a second
+    audio.mixFrames(buffer.data(), frames);
+    for (const std::int16_t value : buffer) {
+      peak = std::max<long long>(peak, std::abs(static_cast<int>(value)));
+    }
+  }
+  SC_CHECK(peak > 2000);  // the title theme is sounding through the device
+  const std::uint32_t bar = engine.snapshot().bar;
+  SC_CHECK(bar == 0);     // half a second is inside the first bar
+
+  // Independent volumes: music at step 0 leaves the cue bus untouched.
+  audio.setMusicVolume(0);
+  for (const SoundCue cue : kAllSoundCues) {
+    audio.play(cue);
+  }
+  peak = 0;
+  for (int block = 0; block < 8; ++block) {
+    audio.mixFrames(buffer.data(), frames);
+    for (const std::int16_t value : buffer) {
+      peak = std::max<long long>(peak, std::abs(static_cast<int>(value)));
+    }
+  }
+  SC_CHECK(peak > 4000);  // the cues are still at full effect volume
+  audio.setMusicVolume(10);
+
+  // The loudest stress of MUSIC.md: a dense track at high intensity with
+  // every effect voice active stays inside the format, and the clamp holds
+  // both buses together.
+  stackfall::MusicCommand fast;
+  fast.type = stackfall::MusicCommandType::Play;
+  fast.track = static_cast<std::uint8_t>(stackfall::musicTrackIndex(
+      "arcade-redline"));
+  fast.intensity = static_cast<std::uint8_t>(stackfall::MusicIntensity::High);
+  fast.fadeMs = 100;
+  SC_CHECK(engine.tryPushCommand(fast));
+  std::size_t outOfRange = 0;
+  std::size_t loud = 0;
+  for (int block = 0; block < 100; ++block) {
+    if (block % 7 == 0) {
+      for (const SoundCue cue : kAllSoundCues) {
+        audio.play(cue);
+      }
+    }
+    audio.mixFrames(buffer.data(), frames);
+    for (const std::int16_t value : buffer) {
+      const long long magnitude = std::abs(static_cast<int>(value));
+      if (magnitude > 32767) {
+        ++outOfRange;
+      }
+      if (magnitude > 20000) {
+        ++loud;
+      }
+    }
+  }
+  SC_CHECK(outOfRange == 0);  // the final clamp owns the whole stream
+  SC_CHECK(loud > 0);         // and the stress really was loud
+
+  // Master mute fades both buses to silence while the music timeline keeps
+  // moving (MUSIC.md, playback behavior), and unmuting brings it back. The
+  // wait spans more than one bar of the 150 BPM stress track, whatever sample
+  // rate the dummy device picked, so the bar really does advance.
+  const std::uint32_t barBefore = engine.snapshot().bar;
+  audio.setMuted(true);
+  for (int block = 0; block < 220; ++block) {
+    audio.mixFrames(buffer.data(), frames);
+  }
+  peak = 0;
+  for (int block = 0; block < 8; ++block) {
+    audio.mixFrames(buffer.data(), frames);
+    for (const std::int16_t value : buffer) {
+      peak = std::max<long long>(peak, std::abs(static_cast<int>(value)));
+    }
+  }
+  SC_CHECK(peak == 0);
+  SC_CHECK(audio.playedCount(SoundCue::MoveLand) > 0);  // counters kept
+  SC_CHECK(engine.snapshot().bar > barBefore);          // timeline moved
+  audio.play(SoundCue::Rotate);  // muted still counts and stays silent
+  SC_CHECK(audio.mutedCount() == 1);
+  audio.setMuted(false);
+  peak = 0;
+  for (int block = 0; block < 8; ++block) {
+    audio.mixFrames(buffer.data(), frames);
+    for (const std::int16_t value : buffer) {
+      peak = std::max<long long>(peak, std::abs(static_cast<int>(value)));
+    }
+  }
+  SC_CHECK(peak > 2000);
+
+  // The director drives the same device engine: a round starts a pool track
+  // and the pause freezes it, the policy the platform layer wires.
+  stackfall::MusicDirector director(engine);
+  director.begin(20261104);
+  director.onScene(stackfall::Scene::Title, stackfall::Scene::Playing);
+  for (int block = 0; block < 200; ++block) {
+    audio.mixFrames(buffer.data(), frames);
+    director.update();
+  }
+  SC_CHECK(engine.snapshot().transportRunning);
+  SC_CHECK(engine.snapshot().track !=
+           static_cast<std::uint8_t>(stackfall::kMusicTitleTrack));
+  audio.close();
+}
+
+// The desktop half of MUSIC.md's performance evidence: the callback cost of
+// the full two-bus mix - the densest catalogue track at high intensity with
+// every cue voice active - measured at the device's own buffer size. The
+// p50 and p99 print for notes/performance.md; the assert is deliberately
+// generous (half the buffer), because a shared build machine varies while a
+// real overrun would miss it by far more.
+void testMusicCallbackCost() {
+  AudioDriver audio;
+  if (!openDummyDevice(audio)) {
+    return;  // reported inside the helper
+  }
+  audio.setPaused(true);
+  stackfall::MusicEngine& engine = audio.musicEngine();
+  stackfall::MusicCommand play;
+  play.type = stackfall::MusicCommandType::Play;
+  play.track = static_cast<std::uint8_t>(
+      stackfall::musicTrackIndex("arcade-redline"));
+  play.intensity = static_cast<std::uint8_t>(stackfall::MusicIntensity::High);
+  play.fadeMs = 100;
+  SC_CHECK(engine.tryPushCommand(play));
+
+  const std::size_t frames = static_cast<std::size_t>(audio.bufferFrames());
+  const int channels = audio.channels();
+  std::vector<std::int16_t> buffer(frames * static_cast<std::size_t>(channels));
+  // Warm every code path first, then measure steady callbacks.
+  for (int block = 0; block < 50; ++block) {
+    audio.mixFrames(buffer.data(), frames);
+  }
+  std::vector<long long> nanos;
+  for (int block = 0; block < 2000; ++block) {
+    if (block % 5 == 0) {
+      for (const SoundCue cue : kAllSoundCues) {
+        audio.play(cue);
+      }
+    }
+    const auto start = std::chrono::steady_clock::now();
+    audio.mixFrames(buffer.data(), frames);
+    const auto end = std::chrono::steady_clock::now();
+    nanos.push_back(
+        std::chrono::duration_cast<std::chrono::nanoseconds>(end - start).count());
+  }
+  std::sort(nanos.begin(), nanos.end());
+  const long long p50 = nanos[nanos.size() / 2];
+  const long long p99 = nanos[nanos.size() * 99 / 100];
+  const long long bufferNs = frames * 1000000000LL / audio.sampleRate();
+  std::printf(
+      "audio: music callback at %d Hz, %zu frames (%.2f ms buffer): "
+      "p50 %.3f ms, p99 %.3f ms (%.0f%% of the buffer)\n",
+      audio.sampleRate(), frames, bufferNs / 1e6, p50 / 1e6, p99 / 1e6,
+      100.0 * p99 / bufferNs);
+  SC_CHECK(p99 * 2 < bufferNs);  // half the buffer, generous by design
+  audio.close();
+}
+
 // The five cues as WAV evidence for the final human listening pass
 // (docs/AGENT_TESTING.md). Written only when the caller asks for a directory.
 // The cue name of MoveLand carries a slash, so the file name replaces it.
@@ -845,6 +1032,8 @@ int main(int argc, char** argv) {
   testDriverWithoutAudio();
   testDriverWithADevice();
   testMixerSaturatesAndFallsSilent();
+  testMusicBusOnTheDevice();
+  testMusicCallbackCost();
 
   if (!dumpDir.empty()) {
     dumpCueEvidence(dumpDir);

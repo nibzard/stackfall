@@ -88,7 +88,7 @@ For release 1.0 (source commit of 2026-11-04):
 - The glibc symbol versions referenced run from `GLIBC_2.17` to
   `GLIBC_2.34`, so the package metadata declares `min_glibc` 2.34.
 - SHA-256:
-  `dc5343c2d6c68b7ccb113dc6bc9a74c9bb489c81cc8ecc5f818c96f210567c89`.
+  `9220a074bd785b072a77bb37c418ae0f7a3ebda320db6697bead9aca86b69041`.
 
 Two builds from the same source in the same environment produce the same
 SHA-256: the sources embed no timestamps, paths, or build dates. The build

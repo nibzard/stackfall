@@ -30,6 +30,7 @@
 
 #include "stackfall/renderer_sdl.hpp"
 
+#include <algorithm>
 #include <cstdio>
 
 #include "stackfall/font.hpp"
@@ -70,8 +71,12 @@ constexpr const char* kPauseItems[] = {"RESUME", "RESTART", "CONTROLS",
 constexpr const char* kOverItems[] = {"PLAY AGAIN", "TITLE"};
 
 // The controls screen rows: the section 5 gamepad mapping, its keyboard
-// counterpart, and the action. One table, next to the two mapping tables of
-// src/input_sdl.cpp, so a mapping review reads them together.
+// counterpart, and the action. One table per orientation, next to the two
+// mapping tables of src/input_sdl.cpp, so a mapping review reads them
+// together. The portrait rows restate the rotated table of
+// notes/design-review.md: the D-pad's device up and down move the piece
+// right and left in the rotated frame, its right soft drops, and the two
+// cluster pairs reverse (task T055).
 struct ControlRow {
   const char* gamepad;
   const char* keyboard;
@@ -93,6 +98,21 @@ constexpr ControlRow kControlRows[] = {
 constexpr int kControlRowCount =
     static_cast<int>(sizeof(kControlRows) / sizeof(kControlRows[0]));
 
+constexpr ControlRow kPortraitControlRows[] = {
+    {"D-PAD UP/DOWN", "UP/DOWN ARROWS", "MOVE"},
+    {"D-PAD RIGHT", "RIGHT ARROW", "SOFT DROP"},
+    {"B", "Z", "ROTATE CW"},
+    {"A", "X", "ROTATE CCW"},
+    {"Y", "C OR LEFT SHIFT", "HARD DROP"},
+    {"X OR L1", "SPACE", "HOLD"},
+    {"START", "ENTER OR ESC", "PAUSE OR RESUME"},
+    {"D-PAD LEFT/RIGHT", "LEFT/RIGHT ARROWS", "MENU CURSOR"},
+    {"B", "ENTER", "SELECT"},
+    {"A", "ESC", "BACK"},
+};
+constexpr int kPortraitControlRowCount =
+    static_cast<int>(sizeof(kPortraitControlRows) / sizeof(kPortraitControlRows[0]));
+
 // Formats an unsigned 64-bit score in decimal. The buffer always holds a
 // terminated string, and snprintf clamps rather than overruns, so a score of
 // any size renders safely (specification section 4.6).
@@ -101,9 +121,45 @@ void formatUnsigned(std::uint64_t value, char* buffer, std::size_t capacity) {
                 static_cast<unsigned long long>(value));
 }
 
-// The top-left canvas pixel of board cell (x, y).
-constexpr int cellX(int x) { return kBoardOriginX + x * kBoardCellSize; }
-constexpr int cellY(int y) { return kBoardOriginY + y * kBoardCellSize; }
+// One canvas rectangle in device space. Landscape draws where it is; portrait
+// turns the canvas a quarter so it stands upright in the grip the player
+// holds, which swaps the rectangle's span with its height and flips it to the
+// opposite edge (notes/design-review.md, "The rotation direction"):
+//
+//   device_x = canvas_y
+//   device_y = kCanvasHeight - 1 - canvas_x
+//
+// The device canvas itself keeps its 960x544 logical size and its letterbox
+// rules, so this rotation is the only place the two orientations differ.
+constexpr SDL_Rect deviceRect(bool portrait, int x, int y, int w, int h) {
+  if (!portrait) {
+    return SDL_Rect{x, y, w, h};
+  }
+  return SDL_Rect{y, kCanvasHeight - 1 - x - w + 1, h, w};
+}
+
+}  // namespace
+
+namespace {
+
+// The MUSIC row's own display name: the mode of MUSIC.md's player controls
+// in caps, the only case the glyph table draws. The settings file keeps the
+// lowercase pair of stackfall/music.hpp; this is the screen's rendering.
+const char* musicModeDisplayName(MusicMode mode) {
+  switch (mode) {
+    case MusicMode::Auto:
+      return "AUTO";
+    case MusicMode::Arcade:
+      return "ARCADE";
+    case MusicMode::Groove:
+      return "GROOVE";
+    case MusicMode::Focus:
+      return "FOCUS";
+    case MusicMode::Off:
+      return "OFF";
+  }
+  return "?";
+}
 
 }  // namespace
 
@@ -142,6 +198,46 @@ int Renderer::nextPreviews() const noexcept { return nextPreviews_; }
 void Renderer::setGrayscale(bool on) noexcept { grayscale_ = on; }
 
 bool Renderer::grayscale() const noexcept { return grayscale_; }
+
+void Renderer::setOrientation(Orientation orientation) noexcept {
+  orientation_ = orientation;
+}
+
+Orientation Renderer::orientation() const noexcept { return orientation_; }
+
+void Renderer::setOrientationPreference(Orientation orientation) noexcept {
+  orientationPreference_ = orientation;
+}
+
+Orientation Renderer::orientationPreference() const noexcept {
+  return orientationPreference_;
+}
+
+void Renderer::setMusicMode(MusicMode mode) noexcept { musicMode_ = mode; }
+
+MusicMode Renderer::musicMode() const noexcept { return musicMode_; }
+
+void Renderer::setMusicVolume(int step) noexcept {
+  // The same clamp the audio driver applies, so a stray value can never name
+  // a step the gain table does not hold.
+  musicVolume_ = std::max(0, std::min(10, step));
+}
+
+int Renderer::musicVolume() const noexcept { return musicVolume_; }
+
+void Renderer::setEffectsVolume(int step) noexcept {
+  effectsVolume_ = std::max(0, std::min(10, step));
+}
+
+int Renderer::effectsVolume() const noexcept { return effectsVolume_; }
+
+void Renderer::setMusicTrackTitle(const char* title) noexcept {
+  musicTrackTitle_ = title != nullptr ? title : "";
+}
+
+const char* Renderer::musicTrackTitle() const noexcept {
+  return musicTrackTitle_;
+}
 
 // ---------------------------------------------------------------------------
 // The letterbox canvas (section 6.1, design review finding
@@ -201,7 +297,9 @@ bool readOutputPixels(SDL_Renderer* renderer, SDL_Surface* surface) {
 
 // ---------------------------------------------------------------------------
 // Primitives. Each one sets its own color and clips nothing; SDL applies the
-// logical-size scaling, so these coordinates are logical pixels.
+// logical-size scaling, so these coordinates are logical pixels of the
+// orientation's canvas, and deviceRect() carries them onto the device output
+// (the one rotation portrait adds, task T055).
 // ---------------------------------------------------------------------------
 
 void Renderer::fillRect(SDL_Color color, int x, int y, int w, int h) const {
@@ -209,8 +307,12 @@ void Renderer::fillRect(SDL_Color color, int x, int y, int w, int h) const {
     return;
   }
   SDL_SetRenderDrawColor(renderer_, color.r, color.g, color.b, color.a);
-  const SDL_Rect rect{x, y, w, h};
+  const SDL_Rect rect = deviceRect(portrait(), x, y, w, h);
   SDL_RenderFillRect(renderer_, &rect);
+}
+
+void Renderer::drawUnitLine(SDL_Color color, int x, int y, int w, int h) const {
+  fillRect(color, x, y, w, h);
 }
 
 void Renderer::drawRectOutline(SDL_Color color, int x, int y, int w,
@@ -218,9 +320,12 @@ void Renderer::drawRectOutline(SDL_Color color, int x, int y, int w,
   if (renderer_ == nullptr || w <= 0 || h <= 0) {
     return;
   }
-  SDL_SetRenderDrawColor(renderer_, color.r, color.g, color.b, color.a);
-  const SDL_Rect rect{x, y, w, h};
-  SDL_RenderDrawRect(renderer_, &rect);
+  // Four one-pixel fills rather than SDL_RenderDrawRect, so the rotation of
+  // fillRect() carries the outline exactly as it carries every fill.
+  drawUnitLine(color, x, y, w, 1);
+  drawUnitLine(color, x, y + h - 1, w, 1);
+  drawUnitLine(color, x, y, 1, h);
+  drawUnitLine(color, x + w - 1, y, 1, h);
 }
 
 // One block: a dark one-pixel outline, the flat fill, a lighter top and left
@@ -230,14 +335,10 @@ void Renderer::drawCell(int x, int y, int size,
                         const CellPalette& palette) const {
   fillRect(palette.edge, x, y, size, size);
   fillRect(palette.fill, x + 1, y + 1, size - 2, size - 2);
-  SDL_SetRenderDrawColor(renderer_, palette.light.r, palette.light.g,
-                         palette.light.b, palette.light.a);
-  SDL_RenderDrawLine(renderer_, x + 1, y + 1, x + size - 2, y + 1);
-  SDL_RenderDrawLine(renderer_, x + 1, y + 1, x + 1, y + size - 2);
-  SDL_SetRenderDrawColor(renderer_, palette.dark.r, palette.dark.g,
-                         palette.dark.b, palette.dark.a);
-  SDL_RenderDrawLine(renderer_, x + 1, y + size - 2, x + size - 2, y + size - 2);
-  SDL_RenderDrawLine(renderer_, x + size - 2, y + 1, x + size - 2, y + size - 2);
+  drawUnitLine(palette.light, x + 1, y + 1, size - 2, 1);
+  drawUnitLine(palette.light, x + 1, y + 1, 1, size - 2);
+  drawUnitLine(palette.dark, x + 1, y + size - 2, size - 2, 1);
+  drawUnitLine(palette.dark, x + size - 2, y + 1, 1, size - 2);
 }
 
 // The ghost draws as a hollow outline in a fraction of the piece color
@@ -268,8 +369,8 @@ void Renderer::drawText(int x, int y, int scale, SDL_Color color,
             SDL_RenderFillRects(renderer_, rects, count);
             count = 0;
           }
-          rects[count] = SDL_Rect{penX + column * scale, y + row * scale,
-                                  scale, scale};
+          rects[count] = deviceRect(portrait(), penX + column * scale,
+                                    y + row * scale, scale, scale);
           ++count;
         }
       }
@@ -309,6 +410,9 @@ void Renderer::draw(const Game& game) {
     case Scene::Options:
       drawOptionsScreen(game);
       return;
+    case Scene::MusicOptions:
+      drawMusicOptionsScreen(game);
+      return;
     case Scene::Playing:
       drawPlayScene(game);
       return;
@@ -346,8 +450,8 @@ void Renderer::drawPlayScene(const Game& game) const {
 // (specification section 6.2, step 1).
 void Renderer::drawBackground() const {
   clearBackground();
-  fillRect(kBoardWell, kBoardOriginX, kBoardOriginY, kBoardPixelWidth,
-           kBoardPixelHeight);
+  fillRect(kBoardWell, boardOriginX(), boardOriginY(), boardPixelWidth(),
+           boardPixelHeight());
 }
 
 // The canvas color alone, the ground of the title and controls pages, which
@@ -356,31 +460,27 @@ void Renderer::drawBackground() const {
 // bars of a window that is not the canvas in the canvas color as well, wiping
 // out the black base beginFrame() laid down before the draw (section 6.1).
 void Renderer::clearBackground() const {
-  fillRect(kBackground, 0, 0, kCanvasWidth, kCanvasHeight);
+  fillRect(kBackground, 0, 0, canvasWidth(), canvasHeight());
 }
 
 void Renderer::drawGridLines() const {
   if (renderer_ == nullptr) {
     return;
   }
-  SDL_SetRenderDrawColor(renderer_, kGridLine.r, kGridLine.g, kGridLine.b,
-                         kGridLine.a);
   for (int column = 1; column < kBoardWidth; ++column) {
-    const int x = kBoardOriginX + column * kBoardCellSize;
-    SDL_RenderDrawLine(renderer_, x, kBoardOriginY, x,
-                       kBoardOriginY + kBoardPixelHeight - 1);
+    const int x = boardOriginX() + column * boardCellSize();
+    drawUnitLine(kGridLine, x, boardOriginY(), 1, boardPixelHeight());
   }
   for (int row = 1; row < kBoardHeight; ++row) {
-    const int y = kBoardOriginY + row * kBoardCellSize;
-    SDL_RenderDrawLine(renderer_, kBoardOriginX, y,
-                       kBoardOriginX + kBoardPixelWidth - 1, y);
+    const int y = boardOriginY() + row * boardCellSize();
+    drawUnitLine(kGridLine, boardOriginX(), y, boardPixelWidth(), 1);
   }
 }
 
 // The border alone: the well fill happens with the background so the grid
 // lines land on it (specification section 6.2, steps 1 and 2).
 void Renderer::drawBoardFrame() const {
-  const SDL_Rect frame = boardFrame();
+  const SDL_Rect frame = boardFrameNow();
   drawRectOutline(kFrame, frame.x, frame.y, frame.w, frame.h);
 }
 
@@ -392,7 +492,7 @@ void Renderer::drawSettledCells(const Game& game) const {
       if (code == 0) {
         continue;
       }
-      drawCell(cellX(x), cellY(y), kBoardCellSize,
+      drawCell(cellXNow(x), cellYNow(y), boardCellSize(),
                piecePalette(static_cast<PieceId>(code), false));
     }
   }
@@ -412,7 +512,7 @@ void Renderer::drawGhostPiece(const Game& game) const {
     if (cell.y < 0) {
       continue;  // hidden rows are never drawn
     }
-    drawGhostCell(cellX(cell.x), cellY(cell.y), kBoardCellSize, color);
+    drawGhostCell(cellXNow(cell.x), cellYNow(cell.y), boardCellSize(), color);
   }
 }
 
@@ -426,7 +526,7 @@ void Renderer::drawActivePiece(const Game& game) const {
     if (cell.y < 0) {
       continue;  // the part of a spawning piece in the hidden rows
     }
-    drawCell(cellX(cell.x), cellY(cell.y), kBoardCellSize, palette);
+    drawCell(cellXNow(cell.x), cellYNow(cell.y), boardCellSize(), palette);
   }
 }
 
@@ -440,6 +540,14 @@ void Renderer::drawActivePiece(const Game& game) const {
 // lock, so an unavailable hold reads clearly.
 void Renderer::drawPreviewPiece(PieceId id, const SDL_Rect& box,
                                 bool dimmed) const {
+  drawPreviewPiece(id, box, dimmed, previewCellSize());
+}
+
+// Same, at an explicit cell size: the portrait HUD strip draws its previews
+// at the smaller portrait cell while the title page keeps the larger strip
+// cell in both orientations (task T055).
+void Renderer::drawPreviewPiece(PieceId id, const SDL_Rect& box, bool dimmed,
+                                int cellSize) const {
   const CellPalette& palette = piecePalette(id, dimmed);
   const std::array<Cell, kCellsPerPiece>& cells =
       pieceCells(id, Rotation::Spawn);
@@ -454,29 +562,35 @@ void Renderer::drawPreviewPiece(PieceId id, const SDL_Rect& box,
     minY = cell.y < minY ? cell.y : minY;
     maxY = cell.y > maxY ? cell.y : maxY;
   }
-  const int width = (maxX - minX + 1) * kPreviewCellSize;
-  const int height = (maxY - minY + 1) * kPreviewCellSize;
-  const int originX =
-      box.x + (box.w - width) / 2 - minX * kPreviewCellSize;
-  const int originY = box.y + (box.h - height) / 2 - minY * kPreviewCellSize;
+  const int width = (maxX - minX + 1) * cellSize;
+  const int height = (maxY - minY + 1) * cellSize;
+  const int originX = box.x + (box.w - width) / 2 - minX * cellSize;
+  const int originY = box.y + (box.h - height) / 2 - minY * cellSize;
   for (const Cell& cell : cells) {
-    drawCell(originX + cell.x * kPreviewCellSize,
-             originY + cell.y * kPreviewCellSize, kPreviewCellSize, palette);
+    drawCell(originX + cell.x * cellSize, originY + cell.y * cellSize,
+             cellSize, palette);
   }
 }
 
+// The Hold group. Landscape centers it on the left statistics column beside
+// the board; portrait centers it at the left of the HUD strip above the board
+// (task T055). The heading sits above the box in both.
 void Renderer::drawHoldPanel(const Game& game) const {
-  const int centerX = kLeftPanelX + kLeftPanelWidth / 2;
-  drawTextCentered(centerX, kPanelHeadingY, kLabelScale, kTextDim, "HOLD");
-  const SDL_Rect box = holdBox();
+  const int centerX =
+      portrait() ? kPortraitHoldCenterX : kLeftPanelX + kLeftPanelWidth / 2;
+  const int headingY = portrait() ? kPortraitPanelHeadingY : kPanelHeadingY;
+  drawTextCentered(centerX, headingY, kLabelScale, kTextDim, "HOLD");
+  const SDL_Rect box = holdBoxNow();
   if (game.hasHoldPiece()) {
     drawPreviewPiece(game.holdPieceId(), box, game.holdLocked());
   }
 }
 
 void Renderer::drawNextPanel(const Game& game) const {
-  const int centerX = kRightPanelX + kRightPanelWidth / 2;
-  drawTextCentered(centerX, kPanelHeadingY, kLabelScale, kTextDim, "NEXT");
+  const int centerX =
+      portrait() ? kPortraitNextCenterX : kRightPanelX + kRightPanelWidth / 2;
+  const int headingY = portrait() ? kPortraitPanelHeadingY : kPanelHeadingY;
+  drawTextCentered(centerX, headingY, kLabelScale, kTextDim, "NEXT");
   const auto& queue = game.queue();
   // Exactly the preference's count of previews draws, in queue order; the
   // count changes nothing about the queue or the randomizer behind it
@@ -484,28 +598,29 @@ void Renderer::drawNextPanel(const Game& game) const {
   // so the piece that lands next reads beside the board while the far queue
   // stays identifiable but quiet (task T037 contrast hierarchy).
   for (int index = 0; index < nextPreviews_; ++index) {
-    drawPreviewPiece(queue[index], nextSlotBox(index), index > 0);
+    drawPreviewPiece(queue[index], nextSlotBoxNow(index), index > 0);
   }
 }
 
-// The statistics fields of the left column. A value draws at the value scale
-// while it fits the column; a longer one draws one step smaller, because the
-// longest number the saturating counter can hold (twenty digits) measures
-// 119 px at scale 1 and so still fits the 128 px column with room to spare.
-// Every supported value therefore stays inside the column and never reaches
-// the board or the other group (task T037).
+// The statistics fields. A value draws at the value scale while it fits its
+// field; a longer one draws one step smaller, because the longest number the
+// saturating counter can hold (twenty digits) measures 119 px at scale 1 and
+// so still fits the 128 px field with room to spare. Every supported value
+// therefore stays inside its field and never reaches the board or another
+// group (task T037).
 int Renderer::statValueScale(const char* value) const {
-  if (textWidth(kValueScale, value) <= kLeftPanelWidth) {
+  if (textWidth(kValueScale, value) <= statFieldWidth()) {
     return kValueScale;
   }
   return 1;
 }
 
+// The statistics group. Landscape stacks the three fields down the left
+// column beside the board; portrait spreads them across the top of the canvas
+// as three label-over-value groups, above the Hold and Next row of the HUD
+// strip (task T055).
 void Renderer::drawStatsPanel(const Game& game) const {
-  const int centerX = kLeftPanelX + kLeftPanelWidth / 2;
   char value[24];
-
-  int y = kStatsFirstLabelY;
   struct Field {
     const char* label;
     std::uint64_t number;
@@ -515,6 +630,19 @@ void Renderer::drawStatsPanel(const Game& game) const {
       {"LINES", game.lines()},
       {"LEVEL", static_cast<std::uint64_t>(game.level())},
   };
+  if (portrait()) {
+    for (int index = 0; index < 3; ++index) {
+      const int centerX = kPortraitStatsCenterX[index];
+      drawTextCentered(centerX, kPortraitStatsLabelY, kLabelScale, kTextDim,
+                       fields[index].label);
+      formatUnsigned(fields[index].number, value, sizeof(value));
+      drawTextCentered(centerX, kPortraitStatsValueY, statValueScale(value),
+                       kText, value);
+    }
+    return;
+  }
+  const int centerX = kLeftPanelX + kLeftPanelWidth / 2;
+  int y = kStatsFirstLabelY;
   for (const Field& field : fields) {
     drawTextCentered(centerX, y, kLabelScale, kTextDim, field.label);
     y += kGlyphRows * kLabelScale + 4;
@@ -550,34 +678,71 @@ void Renderer::drawMenuItem(int centerX, int y, int scale, const char* text,
 // reuses the play preview drawing, so the page needs no new art.
 void Renderer::drawTitleScreen(const Game& game) const {
   clearBackground();
-  drawTextCentered(kCanvasWidth / 2, kTitleLogoY, kTitleLogoScale, kText,
-                   "STACKFALL");
+  const int centerX = canvasWidth() / 2;
+  const int logoY = portrait() ? kPTitleLogoY : kTitleLogoY;
+  const int previewY = portrait() ? kPTitlePreviewY : kTitlePreviewY;
+  const int menuY = portrait() ? kPTitleMenuY : kTitleMenuY;
+  const int highLabelY =
+      portrait() ? kPTitleHighScoreLabelY : kTitleHighScoreLabelY;
+  const int highValueY =
+      portrait() ? kPTitleHighScoreValueY : kTitleHighScoreValueY;
+  const int hintY = portrait() ? kPTitleHintY : kTitleHintY;
+  drawTextCentered(centerX, logoY, kTitleLogoScale, kText, "STACKFALL");
   for (int index = 0; index < kPieceCount; ++index) {
-    drawPreviewPiece(kAllPieceIds[index], titlePreviewBox(index), false);
+    // The seven-piece strip keeps the landscape preview cell in both frames:
+    // it measures 528 px, which fits the 544 px portrait canvas as it fits
+    // the 960 px landscape one.
+    SDL_Rect box = titlePreviewBox(index);
+    if (portrait()) {
+      box.x = (kPortraitCanvasWidth - (kPieceCount * kTitlePreviewStride -
+                                       (kTitlePreviewStride -
+                                        kTitlePreviewBoxWidth))) / 2 +
+              index * kTitlePreviewStride;
+      box.y = previewY;
+    }
+    drawPreviewPiece(kAllPieceIds[index], box, false, kPreviewCellSize);
   }
   for (int index = 0; index < kTitleItemCount; ++index) {
-    drawMenuItem(kCanvasWidth / 2, kTitleMenuY + index * kMenuItemHeight,
-                 kMenuScale, kTitleItems[index],
-                 index == game.titleSelection());
+    drawMenuItem(centerX, menuY + index * kMenuItemHeight, kMenuScale,
+                 kTitleItems[index], index == game.titleSelection());
   }
-  const int centerX = kCanvasWidth / 2;
-  drawTextCentered(centerX, kTitleHighScoreLabelY, kLabelScale, kTextDim,
-                   "HIGH SCORE");
+  drawTextCentered(centerX, highLabelY, kLabelScale, kTextDim, "HIGH SCORE");
   char value[24];
   formatUnsigned(game.highScore(), value, sizeof(value));
-  drawTextCentered(centerX, kTitleHighScoreValueY, kValueScale, kText, value);
-  drawTextCentered(centerX, kTitleHintY, kHintScale, kTextDim,
-                   "UP/DOWN CHOOSE - A CONFIRM - B BACK");
+  drawTextCentered(centerX, highValueY, kValueScale, kText, value);
+  drawTextCentered(centerX, hintY, kHintScale, kTextDim, menuHintText());
 }
 
 // The controls page: three aligned columns of the section 5 tables plus one
 // footer line. The title opens it with "A OR B BACK TO TITLE"; the pause
 // overlay opens the same page over its frozen round with "A OR B BACK TO
 // PAUSE" (task T037), because ordinary gameplay carries no permanent legend.
+// Portrait cannot hold the three columns side by side - they measure 570 px of
+// a 544 px canvas - so it stacks one action heading over the two mappings of
+// each row (task T055).
 void Renderer::drawControlsScreen(const char* footer) const {
   clearBackground();
-  drawTextCentered(kCanvasWidth / 2, kControlsHeadingY, kControlsHeadingScale,
-                   kText, "CONTROLS");
+  const int centerX = canvasWidth() / 2;
+  drawTextCentered(centerX, portrait() ? kPControlsHeadingY : kControlsHeadingY,
+                   kControlsHeadingScale, kText, "CONTROLS");
+  if (portrait()) {
+    drawText(kPControlsGamepadX, kPControlsHeaderY, kLabelScale, kTextDim,
+             "GAMEPAD");
+    drawText(kPControlsKeyboardX, kPControlsHeaderY, kLabelScale, kTextDim,
+             "KEYBOARD");
+    int y = kPControlsFirstRowY;
+    for (int index = 0; index < kPortraitControlRowCount; ++index) {
+      drawText(kPControlsGamepadX, y, kLabelScale, kTextDim,
+               kPortraitControlRows[index].action);
+      drawText(kPControlsGamepadX, y + kGlyphRows * kLabelScale + 4, kLabelScale,
+               kText, kPortraitControlRows[index].gamepad);
+      drawText(kPControlsKeyboardX, y + kGlyphRows * kLabelScale + 4,
+               kLabelScale, kText, kPortraitControlRows[index].keyboard);
+      y += kPControlsRowHeight;
+    }
+    drawTextCentered(centerX, kPControlsFooterY, kLabelScale, kText, footer);
+    return;
+  }
   drawText(kControlsGamepadX, kControlsHeaderY, kLabelScale, kTextDim,
            "GAMEPAD");
   drawText(kControlsKeyboardX, kControlsHeaderY, kLabelScale, kTextDim,
@@ -594,22 +759,29 @@ void Renderer::drawControlsScreen(const char* footer) const {
              kControlRows[index].action);
     y += kControlsRowHeight;
   }
-  drawTextCentered(kCanvasWidth / 2, kControlsFooterY, kLabelScale, kText,
-                   footer);
+  drawTextCentered(centerX, kControlsFooterY, kLabelScale, kText, footer);
 }
 
-// The options page of tasks T040 and T044: one heading, the six setting rows
-// at the shared menu metrics, and one footer line. The rows carry their value
-// as ON/OFF or, for NEXT PIECES, the count digit, read from the preferences
-// this renderer mirrors, because the rules core moves the cursor alone and
-// never holds a row value (specification section 7). A changes the highlighted
-// row and B returns to the title; the platform layer owns both actions.
+// The options page of tasks T040, T044, T055, and T062: one heading, the
+// eight setting rows at the shared menu metrics, and one footer line. The rows
+// carry their value as ON/OFF, the NEXT PIECES count digit, or the
+// ORIENTATION or MUSIC name, read from the preferences this renderer mirrors,
+// because the rules core moves the cursor alone and never holds a row value
+// (specification section 7). A changes the highlighted row - and on the MUSIC
+// row opens the music settings page, which the core owns - and B returns to
+// the title; the platform layer owns the value actions. The ORIENTATION row
+// names the preference the next launch draws, not the layout this process
+// already opened (task T055).
 void Renderer::drawOptionsScreen(const Game& game) const {
   clearBackground();
-  drawTextCentered(kCanvasWidth / 2, kOptionsHeadingY, kOptionsHeadingScale,
-                   kText, "OPTIONS");
+  const int centerX = canvasWidth() / 2;
+  drawTextCentered(centerX, portrait() ? kPOptionsHeadingY : kOptionsHeadingY,
+                   kOptionsHeadingScale, kText, "OPTIONS");
   char nextText[24];
   std::snprintf(nextText, sizeof(nextText), "NEXT PIECES %d", nextPreviews_);
+  char musicText[20];
+  std::snprintf(musicText, sizeof(musicText), "MUSIC %s",
+                musicModeDisplayName(musicMode_));
   const char* rows[kOptionsItemCount] = {
       soundOn_ ? "SOUND ON" : "SOUND OFF",
       showGhost_ ? "GHOST ON" : "GHOST OFF",
@@ -617,13 +789,57 @@ void Renderer::drawOptionsScreen(const Game& game) const {
       showHold_ ? "HOLD ON" : "HOLD OFF",
       nextText,
       grayscale_ ? "GRAYSCALE ON" : "GRAYSCALE OFF",
+      orientationPreference_ == Orientation::Portrait
+          ? "ORIENTATION PORTRAIT"
+          : "ORIENTATION LANDSCAPE",
+      musicText,
   };
+  const int menuY = portrait() ? kPOptionsMenuY : kOptionsMenuY;
   for (int index = 0; index < kOptionsItemCount; ++index) {
-    drawMenuItem(kCanvasWidth / 2, kOptionsMenuY + index * kMenuItemHeight,
-                 kMenuScale, rows[index], index == game.optionsSelection());
+    drawMenuItem(centerX, menuY + index * kMenuItemHeight, kMenuScale,
+                 rows[index], index == game.optionsSelection());
   }
-  drawTextCentered(kCanvasWidth / 2, kOptionsFooterY, kHintScale, kTextDim,
-                   "UP/DOWN CHOOSE - A CHANGE - B BACK");
+  drawTextCentered(centerX, portrait() ? kPOptionsFooterY : kOptionsFooterY,
+                   kHintScale, kTextDim, optionsHintText());
+}
+
+// The music settings page behind the MUSIC row (task T062, MUSIC.md player
+// controls): the same heading, menu metrics, and footer hint as the options
+// page, over its four rows - the pool mode, both volume steps of the
+// eleven-step table, and the Next track action - and the playing track's
+// title on one dim line of its own, which stays empty while music is silent.
+// The values are the mirrors the platform layer pushes; the core moves the
+// cursor alone, exactly as on the options page. A changes the highlighted row
+// and B returns to the options screen; the platform layer owns both actions.
+void Renderer::drawMusicOptionsScreen(const Game& game) const {
+  clearBackground();
+  const int centerX = canvasWidth() / 2;
+  drawTextCentered(centerX, portrait() ? kPOptionsHeadingY : kOptionsHeadingY,
+                   kOptionsHeadingScale, kText, "MUSIC");
+  char modeText[16];
+  std::snprintf(modeText, sizeof(modeText), "MUSIC %s",
+                musicModeDisplayName(musicMode_));
+  char musicVolumeText[24];
+  std::snprintf(musicVolumeText, sizeof(musicVolumeText), "MUSIC VOLUME %d",
+                musicVolume_);
+  char effectsVolumeText[24];
+  std::snprintf(effectsVolumeText, sizeof(effectsVolumeText),
+                "EFFECTS VOLUME %d", effectsVolume_);
+  const char* rows[kMusicOptionsItemCount] = {
+      modeText,
+      musicVolumeText,
+      effectsVolumeText,
+      "NEXT TRACK",
+  };
+  const int menuY = portrait() ? kPOptionsMenuY : kOptionsMenuY;
+  for (int index = 0; index < kMusicOptionsItemCount; ++index) {
+    drawMenuItem(centerX, menuY + index * kMenuItemHeight, kMenuScale,
+                 rows[index], index == game.musicSelection());
+  }
+  drawTextCentered(centerX, portrait() ? kPMusicTrackY : kMusicTrackY,
+                   kMenuScale, kTextDim, musicTrackTitle_);
+  drawTextCentered(centerX, portrait() ? kPOptionsFooterY : kOptionsFooterY,
+                   kHintScale, kTextDim, optionsHintText());
 }
 
 // The palette of one piece under the current settings (task T044): grayscale
@@ -650,7 +866,7 @@ void Renderer::drawVeil() const {
   SDL_SetRenderDrawBlendMode(renderer_, SDL_BLENDMODE_BLEND);
   fillRect(SDL_Color{kBackground.r, kBackground.g, kBackground.b,
                      kOverlayVeilAlpha},
-           0, 0, kCanvasWidth, kCanvasHeight);
+           0, 0, canvasWidth(), canvasHeight());
   SDL_SetRenderDrawBlendMode(renderer_, SDL_BLENDMODE_NONE);
 }
 
@@ -666,27 +882,30 @@ void Renderer::drawOverlayPanel(const SDL_Rect& panel) const {
 // beside it (task T037); Controls opens the mappings page and returns here.
 void Renderer::drawPauseOverlay(const Game& game) const {
   drawVeil();
-  const SDL_Rect panel = pausePanel();
+  const int centerX = canvasWidth() / 2;
+  const SDL_Rect panel = portrait() ? pausePanelPortrait() : pausePanel();
   drawOverlayPanel(panel);
-  drawTextCentered(kCanvasWidth / 2, panel.y + kPauseHeadingOffsetY,
+  drawTextCentered(centerX, panel.y + kPauseHeadingOffsetY,
                    kControlsHeadingScale, kText, "PAUSED");
   for (int index = 0; index < kPauseItemCount; ++index) {
-    drawMenuItem(kCanvasWidth / 2, panel.y + kPauseMenuOffsetY +
-                                        index * kMenuItemHeight,
+    drawMenuItem(centerX, panel.y + kPauseMenuOffsetY + index * kMenuItemHeight,
                  kMenuScale, kPauseItems[index], index == game.pauseSelection());
   }
-  drawTextCentered(kCanvasWidth / 2, panel.y + kPauseHintOffsetY, kHintScale,
-                   kTextDim, "A CONFIRM - B RESUME");
+  drawTextCentered(centerX, panel.y + kPauseHintOffsetY, kHintScale, kTextDim,
+                   pauseHintText());
 }
 
 // The game-over overlay of section 4.7: the final score, total lines, and
 // level, the new-record note when the round beat the high score, and Play
-// Again / Title.
+// Again / Title. The panel nests between the HUD columns like the pause
+// panel, so the dimmed statistics column reads whole beside it instead of
+// peeking out at the panel's edge (task T043).
 void Renderer::drawGameOverOverlay(const Game& game) const {
   drawVeil();
-  const SDL_Rect panel = gameoverPanel();
+  const SDL_Rect panel =
+      portrait() ? gameoverPanelPortrait() : gameoverPanel();
   drawOverlayPanel(panel);
-  const int centerX = kCanvasWidth / 2;
+  const int centerX = canvasWidth() / 2;
   drawTextCentered(centerX, panel.y + kOverHeadingOffsetY,
                    kControlsHeadingScale, kText, "GAME OVER");
 
@@ -718,7 +937,7 @@ void Renderer::drawGameOverOverlay(const Game& game) const {
                  kMenuScale, kOverItems[index], index == game.overSelection());
   }
   drawTextCentered(centerX, panel.y + kOverHintOffsetY, kHintScale, kTextDim,
-                   "A CONFIRM");
+                   confirmHintText());
 }
 
 }  // namespace stackfall

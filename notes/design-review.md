@@ -602,12 +602,141 @@ at `packet.tsv` line 22 lists START GAME, CONTROLS, OPTIONS, and QUIT,
 and the fresh `dr-title` frame shows all four items. The task can be
 closed with this note as evidence.
 
+## Portrait mode: rotation and cluster roles (T055, 2026-11-04)
+
+The owner requested 90-degree portrait play on the RG503 (task T055): the
+board gains height, every shape square grows, the D-pad sits on the right of
+the grip and the X, Y, A, and B buttons on the left, and every direction is
+remapped into the rotated frame. This section pins the two decisions the
+request leaves open - which way the device turns, and which button does what
+once it has - before any mapping lands in the source. The device checks stay
+with the blocked physical task; everything here is a logical decision a
+desktop harness can verify.
+
+### The rotation direction
+
+**Decision: the device turns 90 degrees clockwise in the player's hands.**
+
+The RG503 is a landscape handheld: its D-pad occupies the left end and its
+X/Y/A/B cluster the right end. Turning the device clockwise moves the left
+end to the top of the grip and the right end to the bottom, so the right hand
+holds the D-pad and the left hand holds the action cluster - exactly the grip
+the owner describes. The counter-clockwise turn is the only alternative, and
+it puts the D-pad in the left hand, which contradicts the request.
+
+The screen content rotates the other way, so it stands upright in that grip.
+The portrait canvas is 544 wide by 960 tall in the player's frame, and a
+portrait pixel (x, y) draws at device pixel (y, 543 - x) on the unrotated
+960x544 output. The window, the letterbox rules, the screenshot size, and
+the observation records all stay in device space, so every existing evidence
+format survives unchanged; only the scene inside the canvas turns.
+
+### The cluster roles
+
+**Decision: portrait reverses each pair of cluster roles. B takes rotate
+clockwise and select, A takes rotate counter-clockwise and back, Y takes hard
+drop, and X takes hold. The left shoulder stays a second hold, and Start
+stays pause.**
+
+The landscape table of specification section 5 orders the cluster by how
+close each button sits to the holding thumb: A rotates clockwise and
+confirms, B rotates the other way and goes back, X hard drops, and Y holds.
+Turning the device clockwise puts the cluster under the left thumb and turns
+the diamond with it: in the player's frame X sits on the right, A at the
+bottom, B on the left, and Y at the top. Reversing each pair places the same
+ordering under the left thumb - B nearest, then A, then Y, then X - so the
+most-used action keeps the closest button and the least-used keeps the
+farthest, mirroring the landscape arrangement instead of leaving it turned.
+
+### The direction remap
+
+Every direction remaps by the same physical rule in both tables: a control
+keeps its device identity, and its action is the one whose on-screen
+direction in the rotated frame matches the direction that press points to in
+that frame.
+
+| Device control | Player-frame direction | Portrait action |
+| --- | --- | --- |
+| D-pad up / Up arrow | right | move right |
+| D-pad down / Down arrow | left | move left |
+| D-pad right / Right arrow | down | soft drop, menu cursor down |
+| D-pad left / Left arrow | up | menu cursor up |
+| B / Z key | - | rotate clockwise, select |
+| A / X key | - | rotate counter-clockwise, back |
+| Y / C or left Shift | - | hard drop |
+| X / Space | - | hold |
+| Start / Enter or Esc | - | pause and resume |
+
+Enter and Esc keep the menu roles they already carry: they are keyboard
+controls of their own, not stand-ins for cluster buttons, so the rotation
+does not move them. The keyboard columns of the controls screen and every
+scripted session follow the same table, so a desktop run drives the rotated
+frame exactly as the handheld does.
+
+### The portrait composition
+
+The portrait canvas keeps the rules of the approved landscape composition
+(task T037): one board, quiet outer regions, no permanent gameplay legend,
+and nothing clipped. The 40 px cell grows from the landscape 27 px, the
+10x20 field measures 400x800 at (72, 120) with its one-pixel frame at
+x=71..472 and y=119..920, and the HUD moves from two side columns into one
+strip above the board: score, lines, and level as three label-over-value
+fields across the top, Hold at the left below them, and the five Next
+previews in one row at the right. The outer regions stay quiet and the
+bottom 39 rows stay empty. Landscape changes none of this: the 960x544
+layout, its hashes, and its timing are pinned by the harness and must stay
+byte-identical.
+
+### What stays outside this decision
+
+The OPTIONS row that selects the orientation, the settings line that
+persists it, the next-launch application rule, and the harness sessions that
+prove both frames are implementation, not design; they follow this pin. The
+physical confirmation - that the marked buttons on a real RG503 sit where
+this rotation puts them, and that the grip reads well in a long session -
+stays with the blocked device task.
+
+## Game-over overlay nesting (T043, 2026-11-04)
+
+**Decision: the game-over panel nests between the HUD columns, matching
+the pause overlay geometry of T037.** The owner recorded the decision on
+2026-11-04 and delegated the choice to review; the review chose nesting,
+because the pause overlay had already established the pattern - one modal
+panel inside the gap between the columns, the frozen statistics and
+previews reading whole beside it under the veil - and the pre-existing
+game-over panel (x=240..719) cut across both dimmed columns, leaving
+fragments of the dimmed SCORE, LINES, and LEVEL labels peeking out at its
+left edge (observed on the `t037-fix` packet's `gameover.png`, recorded
+above in the T037 section).
+
+`gameoverPanel()` now shares `pausePanel()`'s horizontal extent
+(`include/stackfall/renderer_sdl.hpp`): the panel sits at x=320..639 with
+its outline at x=319 and x=640, keeps its 440 px height for the three
+final-statistics rows over its menu, and stays centered on the canvas
+like the pause panel. The vertical offsets, the 56 px row margins, and
+the portrait geometry of T055 - where no columns exist and the panel
+already centers on the board, which owns the canvas alone - are
+unchanged. `docs/SPEC.md` section 6.1 now states that both panels nest
+between the columns.
+
+Verification at this change (full commands and evidence in the T043
+section of `notes/agent-testing.md`): `check_fixes.py` gained the
+`gameover-panel-nests` criterion - no panel pixel in either HUD column,
+the panel face inside the gap - and the fresh packet
+`build/agent-checks/design-review/t043-fix/` passes it with 0 panel
+pixels in each column and 134070 inside the gap, measuring the panel at
+exactly x=320..639 and y=52..491 from pixels; the veiled statistics
+labels `(53, 57, 70)` and the five veiled previews read whole beside the
+panel. `ctest` passes in Debug and Release, and the seventeen-session
+harness passes 931 of 931 checks. The `dr-gameover` row of
+`packet.tsv` and `prior-findings.json` carry the decision, so later
+review rounds judge the nested position as the accepted design.
+
 ## Open questions
 
-- One cosmetic question, recorded above in the T037 section: whether the
-  game-over overlay should nest between the HUD columns the way the pause
-  overlay now does, instead of cutting across the dimmed statistics
-  column. No task owns it; it needs a product decision before work.
+- The game-over overlay nesting question above is decided and
+  implemented by task T043 on 2026-11-04; see the section
+  "Game-over overlay nesting".
 - The hidden I-piece spawn rule stayed with T029 until it was decided and
   implemented there on 2026-11-03 (pieces spawn at visible row 0; see the
   T029 section of `notes/agent-testing.md`). Physical controller and

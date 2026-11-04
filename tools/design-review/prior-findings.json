@@ -57,6 +57,11 @@
       "key": "t024-i-spawn-hidden-delay-design-question",
       "disposition": "decided and implemented by task T029 on 2026-11-03",
       "reason": "The design owner approved immediate spawn visibility: every piece now spawns with its topmost occupied cells at visible row 0 (I matrix origin y=-1, all others y=0), so the hidden I-piece interval no longer occurs. See notes/stackfall-visible-spawn-decision-2026-11-03.md and the T029 section of notes/agent-testing.md. Do not report immediate spawn visibility as a defect."
+    },
+    {
+      "key": "gameover-panel-hud-overlap",
+      "disposition": "decided and implemented by task T043 on 2026-11-04",
+      "reason": "The owner decided on 2026-11-04 (choice delegated to the review) that the game-over panel nests between the HUD columns, matching the pause overlay geometry of T037, so the dimmed SCORE, LINES, and LEVEL labels no longer peek past the panel edge. The panel shares the pause panel's horizontal extent (x=320..639); see notes/design-review.md 'Game-over overlay nesting'. tools/design-review/check_fixes.py passes gameover-panel-nests on a fresh packet. Do not report the panel's position as a defect."
     }
   ]
 }

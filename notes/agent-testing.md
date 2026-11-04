@@ -3807,3 +3807,609 @@ Findings and open questions:
   same header for the shipped release notes and the launcher banner.
 - The banner on the physical device stays with the blocked device task
   T018, as do the fresh-install gate T020 and the publication T021.
+
+## T022: front pages state the integrated state (2026-11-04)
+
+Task T022, the standing documentation repair: the two front pages state
+the actual integrated state and agree with each other. Sources: the task
+contract of T022 and the milestone definitions of
+[game specification](../docs/SPEC.md) section 13. Tested in the detached
+worktree of `1792ede` plus uncommitted task changes. No source file
+changed.
+
+The repair: the specification status line still read "M4 in progress;
+... device validation and release packaging remain", written in the same
+commit that assembles and checks the package, and the README opened its
+status section with the M3 gate alone. `docs/SPEC.md` now reads
+"M5 in progress", names the six-setting options screen, and records that
+the release package is assembled locally and checked with its version
+pinned at 1.0.0 (T019, T035), so device validation and publication are
+what remain. `README.md` states the milestone the same way and keeps its
+existing closing sentence, which already said the same thing.
+
+Verification, all passed:
+
+- A 27-point cross-check of the two front pages against the repository:
+  `tests/harness/run.sh` names fifteen sessions and both pages say
+  fifteen; the four version sources and the release notes state 1.0.0;
+  every gate and tool the status text names exists (`t015.sh`, `t017.sh`,
+  `t019.sh`, `t035.sh`, `run.sh`, `package.sh`, `install-tree.sh`,
+  `build-arm64.sh`); the stale phrases are gone; and every line the repair
+  touched keeps the file's width (78 columns in the specification, 80 in
+  the README).
+- `tests/harness/t035.sh`: 31 checks, 0 failures, evidence in
+  `build/agent-checks/t035-version-2026-11-04/`. The gate rebuilds the
+  Debug tree, runs the five headless suites, and proves the banner, the
+  state-hash pins, and the package metadata at 1.0.0, which the new
+  status sentence rests on.
+- Release `ctest` in `build-rel`: 5 of 5 suites.
+
+Findings and open questions:
+
+- The blocked device and publication gates are unchanged: T018 (the RG503
+  checklist), T020 (the fresh ROCKNIX install), T021 (publication), T036
+  (device frame-time percentiles), T042, and T043.
+
+## T055: 90-degree portrait play on the RG503 (2026-11-04)
+
+Task T055; the rotation direction and the final cluster roles were pinned in
+`notes/design-review.md` ("Portrait mode: rotation and cluster roles") before
+the mapping landed. Tested in the detached worktree of `cbe5147` plus
+uncommitted task changes; the harness's `source.sha256` in each run directory
+ties every run below to the exact sources.
+
+What landed:
+
+- `include/stackfall/types.hpp`: the `Orientation` enum with landscape as the
+  default.
+- `include/stackfall/renderer_sdl.hpp` and `src/renderer_sdl.cpp`: the
+  portrait constants (544x960 canvas, 40 px cells, the 400x800 field at
+  (72, 120), the HUD strip above the board, the recomposed title, controls,
+  and options pages, the two overlay panels) and one rotation inside the
+  drawing primitives: `deviceRect()` maps portrait rect (x, y, w, h) to
+  device rect (y, 544-x-w, h, w), axis-aligned lines become 1-px filled
+  rects (pixel-identical in landscape), and every draw call reads its
+  geometry through orientation accessors, so landscape keeps its own
+  constants and its own pixels. `Renderer` carries the layout orientation
+  and the ORIENTATION row's preference value separately.
+- `include/stackfall/input_sdl.hpp` and `src/input_sdl.cpp`: `SdlInput`
+  carries an orientation; the portrait controller and keyboard tables beside
+  the section 5 tables; orientation-aware `mapControllerButton` and
+  `mapKeyboardScancode` for the controls screen.
+- `include/stackfall/storage.hpp` and `src/storage.cpp`: the seventh
+  preference line `orientation=landscape|portrait`, canonical rendering,
+  legacy six-, three-, and two-line forms parsing with orientation at its
+  default, and the same atomic write.
+- `src/main.cpp`: `applyOrientation` at startup (layout and both input
+  tables turn together, one log line names the canvas and cell size), the
+  seventh options row through `cycleOrientation` (the stored preference and
+  the row's label flip at once, the running layout does not, one input-log
+  line records the change), and the startup settings and input-log lines
+  naming the orientation.
+- `include/stackfall/game.hpp`: `kOptionsItemCount` 7 with ORIENTATION
+  appended last, so every earlier row index keeps its meaning.
+- `tests/test_storage.cpp`, `tests/test_screens.cpp`,
+  `tests/test_renderer_sdl.cpp`: canonical pins ending in the orientation
+  line, the 64-boolean options-value enumeration, the seven-row wrapping,
+  and three new portrait pixel groups in the SDL suite: the rotated board
+  frame, well, grid, and cell bands asserted at exact device pixels through
+  a restated rotation; the HUD strip, title, options, controls, and overlay
+  bands inside the tall canvas; and a landscape invariance check that draws
+  a paused round through a portrait excursion and requires identical canvas
+  bytes. `tests/test_input_sdl.cpp`: the portrait keyboard and pad tables
+  through the real SDL event path (the same case list as the landscape
+  tables with the rotated expectations) plus a pad round proving D-pad up
+  moves the piece right and B rotates clockwise.
+- `tests/harness/reference_replay.cpp`: the portrait key and pad tables
+  transcribed from the design-review pin, the orientation read from the
+  staged settings file, and the ORIENTATION-row select mirrored as a
+  preference flip that changes no table of the running process. The
+  settings load also gained its missing parent-directory step: the replay
+  had passed the file path where the store wants its directory, so it
+  always read the fresh-installation defaults; no earlier session depended
+  on a staged startup file, and the portrait relaunch stage does.
+- `tests/harness/scripts/orientation-portrait.script.txt`,
+  `portrait-keyboard.script.txt`, `portrait-pad.script.txt`, and the two
+  `.stages.txt` manifests; `options-six-keyboard` and `options-six-pad`
+  now walk the seventh row and wrap past it; `tests/harness/run.sh`
+  registers the two staged sessions; `tests/harness/check_harness.py`
+  adds the portrait geometry, panel, quiet-row, settings-byte, and ordered
+  rotated-mapping pins and carries the seventh row and settings line
+  through every options and settings pin.
+- `docs/SPEC.md` (sections 2, 4.7, 5, 6.1, 6.3, 9, 11, 12) and
+  `docs/AGENT_TESTING.md` describe the mode, the rotated tables, and the
+  two sessions.
+
+Verification:
+
+- Passed: `ctest` 5 of 5 - `stackfall_tests` 339920 checks,
+  `stackfall_input_tests` 726, `stackfall_render_tests` 8068.
+- Passed: `HARNESS_RUN_ID=t055-harness-final tests/harness/run.sh` -
+  833 of 833 checker pins over seventeen sessions (the same green state
+  first reached as `harness-portrait-pass3` before the checker's own pixel
+  rules were corrected; the final run exercises the shipped scripts,
+  reference, and checker together). Stage two of each
+  portrait session replays byte-identically against the reference running
+  the rotated tables (25 records keyboard, 24 pad). The checker pins the
+  rotated frame (both edges of device x=119..920 and y=71..472 in frame
+  color for their whole span, the lines one past them background, so the
+  rotation and the 40 px cell size prove together), the HUD strip, the
+  quiet margins, both overlay panels at their rotated boxes, the quiet rows
+  below the board on every clearing page, the portrait settings bytes with
+  the landscape stage-one startup line, and the ordered rotated-mapping
+  bits for the keyboard (10 steps) and the pad (9 steps) from the per-tick
+  input log.
+- Passed: landscape invariance against the pre-change baseline
+  (`build/agent-checks/baseline-landscape/`). Every landscape session the
+  scripts did not touch plays byte-identically: nine observation streams
+  stripped of `shot=` compare equal (scene-cycle keyboard and pad,
+  normal-game-clears, options-ghost, hold-off, grayscale, record-abandon-
+  save, and the three fixtures); of 350 shared screenshots, 280 are
+  byte-identical and all 70 differing files are options-page shots that
+  legitimately draw the seventh row; the two options-six streams differ by
+  exactly one added `options-orientation-row` record each, with the wrap
+  checkpoint's `menu=` value unchanged.
+- Passed: behavior probes of the rotated mapping through the real binary
+  before the harness landed - in a portrait session, D-pad up reads `R=1`,
+  D-pad down `L=1`, Z `cw=1`, X `ccw=1`, C `drop=1`, Space `hold=1`, left
+  arrow `menu=1000` (three menu-downs then one menu-up land the pause
+  cursor on CONTROLS, and confirm opens the mappings screen).
+- Passed: visual review of rotated portraits of the harness frames (title,
+  playing, paused, game-over). The pause and game-over panels center on the
+  board, the strip reads across the top, the marker sits on the selected
+  row, and nothing clips; the remote image service rejected PNG uploads, so
+  the review ran on JPEG copies.
+
+Dispositions of the two failed harness passes on the way to the green run:
+
+- `harness-2026-11-04-154727`: the stage-one script walked one row instead
+  of six, so its select toggled GHOST and left the file landscape; stage
+  two then replayed against landscape tables and never quit. Script fixed
+  to six downs.
+- `harness-portrait-pass2`: the reference passed the settings file path
+  where the store wants its directory (see the repair above), so it
+  replayed the portrait stage on the landscape tables. Fixed; no earlier
+  session's stream moved, confirmed by the byte-identical comparison
+  above.
+- `harness-portrait-pass3`: the sessions and streams were green; the
+  checker's own pixel rules were wrong in three places - the frame-edge
+  walk demanded frame color one pixel outside the frame, the below-board
+  quiet rule ran on overlay pages whose veil covers those rows by design,
+  and one branch still pinned the old six-field settings log line. The
+  checker was corrected and re-run on the same evidence, then the final
+  end-to-end run above confirmed the shipped state.
+
+Commands:
+
+```bash
+ctest --test-dir build --output-on-failure
+HARNESS_RUN_ID=t055-harness-final tests/harness/run.sh
+```
+
+Open questions: the physical half - that the marked buttons on a real RG503
+sit where the pinned rotation puts them, and that the sideways grip reads
+well in a long session - stays with the blocked device task (T018 and the
+section 12 checklist item).
+
+## T022: front pages state the portrait state (2026-11-04)
+
+Task T022, the standing documentation repair: the two front pages state the
+actual integrated state and agree with each other. Sources: the task
+contract of T022 and the T055 record above. Tested in the detached worktree
+of `4bc5d06` plus uncommitted task changes. No production source changed.
+
+The repair: `README.md` still said "all six options settings" while the
+options screen carries seven rows, still said the harness "drives fifteen
+sessions" while `tests/harness/run.sh` and the testing guide say seventeen,
+and the words portrait and orientation appeared nowhere in it. The README
+now names screen orientation in the Options step, in the status paragraph,
+and in the saved-preferences sentence, counts seven settings, counts
+seventeen sessions and names the portrait round among them, adds a portrait
+paragraph to "How it plays" (the 544 x 960 frame, the 40-pixel squares, the
+rotated controls), and closes the status section with the panel research of
+T056 plus the owner's pending per-class choice, with a reports-table row
+for `notes/anbernic-resolutions.md`. `docs/SPEC.md` adds portrait play to
+its status line, so both front pages agree again.
+
+Verification, all passed:
+
+- `HARNESS_RUN_ID=t022-readme-check tests/harness/run.sh`: 17 sessions,
+  833 checks, 0 failures, evidence in
+  `build/agent-checks/t022-readme-check/`. The run proves the session
+  sentence of the status paragraph: `sessions.txt` lists the seventeen
+  names, the two portrait sessions pass on the rotated tables, and the
+  five headless suites pass first in the Debug tree the harness builds.
+- Release `ctest` in `build-rel`: 5 of 5 suites.
+- Every relative link in both front pages resolves, including the new
+  `notes/anbernic-resolutions.md` row, and the lines the repair touched
+  keep each file's width.
+
+Findings and open questions:
+
+- The blocked gates are unchanged: T018 (the RG503 checklist), T020 (the
+  fresh ROCKNIX install), T021 (publication), T036 (device frame-time
+  percentiles), T042, and T043, plus the owner decision T057 with T058 and
+  T059 behind it.
+
+## T061: the release package refreshed at the portrait revision (2026-11-04)
+
+Task T061. The package was stale at HEAD: `portmaster/BUILDING.md` still
+pinned the binary of commit 262a3a5, while T055 changed nine files under
+`src/` and `include/` after it, and no task owned the refresh. Sources: the
+task contract of T061 and [agent testing contract](../AGENT_TESTING.md).
+Tested in the detached worktree of `f86e2bf` plus uncommitted task changes.
+No game code changed; the only repository edit is the pin.
+
+The refresh, in the order the task contract lists:
+
+- `tools/arm64/build-arm64.sh` reran against the pinned image
+  (`STACKFALL_ARM64_SKIP_IMAGE_BUILD=1`, the same invocation `tests/harness/
+  t019.sh` uses). Evidence `build/agent-checks/t061-arm64-2026-11-04/`: the
+  binary reports `ARM aarch64`, links only `libSDL2-2.0.so.0`,
+  `libstdc++.so.6`, `libgcc_s.so.1`, `libc.so.6`, and `libm.so.6`, and hashes
+  `dd51324f7e91ad042c6fa6e7108ce314b81f92c2458cf1d05e00c06b9392cfe5`. The
+  glibc span is still 2.17 to 2.34, so `min_glibc` 2.34 stays. The suite ran
+  twice inside the environment and `ctest` passed 5 of 5 there; the printed
+  state hashes equal the desktop run's.
+- `portmaster/BUILDING.md` now names that hash. Nothing else in the file
+  moved: the environment, the commands, the `file` form, the runtime
+  libraries, and the glibc span are unchanged, because only game sources
+  changed since 262a3a5.
+- `tests/harness/t019.sh` repackaged and drove the archive end to end.
+  Evidence `build/agent-checks/t019-package-2026-11-04-t061/` (78 checks, 0
+  failures), including the failing check of the stale run: BUILDING.md names
+  the SHA-256 of the shipped binary. The `repro` phase rebuilt the tree in a
+  fresh container from the pinned image into a clean build directory and
+  printed the same hash.
+
+Package identity of the refreshed archive:
+
+- archive `build/portmaster-package/stackfall.zip`, SHA-256
+  `e7d908be02227d33a5b7343b376986ef33ffb4ecc7bd5505476d7d2e1326c5bb`;
+- binary `stackfall/stackfall.aarch64`, SHA-256
+  `dd51324f7e91ad042c6fa6e7108ce314b81f92c2458cf1d05e00c06b9392cfe5`,
+  named by the BUILDING.md inside the archive.
+
+Supporting checks, all passed:
+
+- Desktop suite before the build (the hash-comparison half of the ARM64
+  script needs it): `build/stackfall_tests --seed 987654321`, 339,925 checks,
+  0 failures.
+- `tests/harness/t035.sh` after the edit (31 checks, 0 failures), because
+  BUILDING.md ships in the archive and that gate reads every shipped file.
+- The archived screenshot was opened and read as an image, beyond its pixel
+  measurements: 640x480 with centered letterbox bars, the Hold group and the
+  statistics on the left, five Next previews and the score column on the
+  right, a settled stack of several colors in the lower board, and a piece in
+  flight above it. Nothing clips.
+
+Commands:
+
+```bash
+STACKFALL_ARM64_SKIP_IMAGE_BUILD=1 \
+  STACKFALL_ARM64_RUN_ID=t061-arm64-2026-11-04 tools/arm64/build-arm64.sh
+T019_RUN_ID=t019-package-2026-11-04-t061 tests/harness/t019.sh
+T035_RUN_ID=t035-version-2026-11-04-t061 tests/harness/t035.sh
+```
+
+Findings and open questions:
+
+- The archive hash changes between package runs by design: the screenshot is
+  a real-time-paced capture, so the fall row of the piece in flight can move
+  by a row. The binary hash does not move; a clean container reproduced it.
+- The blocker note of the blocked device task T018 still names the retired
+  archive hash `7d5e0f63...`. Workers cannot edit the backlog, so the
+  refreshed hash above is recorded here and reported as a follow-up against
+  T018. The operator who runs the device pass must take the archive from
+  `build/portmaster-package/stackfall.zip` and its `package-report.txt`.
+- The blocked gates are otherwise unchanged: T018 (the RG503 checklist),
+  T020 (the fresh ROCKNIX install), T021 (publication), and T036 (device
+  frame-time percentiles).
+
+
+## T062: the generated twelve-track soundtrack (2026-11-04)
+
+Task T062, the whole of MUSIC.md: the score representation, the sequencer and
+voice engine, the twelve-track catalogue, the offline preview path, the
+playback and scene policy, the music settings page with persistence, and the
+desktop validation. The owner decision of 2026-11-04 approved the
+specification change and delegated the creative choices to this
+implementation. Tested in the detached worktree of `5ba04cd` plus uncommitted
+task changes; the harness `source.sha256` ties the harness run below to the
+exact sources.
+
+What landed:
+
+- `include/stackfall/music.hpp` and `src/music.cpp`: musical time at 96
+  ticks per quarter, the ten-instrument band-limited additive bank with a
+  Galois LFSR noise table, integer envelopes, the twelve-voice engine with a
+  16-slot single-producer single-consumer command queue and latest-value
+  gain atomics, sample-rate-exact transport (32.32 fixed-point ticks
+  advanced per sample, so playback never drifts with the 60 Hz game tick),
+  cumulative intensity layer masks with layer release at phrase boundaries,
+  bar- and phrase-scheduled switches with pre-boundary fades, and the
+  offline renderer plus WAV writer used by tests and the preview tool.
+- `src/music_tracks.cpp`: the deterministic `Arranger` composer (motifs,
+  progressions, five bass styles, six drum styles, four chord styles, swing
+  offsets) and the twelve hand-written track specifications, expanded once
+  into validated note lists - no randomness, no assets, no files.
+- `include/stackfall/music_director.hpp` and `src/music_director.cpp`: the
+  behavior table of MUSIC.md's playback section - title theme at low
+  intensity, pool draws without repetition on a session-seeded PCG32 stream,
+  the level bands 1-5, 6-12, and 13-20 over the shared timeline, pause
+  freeze, game-over stop, mode Off, and the Next track action.
+- `include/stackfall/storage.hpp` and `src/storage.cpp`: the settings file
+  grows three lines (`music`, `musicvolume`, `effectsvolume`); the parser is
+  now one strict line reader that accepts exactly the shipped eras (2, 3, 7,
+  8, and 11 lines), so the orientation-era file upgrades with the Auto/6/8
+  defaults and rejects bad mode names and volumes past 10.
+- `src/audio_sdl.cpp`: the engine joins the device at its real rate; cues
+  sum into one 32-bit bus, music renders into its own, each volume step and
+  the master mute ramp in 15 ms, clear and game-over cues duck the music
+  about 4 dB with hold and release, and one final clamp covers both buses.
+- The options screen grows its eighth row MUSIC and the `MusicOptions`
+  scene behind it (game core, renderer page with the four rows and the track
+  title line, observation `musicoptions`/`music:` fields), and `src/main.cpp`
+  wires the director: scene transitions, the level feed, per-frame updates,
+  the settings-page actions with immediate saves, and the music lines in the
+  session and input logs.
+- `tools/music/render_previews.cpp`: the offline preview tool with its level
+  report; `docs/music/` holds the index and twelve composition records.
+
+Evidence:
+
+- `./build/stackfall_tests` (Debug): 340,000+ checks, 0 failures, including
+  the new music suite (catalogue pins, validation rejections, boundary math
+  against rational schedules at 22050/44100/48000, chunk independence,
+  deterministic renders, loop-wrap clicks, layer levels and phrase switches,
+  transport and queue behavior, director policy, WAV bytes) and the extended
+  storage suite (the ten-line form, every shipped era, the new rejections).
+- `./build/stackfall_audio_tests`: the two-bus mixer through the real
+  callback path - music beside cues, independent volumes, the loudest
+  stress track at high intensity with every cue voice leaving the format,
+  and the master mute fading both buses while the timeline keeps moving.
+- `./build/stackfall_render_tests`: the eight-row options page and the
+  music page pixel pins (exact glyph counts per row and per mode and volume
+  combination, the track title line, layout bounds, navigation markers).
+- `ctest` in Debug and in Release (`build-rel`): 5 suites, 0 failures.
+- `HARNESS_BUILD_DIR=build tests/harness/run.sh`: PASS, 931 checks, 0
+  failures. The new `music-settings` and `music-settings-pad` sessions drive the
+  real binary through the page on both inputs - open, one select per row
+  (keyboard: mode to Arcade, volumes to 7 and 9, Next track; pad: mode and
+  Next track), back keeping the MUSIC row, quit - and prove the saved
+  bytes, the input-log lines, and the page layout from screenshots, all
+  against the headless reference replay.
+- The desktop callback budget of MUSIC.md: the audio suite times the real
+  mixer at the device's own 512-frame buffer with the densest track at high
+  intensity and every cue voice retriggered - p50 0.047 ms, p99 0.084 ms,
+  about 1 percent of the 11.61 ms buffer, two orders of magnitude inside
+  the proposed 25 percent device budget (recorded in
+  `notes/performance.md`). The incremental audio memory of MUSIC.md's budget
+  stays far under the 8 MiB cap: the wave and noise tables are 40 KiB, the
+  twelve scores hold 19,197 notes (225 KiB), and the cue buffers add about
+  380 KiB.
+- `tools/arm64/build-arm64.sh` (run id `t062-music-2026-11-04`, cached
+  image): the ARM64 Release build compiled the new sources, the full ctest
+  pass ran twice inside the ARM64 environment with 0 failures, and the state
+  hashes match the desktop build. Evidence in
+  `build/agent-checks/t062-music-2026-11-04/`.
+- `build/stackfall_music_preview --intensity all`: 36 WAV renders, 0
+  clipped samples, DC within 61 of 32768, voices at or under the 12-voice
+  budget, loudest peak 28955 of 32767; report in
+  `build/music-previews/report.txt`.
+
+Commands:
+
+```bash
+cmake --build build && ctest --test-dir build --output-on-failure
+cmake -S . -B build-rel -DCMAKE_BUILD_TYPE=Release -G Ninja
+cmake --build build-rel && ctest --test-dir build-rel --output-on-failure
+HARNESS_BUILD_DIR=build tests/harness/run.sh
+./build/stackfall_music_preview --intensity all --out build/music-previews
+STACKFALL_ARM64_SKIP_IMAGE_BUILD=1 \
+  STACKFALL_ARM64_RUN_ID=t062-music-2026-11-04 tools/arm64/build-arm64.sh
+```
+
+- The release package was refreshed with the music binary: `package.sh`
+  rebuilt `build/portmaster-package/stackfall.zip` (archive SHA-256
+  `37a7796c...b7991`), `portmaster/README.md` and `release-notes.md` now
+  describe the eight-row Options screen, the music settings page, portrait
+  play, and the soundtrack (the portrait revision had left both stale at six
+  settings), `BUILDING.md` pins the new ARM64 hash `2e7790b8...c5f3a`, and
+  `tests/harness/t019.sh` and `t035.sh` pass (run ids `...-t062b`),
+  including the clean-container binary reproduction.
+
+Findings and open questions:
+
+- The 12-second level windows the test suite pins stay under 24000; the
+  full-length previews reach 28955 (about -1.1 dBFS) in the loudest high
+  bars. No render clips, and the device bus adds the music volume default of
+  6 (about -6.6 dB) under the final clamp, so the shipped mix sits lower
+  than the preview peaks.
+- The listening pass stays open by rule: an agent must not claim a listening
+  check from source inspection alone. The twelve records in `docs/music/`
+  carry listening status pending until a human plays the previews and the
+  game on headphones and on the handheld speakers.
+- The creative choices (instrument set, track forms, mixes) were delegated
+  to this implementation and are recorded per track in `docs/music/`; they
+  go to the design review, not to this note.
+
+### Review repair: the testing guide catches up (2026-11-04)
+
+The T062 review found `docs/AGENT_TESTING.md` still describing the
+seventeen-session, seven-row era. The guide now drives nineteen sessions,
+lists `music-settings` and `music-settings-pad` (page opened on both inputs,
+one select per row, back keeping the MUSIC row, saved bytes and input-log
+lines against the reference replay), calls the options screen eight-row
+with the wrap past MUSIC, and names the eleven-line settings form; the
+`run.sh` header says nineteen and eight-row too, so README, guide, and
+script agree; the `check_harness.py` proof docstring gained the T062
+bullet. Fresh run at the final sources (`HARNESS_RUN_ID=t062-review-repair`,
+`build/agent-checks/t062-review-repair/`, `source.sha256` pins the exact
+files): ctest 5 of 5, nineteen sessions, 931 of 931 checks, 0 failures.
+
+## T043: game-over overlay nests between the HUD columns (2026-11-04)
+
+Source identity: `6b69d5114a4d` (detached worktree) plus the uncommitted
+T043 candidate changes; the capture's `source.sha256` pins the exact
+`src/renderer_sdl.cpp` (`6863f9b6...`) and
+`include/stackfall/renderer_sdl.hpp` (`37c6f38c...`) the reviewed binary
+was built from (`build/agent-checks/design-review/t043-fix/`).
+
+What changed: the owner decided on 2026-11-04 (choice delegated to
+review) that the game-over panel nests between the HUD columns, matching
+the pause overlay of T037, so the dimmed SCORE, LINES, and LEVEL
+fragments no longer peek past the panel edge. `gameoverPanel()` now
+shares `pausePanel()`'s horizontal extent - x=320..639 with the outline
+at x=319 and x=640 - and keeps its 440 px height and canvas center; the
+decision record is in `notes/design-review.md` "Game-over overlay
+nesting". The decision, the criterion, and the packet expectation landed
+together:
+
+- `include/stackfall/renderer_sdl.hpp`, `src/renderer_sdl.cpp`: the
+  nested `gameoverPanel()` and the comments that now describe both
+  overlay panels as nesting.
+- `docs/SPEC.md` section 6.1: both panels nest between the two columns.
+- `tests/test_renderer_sdl.cpp`: `run_gameover_overlay_checks()` pins
+  the nesting from pixels - the panel spans exactly the gap from the
+  left column's edge to the right column's edge, matches
+  `pausePanel()`'s extent, and neither column band holds a panel-fill
+  pixel - and pins the row budget (both 56 px margins, a five-glyph
+  label, and an eight-digit score at the menu scale fit the 320 px
+  width).
+- `tools/design-review/check_fixes.py`: the new required
+  `gameover-panel-nests` criterion (no panel pixel in either HUD
+  column, the panel face inside the gap between them).
+- `tools/design-review/packet.tsv`: the `dr-gameover` expectation states
+  the nested position; `tools/design-review/prior-findings.json` records
+  the finding as decided and implemented, so later rounds do not report
+  the position as a defect.
+
+Verification:
+
+- `ctest` 5 of 5 in Debug (`build/`) and Release (`build-rel/`), both
+  rebuilt with zero warnings.
+- The nesting assertions bite: restoring only the old panel
+  `{240, 52, 480, 440}` fails `stackfall_render_tests` at the new pins
+  (`panel.x == kLeftPanelX + kLeftPanelWidth` and the two beside it)
+  before any screenshot check runs; restoring the candidate passes
+  again.
+- `tests/harness/run.sh` twice (run ids `t043-harness`,
+  `t043-harness-final`, the latter at the final tree): seventeen
+  sessions, 931 of 931 checks, including the landscape and portrait
+  scene cycles whose game-over checkpoints pass unchanged (the portrait
+  panel of T055 keeps its board-centered geometry).
+- `tests/harness/t024.sh` (run id `t043-t024`): 291 of 291 checks,
+  including its own game-over, restart, and X11 letterbox sessions.
+- Fresh packet `t043-fix` (`DR_RUN_ID=t043-fix
+  tools/design-review/capture.sh`, seed 31337, the four `packet.tsv`
+  sessions, twelve images): `check_fixes.py` passes 5 of 5 required
+  criteria, `gameover-panel-nests` measuring 0 panel pixels in the left
+  column, 0 in the right column, and 134070 inside the gap; the report
+  is saved beside the packet as `fix-checks.json`. Measured from the
+  `gameover.png` pixels, the panel face spans exactly x=320..639 and
+  y=52..491 with 442 outline pixels at each of x=319 and x=640.
+- `gameover.png` inspected: the panel sits between the columns, the
+  veiled statistics labels `(53, 57, 70)` and all five veiled previews
+  read whole beside it, no dimmed fragment hides under the panel edge,
+  and the heading, the three value rows, the NEW RECORD note, the menu
+  items, and the footer hint sit whole inside the narrowed panel with
+  nothing clipped or overlapping.
+
+Commands:
+
+```bash
+cmake --build build && ctest --test-dir build --output-on-failure
+cmake --build build-rel && ctest --test-dir build-rel --output-on-failure
+HARNESS_RUN_ID=t043-harness-final tests/harness/run.sh
+T024_RUN_ID=t043-t024 tests/harness/t024.sh
+DR_RUN_ID=t043-fix tools/design-review/capture.sh
+python3 tools/design-review/check_fixes.py \
+  --packet build/agent-checks/design-review/t043-fix/packet \
+  --json build/agent-checks/design-review/t043-fix/fix-checks.json
+```
+
+Open questions: none from this change. The overlay geometry question of
+`notes/design-review.md` is decided and closed; physical-device checks
+stay with the blocked T018/T020 gates.
+
+## T061: the release package refreshed at the T043 revision (2026-11-04)
+
+Task T061, second refresh. The package was stale at HEAD again: commit
+`a3a290b` (T043, the game-over overlay nesting) changed
+`src/renderer_sdl.cpp` and `include/stackfall/renderer_sdl.hpp` after the
+T062 refresh had pinned `2e7790b8...c5f3a` in `portmaster/BUILDING.md`, and
+T043's file list includes no `portmaster/` file, so the pin described a
+binary two game-source revisions old. Sources: the task contract of T061 and
+[agent testing contract](../AGENT_TESTING.md). Tested in the detached
+worktree of `afe92e1` plus uncommitted task changes. No game code changed;
+the only repository edit is the pin.
+
+The refresh, in the order the task contract lists:
+
+- `tools/arm64/build-arm64.sh` reran against the pinned image
+  (`STACKFALL_ARM64_SKIP_IMAGE_BUILD=1`, the same invocation
+  `tests/harness/t019.sh` uses). Evidence
+  `build/agent-checks/t061-arm64-2026-11-04-refresh/`: the binary reports
+  `ARM aarch64`, links only `libSDL2-2.0.so.0`, `libstdc++.so.6`,
+  `libgcc_s.so.1`, `libc.so.6`, and `libm.so.6`, and hashes
+  `9220a074bd785b072a77bb37c418ae0f7a3ebda320db6697bead9aca86b69041`. The
+  glibc symbol span is still 2.17 to 2.34, so `min_glibc` 2.34 stays. The
+  suite ran twice inside the environment and `ctest` passed 5 of 5 there; the
+  printed state hashes equal the desktop run's. The hash equals the one the
+  review build at this revision printed, so the build is deterministic and
+  only the pin was stale.
+- `portmaster/BUILDING.md` now names that hash. Nothing else in the file
+  moved: the environment, the commands, the `file` form, the runtime
+  libraries, and the glibc span are unchanged, because T043 touched only
+  renderer sources since the T062 refresh.
+- `tests/harness/t019.sh` repackaged and drove the archive end to end.
+  Evidence `build/agent-checks/t019-package-2026-11-04-t061b/` (78 checks, 0
+  failures), including the check the stale pin failed: BUILDING.md names the
+  SHA-256 of the shipped binary. The `repro` phase rebuilt the tree in a
+  fresh container from the pinned image into a clean build directory and
+  printed the same hash.
+- `tests/harness/t035.sh` after the edit (31 checks, 0 failures), because
+  BUILDING.md ships in the archive and that gate reads every shipped file.
+
+Package identity of the refreshed archive:
+
+- archive `build/portmaster-package/stackfall.zip`, SHA-256
+  `4b9d10f0ad28130593dd7319916b1935fba31d6e41b93f2349ff5853e42baea0`;
+- binary `stackfall/stackfall.aarch64`, SHA-256
+  `9220a074bd785b072a77bb37c418ae0f7a3ebda320db6697bead9aca86b69041`,
+  named by the BUILDING.md inside the archive.
+
+Supporting checks, all passed:
+
+- Desktop suite before the build (the hash-comparison half of the ARM64
+  script needs it): `build/stackfall_tests --seed 987654321`, 342,539
+  checks, 0 failures.
+- The t019 checker decoded and measured the archived screenshot (640 x 480,
+  4:3, centered bars) as part of its 78 checks.
+
+Commands:
+
+```bash
+cmake --build build
+STACKFALL_ARM64_SKIP_IMAGE_BUILD=1 \
+  STACKFALL_ARM64_RUN_ID=t061-arm64-2026-11-04-refresh \
+  tools/arm64/build-arm64.sh
+T019_RUN_ID=t019-package-2026-11-04-t061b tests/harness/t019.sh
+T035_RUN_ID=t035-version-2026-11-04-t061b tests/harness/t035.sh
+```
+
+Findings and open questions:
+
+- The archive hash changes between package runs by design: the screenshot is
+  a real-time-paced capture, so the fall row of the piece in flight can move
+  by a row. The binary hash does not move; a clean container reproduced it.
+- The blocker note of the blocked device task T018 still names the retired
+  pin `dd51324f...` and archive hash `7d5e0f63...`, both now three package
+  generations old. Workers cannot edit the backlog, so the refreshed hashes
+  above are recorded here and reported as a follow-up against T018. The
+  operator who runs the device pass must take the archive from
+  `build/portmaster-package/stackfall.zip` and its `package-report.txt`.
+- The blocked gates are otherwise unchanged: T018 (the RG503 checklist),
+  T020 (the fresh ROCKNIX install), T021 (publication), and T036 (device
+  frame-time percentiles).

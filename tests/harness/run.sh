@@ -5,16 +5,22 @@
 #
 #   tests/harness/run.sh
 #
-# It builds the game and the headless reference replay, then drives fifteen
-# sessions through the real SDL application under the dummy video driver:
+# It builds the game and the headless reference replay, then drives
+# nineteen sessions through the real SDL application under the dummy video
+# driver:
 # the full scene cycle on the keyboard and on the developer virtual
 # controller, a normal planned game from an empty board, the options screen
-# round trip that turns the ghost preview off, the six-row options screen on
-# both inputs, the hold-off round trip, the grayscale round trip, the staged
-# relaunch, legacy-settings, and next-count sessions of the options expansion
-# (T045), the abandoned-round record session of the mid-round persistence
-# (T052), and three labeled board fixtures (four-line clear, lock-out,
-# block-out). Every session also runs through the headless reference - a
+# round trip that turns the ghost preview off, the eight-row options screen
+# on both inputs, the music settings page sessions on both inputs of the
+# soundtrack (T062), the hold-off round trip, the grayscale round trip, the
+# staged relaunch, legacy-settings, and next-count sessions of the options
+# expansion (T045), the abandoned-round record session of the mid-round
+# persistence (T052), the two staged portrait sessions of task T055 - a
+# landscape stage that selects the ORIENTATION row and a portrait relaunch
+# that plays a round on the rotated keyboard and pad tables - and three
+# labeled board fixtures (four-line clear, lock-out, block-out). Every
+# session also runs through the
+# headless reference - a
 # staged session once per stage, over the shared save directory - and
 # check_harness.py compares the two checkpoint streams field by field and
 # adds expectations pinned from the specification alone. On any failure the
@@ -229,7 +235,7 @@ run_stages() {
 
 seed=20261103
 settings_dir="$repo/tests/harness/settings"
-sessions="scene-cycle-keyboard scene-cycle-pad normal-game-clears options-ghost options-six-keyboard options-six-pad hold-off grayscale options-relaunch options-legacy next-count record-abandon-save fixture-four-line fixture-lockout fixture-blockout"
+sessions="scene-cycle-keyboard scene-cycle-pad normal-game-clears options-ghost options-six-keyboard options-six-pad music-settings music-settings-pad hold-off grayscale options-relaunch options-legacy next-count portrait-keyboard portrait-pad record-abandon-save fixture-four-line fixture-lockout fixture-blockout"
 : > "$run_dir/sessions.txt"
 for session in $sessions; do
   echo "$session" >> "$run_dir/sessions.txt"

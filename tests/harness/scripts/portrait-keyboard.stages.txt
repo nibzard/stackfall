@@ -1,0 +1,2 @@
+script=orientation-portrait.script.txt
+script=portrait-keyboard.script.txt

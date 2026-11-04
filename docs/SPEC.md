@@ -3,14 +3,17 @@
 **Version:** 1.0 (implementation baseline)  
 **Target:** Anbernic RG503 / ROCKNIX / PortMaster  
 **Category:** Original single-player tetromino block-stacking game  
-**Status:** M4 in progress; the platform layer, the rules core, the desktop build,  
-high-score persistence, synthesized sound, the options screen, the desktop  
-verification passes (harness, play and design reviews, stability, performance,  
-the 27-px board layout, and the focused gameplay HUD), and the pause route to  
-the controls screen are integrated and tested headless; the M3 desktop gate  
-passed (T015), the AArch64 binary builds in the PortMaster-aligned environment  
-with hash parity (T016), and the PortMaster launcher and install layout are  
-written and checked (T017); device validation and release packaging remain
+**Status:** M5 in progress; the platform layer, the rules core, the desktop  
+build, high-score persistence, synthesized sound, the ten-setting  
+screen, portrait play, the desktop verification passes (harness, play and  
+design reviews, stability, performance, the 27-px board layout, and the  
+focused gameplay HUD), and the pause route to the controls screen are  
+integrated and tested headless; the M3 desktop gate passed (T015), the  
+AArch64 binary builds in the PortMaster-aligned environment with hash  
+parity (T016), the PortMaster launcher and install layout are written and  
+checked (T017), and the release package is assembled locally and checked  
+with its version pinned at 1.0.0 (T019, T035); device validation and  
+publication remain
 
 Development runs unattended with AI coding agents. Agents run all available
 software checks and inspect the desktop game throughout development. Defer
@@ -35,6 +38,7 @@ Deliver a complete offline block-stacking game that launches from the RG503's RO
 - Ghost landing preview; pause/resume; title screen; controls screen; game-over screen; restart; local high score.
 - RG503 controller via SDL2 GameController; keyboard fallback for desktop development.
 - Fullscreen 960×544 composition, fixed 60 Hz simulation, 60 FPS render target, drawn using rectangles/lines and procedurally generated glyphs; optional nonessential synthesized SFX with mute toggle.
+- Portrait mode (task T055): the OPTIONS row selects Landscape or Portrait, the preference persists, and the next launch turns the scene 90 degrees for the sideways grip with larger cells and remapped controls.
 - PortMaster-compatible AArch64 package, device-side log and clear recovery from errors.
 - Automated headless rules tests and a smoke-test checklist for actual hardware.
 
@@ -163,12 +167,26 @@ BOOT -> TITLE -> PLAYING -> GAME_OVER -> TITLE
 
 - **TITLE:** Start Game / Controls / Options / Quit; display saved high score.
 - **CONTROLS:** display mappings, confirm/back to title.
-- **OPTIONS:** six rows, SOUND, GHOST, GRID, HOLD, NEXT PIECES, and GRAYSCALE.
-  Menu up/down moves the row and wraps at both ends, select changes that row's
-  value - ON or OFF, or the count 1, 2, 3, 4, 5 that cycles back to 1 for NEXT
-  PIECES - and back returns to the title with the cursor still on Options.
-  Each row shows its current value. All six preferences persist in the
+- **OPTIONS:** eight rows, SOUND, GHOST, GRID, HOLD, NEXT PIECES, GRAYSCALE,
+  ORIENTATION, and MUSIC. Menu up/down moves the row and wraps at both ends,
+  select changes that row's value - ON or OFF, the count 1, 2, 3, 4, 5 that
+  cycles back to 1 for NEXT PIECES, or LANDSCAPE and PORTRAIT that alternate
+  for ORIENTATION - and back returns to the title with the cursor still on
+  Options. Each row shows its current value. Selecting ORIENTATION changes
+  the stored preference alone: the running session keeps its layout, and the
+  next launch opens in the chosen orientation (task T055). Selecting MUSIC
+  opens the music settings page below. All ten preferences persist in the
   settings file; see sections 6.3 and 9.
+- **MUSIC_OPTIONS:** the music settings page behind the MUSIC row (task T062),
+  with four rows - MUSIC, MUSIC VOLUME, EFFECTS VOLUME, and NEXT TRACK - at
+  the shared menu metrics, the playing track's title on one line, and the
+  same controls as the options screen. Select cycles the mode AUTO, ARCADE,
+  GROOVE, FOCUS, OFF and back to AUTO, steps each volume once through the
+  eleven steps 0 through 10 (0 is silent, 10 is full), and runs the NEXT
+  TRACK action, which requests another track of the selected pool without
+  changing a setting. Back returns to the options screen with the cursor
+  still on the MUSIC row, so B followed by A reopens the page. See section
+  6.4 for the soundtrack itself.
 - **PLAYING:** game logic updates, piece input is active.
 - **PAUSED:** overlay with Resume / Restart / Controls / Quit to Title; entire game state and clocks remain frozen. Controls opens the mappings screen over the frozen round, and confirm or back returns to the overlay on the same item without moving a counter; Restart begins a fresh seeded game; Quit to Title abandons the current round.
 - **GAME_OVER:** final score, total lines, level, new-record indication, Play Again / Title. Save the high score when it improves.
@@ -192,9 +210,34 @@ SDL2 GameController mapping must be loaded from the PortMaster environment (`SDL
 | Back from controls | B | Esc |
 | Menu navigation | D-pad up/down | Up/Down |
 
+Portrait mode (task T055) turns the device 90 degrees clockwise in the
+player's hands - the D-pad end points at the player's top and sits in the
+right hand, the ABXY cluster sits in the left - so every direction remaps
+into the rotated frame and the cluster pairs reverse. A physical press moves
+the piece in the on-screen direction that press points to in the turned
+frame:
+
+| Function | Portrait RG503 SDL mapping | Portrait keyboard |
+| --- | --- | --- |
+| Move right/left | D-pad up/down | Up/Down |
+| Soft drop | D-pad right | Right |
+| Rotate clockwise | B | Z |
+| Rotate counter-clockwise | A | X |
+| Hard drop | Y | C / Left Shift |
+| Hold | X or left shoulder | Space |
+| Pause/resume | Start | Enter / Esc |
+| Select menu item | B | Enter |
+| Back from menu | A | Esc |
+| Menu navigation | D-pad left/right | Left/Right |
+
+Start, the left shoulder, Enter, and Esc are their own controls, not cluster
+buttons, so they keep their roles in both orientations. The rotation
+direction and the final cluster roles are pinned in
+`notes/design-review.md`.
+
 - D-pad left+right held simultaneously causes no horizontal movement. Pressing a new opposite direction resets DAS/ARR state and moves immediately if the opposite key is no longer down.
 - Rotation, hold, hard drop, pause and menu actions are **edge-triggered**. Holding them does not fire repeatedly; horizontal movement uses the tick-based repeat system.
-- The options screen uses the same menu edges and adds no key bindings: menu up/down moves its six rows, select changes the highlighted value, and back returns to the title. GRID, NEXT PIECES, and GRAYSCALE change no input handling at all. HOLD off makes the platform layer drop every mapped hold edge before the round sees it, so no hold swap happens and no hold lock is spent; HOLD on leaves the once-per-lock rule of section 4.3 untouched.
+- The options screen uses the same menu edges and adds no key bindings: menu up/down moves its eight rows, select changes the highlighted value or opens the MUSIC submenu, and back returns to the title. GRID, NEXT PIECES, and GRAYSCALE change no input handling at all. HOLD off makes the platform layer drop every mapped hold edge before the round sees it, so no hold swap happens and no hold lock is spent; HOLD on leaves the once-per-lock rule of section 4.3 untouched. ORIENTATION changes the stored preference alone and swaps both mapping tables at the next launch. MUSIC opens the music settings page of section 4.7, which uses the same edges.
 - Input processing order within a gameplay tick: pause command; hold (if used, ignore other gameplay actions this tick); rotation; horizontal move/repeat; hard drop (immediately end piece actions for tick); otherwise soft drop or natural gravity; then ground/lock bookkeeping. Process SDL events before simulation, and consume press edges at most once even when the main loop catches up multiple simulation ticks.
 - Let PortMaster handle its platform-wide exit chord; do not capture or override it. Keyboard and gamepad disconnection must not crash the game.
 
@@ -216,13 +259,32 @@ SDL2 GameController mapping must be loaded from the PortMaster environment (`SDL
   reaches the board, crosses a gap, or leaves the canvas. A statistics value
   too wide for the column at the value scale draws one scale smaller, so the
   longest value the counters can hold still fits. The outer regions of the
-  canvas stay quiet, and the pause panel nests between the two columns so
-  the frozen round stays readable while paused.
+  canvas stay quiet, and the pause and game-over panels nest between the two
+  columns so the frozen round stays readable behind either modal.
 - Ordinary gameplay draws **no permanent control legend**. The complete
   mappings live on the controls screen, which the title and the pause
   overlay both reach; the title, pause, and game-over footer hints stay at
   the 14-pixel label glyph height.
 - Full visible grid always fits without scrolling; preview shapes are drawn from the same shape cell coordinates at smaller cell size (e.g. 15 px).
+- Portrait mode (task T055) is the same device output turned one quarter: the
+  player holds the RG503 with its D-pad end up, the drawing space becomes
+  **544 × 960** in the player's frame, and every drawn rectangle rotates
+  inside the unchanged 960 × 544 device canvas, so the window, the letterbox
+  rules, the screenshot size, and the observation formats stay in device
+  space. The board grows to **40 × 40 px cells**, the 10 × 20 field measures
+  **400 × 800** at **x=72..471, y=120..919** of the portrait frame with its
+  outline at **x=71..472, y=119..920**, so each square renders larger than
+  the 27 px landscape cell. The HUD moves from the two side columns into one
+  **strip above the board**: three label-over-value statistics groups across
+  the top (SCORE, LINES, LEVEL), then the Hold group at the left and the five
+  Next slots in one row at the right, all inside portrait rows 0..118; the
+  columns left and right of the board and the rows below it stay quiet. The
+  title, controls, and options pages recompose for the tall frame - the
+  controls page stacks one action heading over its gamepad and keyboard
+  columns, because the landscape page's three columns measure 570 px side by
+  side - and the pause and game-over panels center on the board, which owns
+  the canvas alone in portrait. Landscape keeps its own constants and its own
+  pixels above; nothing in the portrait block changes them.
 
 ### 6.2 Draw order
 
@@ -247,7 +309,17 @@ All geometry is generated at runtime from integer coordinates, color values and 
 
 ### 6.3 Sound
 
-Sound is secondary to device compatibility. If enabled, synthesize short PCM tones from mathematical waveforms at initialization for rotation, move/land, clear, four-line clear, and game-over. Do not use `.wav` or `.ogg` assets. A missing audio device must not prevent the game from starting. The options screen carries the on/off toggle, and the settings file of section 9 initializes all six preferences: sound, ghost, grid, hold, next preview count, and grayscale. **Sound may be disabled for an early device bring-up, but a complete v1 release should include basic synthesized cues.**
+Sound is secondary to device compatibility. If enabled, synthesize short PCM tones from mathematical waveforms at initialization for rotation, move/land, clear, four-line clear, and game-over. Do not use `.wav` or `.ogg` assets. A missing audio device must not prevent the game from starting. The options screen carries the on/off toggle, which is the master switch for all audio: SOUND OFF mutes both the cues of this section and the soundtrack of section 6.4, and the last music mode and both volume settings survive a mute. The settings file of section 9 initializes all ten preferences: sound, ghost, grid, hold, next preview count, grayscale, orientation, music mode, and both volume steps. **Sound may be disabled for an early device bring-up, but a complete v1 release should include basic synthesized cues.**
+
+### 6.4 Generated soundtrack
+
+The soundtrack (task T062) is generated code, not assets: no audio file is read or shipped, and the whole catalogue is built deterministically from fixed pattern data at startup.
+
+- **Catalogue.** Twelve tracks in three collections of four - ARCADE, GROOVE, and FOCUS - each 120 to 180 seconds, in whole eight-bar phrases at a fixed tempo, with a stable ID and title after release. The first title screen plays the Arcade collection's Boot Sequence at low intensity; a round start draws the next track of the selected pool, never an immediate repeat, and the pool reshuffles without a cross-cycle repeat.
+- **Intensity.** Every track carries three layer maps - low, medium, high - that share one timeline: the essential voices always play, optional voices join from medium or high up, and the level bands 1 through 5, 6 through 12, and 13 through 20 select the map, applied at the next eight-bar phrase boundary. The tempo never changes with the level.
+- **Engine.** A sample-rate-exact sequencer advances musical time from the sample count alone, so playback never drifts with the 60 Hz game tick; twelve music voices sound beside the five effect voices inside the one audio device, the effect and music buses carry their own volume steps of an eleven-step table (about 2.2 dB per step, step 0 silent), clear and game-over cues duck the music about 4 dB, and one final clamp covers both buses. The main thread talks to the audio callback through a fixed-capacity command queue and latest-value gain controls only.
+- **Scene policy.** Pause fades the music out over 100 ms and freezes it, resume fades back in, game over fades over 250 ms and stops, mode OFF fades over 100 ms and stops the music alone, and track and intensity switches land on bar boundaries through 100 ms fades. The play screen itself stays free of a permanent music label; the music settings page shows the current track title.
+- **Offline and deterministic.** Music state never enters the gameplay state hash or the gameplay randomizer: the soundtrack's shuffle runs on its own generator stream seeded per session, no playback position or shuffle order persists between launches, and replays produce identical gameplay results under every music setting. An offline developer renderer renders any track, intensity, and rate to WAV files as review artifacts only; the game itself never reads one.
 
 ## 7. Deterministic simulation contract
 
@@ -327,7 +399,7 @@ public:
 - In PortMaster, launcher creates `$GAMEDIR/conf`, exports `XDG_DATA_HOME="$GAMEDIR/conf"`, and optionally passes an explicit save-directory environment variable to avoid ambiguity.
 - High score file uses UTF-8 ASCII, a version field and a decimal score. Example: `version=1\nhigh_score=12345\n`. No JSON library required.
 - The record saves at two moments: the moment a running round's score passes the stored best, and at game over when the round improves it. Every save writes a temporary file in the same directory, flushes and closes it, then renames it into place, so each save is complete on disk before the next tick runs - an abandoned round, a closed window, or a power loss keeps every point up to the piece in play instead of losing a finished best. Detect invalid/partial files and safely recover to high score 0; do not crash.
-- The settings file of the player preferences sits beside the record as `settings.dat` and carries all six values with the same atomic write: `version=1\nsound=on\nghost=on\ngrid=on\nhold=on\nnext=5\ngrayscale=off\n`. The keys are `sound`, `ghost`, `grid`, and `hold` with `on` or `off`, `next` with `1` through `5`, and `grayscale` with `on` or `off`. The platform layer writes the whole file each time a preference changes and applies all six at startup; a read never rewrites it. A missing, partial, or damaged file recovers to every preference at its default (sound, ghost, grid, and hold on, five previews, grayscale off), so a broken file costs only the settings. A file from before a line existed parses with that preference at its default while keeping its saved sound and ghost values: the two-line file of the sound-only era (`version=1` and `sound`) and the three-line file of the sound-and-ghost era (`version=1`, `sound`, and `ghost`) both load that way, and the next save upgrades the file to the six-line form without losing either saved value.
+- The settings file of the player preferences sits beside the record as `settings.dat` and carries all ten values with the same atomic write: `version=1\nsound=on\nghost=on\ngrid=on\nhold=on\nnext=5\ngrayscale=off\norientation=landscape\nmusic=auto\nmusicvolume=6\neffectsvolume=8\n`. The keys are `sound`, `ghost`, `grid`, and `hold` with `on` or `off`, `next` with `1` through `5`, `grayscale` with `on` or `off`, `orientation` with `landscape` or `portrait`, `music` with `auto`, `arcade`, `groove`, `focus`, or `off`, and `musicvolume` and `effectsvolume` with `0` through `10`. The platform layer writes the whole file each time a preference changes and applies all ten at startup - orientation once, at launch, never mid-session - and a read never rewrites it. A missing, partial, or damaged file recovers to every preference at its default (sound, ghost, grid, and hold on, five previews, grayscale off, landscape, auto music, music volume 6, effects volume 8), so a broken file costs only the settings. A file from before a line existed parses with that preference at its default while keeping its saved values: the two-line file of the sound-only era (`version=1` and `sound`), the three-line file of the sound-and-ghost era (`version=1`, `sound`, and `ghost`), the seven-line file of the grayscale era, and the eight-line file of the orientation era all load that way, and the next save upgrades the file to the ten-line form without losing a saved value. The format version stays 1: no version 1 file has ever carried a different meaning for a line.
 - Log startup version, architecture, SDL init failures, selected renderer and controller, any save failure and orderly shutdown to `log.txt` through launcher redirection.
 - If controller is absent, keep keyboard playable. If accelerated renderer creation fails, try a basic SDL renderer; if all renderer creation fails, print an actionable error and terminate cleanly.
 - No network permission required, and no telemetry.
@@ -433,6 +505,13 @@ Implement assertions and data-driven tests, including at least:
 18. Same seed and tick input stream yield identical state hashes across desktop and ARM64.
 19. Input edge presses are consumed once even if catch-up executes multiple ticks.
 20. Corrupt/missing high-score file is safely handled, and good records round-trip after relaunch.
+21. Portrait mode (task T055): both mapping tables translate every control
+    for each orientation through the real SDL event path; the rotated frame,
+    cell size, HUD strip, and page bands assert at exact device pixels while
+    landscape pixels stay byte-identical; the settings file round-trips the
+    orientation line, its legacy forms parse with orientation at its default,
+    and a staged harness session plays a portrait round whose observation
+    stream equals the headless reference replay on the rotated tables.
 
 ## 12. Device acceptance checklist
 
@@ -451,6 +530,10 @@ The release is complete only when all of these pass on a real RG503 running ROCK
 - [ ] Game-over, restart, quit-to-title and PortMaster exit chord work.
 - [ ] Score persists after quitting and rebooting; corrupted save does not crash.
 - [ ] Native display is properly centered with nothing clipped or unreadable.
+- [ ] Portrait mode (task T055): OPTIONS sets PORTRAIT, the relaunch turns
+      the scene, the sideways grip plays a full round with every control
+      moving the piece in the on-screen direction of the rotated frame, and
+      nothing clips in either orientation.
 - [ ] Continuous 10-minute play session remains responsive at approximately 60 FPS; record actual frame times, identify spikes, and verify no sustained slowdowns.
 - [ ] No controller-disconnect, audio-init, renderer-fallback or missing-save crash.
 - [ ] Launch log shows a clean process exit; launch and quit repeatedly.

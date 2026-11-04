@@ -338,6 +338,8 @@ const char* sceneName(Scene scene) {
       return "paused";
     case Scene::PauseControls:
       return "pause-controls";
+    case Scene::MusicOptions:
+      return "music-options";
     case Scene::GameOver:
       return "game-over";
   }

@@ -29,7 +29,19 @@
 // The mute toggle is platform-layer state (specification section 6.3): the
 // keyboard M key and the controller Select button switch it, the settings file
 // of stackfall/storage.hpp supplies its starting value, and it never reaches
-// the rules core.
+// the rules core. Since the soundtrack of MUSIC.md joined the device, the
+// toggle is the master switch: it fades both buses - the effect cues and the
+// music engine below - while the music transport keeps running, and the
+// separate music mode of the settings file can still stop the music alone.
+//
+// The device carries two buses now (MUSIC.md, mixing and gain): the five cue
+// voices sum into one 32-bit accumulator and the MusicEngine of
+// stackfall/music.hpp renders the music bus beside them; each bus takes its
+// own volume step, the master gain applies to both, and one final safety
+// clamp produces the 16-bit stream. A clear, a four-line clear, or a game
+// over ducks the music by about 4 decibels for the cue's length plus a short
+// release, so the feedback stays audible over the soundtrack without
+// touching the transport.
 
 #include <array>
 #include <atomic>
@@ -40,6 +52,7 @@
 #include <SDL.h>
 
 #include "stackfall/game.hpp"
+#include "stackfall/music.hpp"
 
 namespace stackfall {
 
@@ -210,12 +223,32 @@ class AudioDriver {
   bool available() const { return device_ != 0; }
   int sampleRate() const { return obtainedRate_; }
   int channels() const { return obtainedChannels_; }
+  // The device's own callback size in frames, the unit MUSIC.md's callback
+  // budget is measured against.
+  int bufferFrames() const { return obtainedBufferFrames_; }
 
-  // The mute toggle of specification section 6.3. Muting stops new cues only;
-  // it never touches the device, so unmuting needs no reinitialization.
+  // The mute toggle of specification section 6.3, the master switch of all
+  // audio since MUSIC.md. Muting stops new cues and fades both buses to
+  // silence; it never touches the device or the music timeline, so unmuting
+  // needs no reinitialization.
   void setMuted(bool muted);
   bool muted() const { return muted_; }
   void toggleMute() { setMuted(!muted_); }
+
+  // The two volume steps of MUSIC.md's player controls, 0 through 10. Each
+  // publishes its bus gain as a latest-value atomic, so queue pressure can
+  // never lose one, and 0 is exactly silent. The master mute gates both
+  // buses on top of these.
+  void setMusicVolume(int step);
+  int musicVolume() const { return musicVolume_; }
+  void setEffectsVolume(int step);
+  int effectsVolume() const { return effectsVolume_; }
+
+  // The music engine this device renders. The MusicDirector of
+  // stackfall/music_director.hpp pushes commands and reads snapshots through
+  // here; with no device the engine simply never renders, and the director's
+  // requests cost nothing.
+  MusicEngine& musicEngine() { return musicEngine_; }
 
   // Plays every cue of `set`. A muted or closed driver counts the cue and
   // does nothing else, so a session log can report exactly what a working
@@ -259,6 +292,7 @@ class AudioDriver {
   bool muted_ = false;
   int obtainedRate_ = 0;
   int obtainedChannels_ = 0;
+  int obtainedBufferFrames_ = 0;
 
   std::array<std::vector<std::int16_t>, kSoundCueCount> samples_;
   std::array<unsigned, kSoundCueCount> requested_{};
@@ -269,6 +303,28 @@ class AudioDriver {
   std::array<std::atomic<unsigned>, kSoundCueCount> voiceRequest_{};
   std::array<std::atomic<unsigned>, kSoundCueCount> voiceSeen_{};
   std::array<std::size_t, kSoundCueCount> voicePos_{};
+
+  // The music bus (MUSIC.md, native audio design): the engine owns the
+  // transport and the voices inside the callback, and this scratch buffer -
+  // sized once at open() - receives its mono frames. No allocation, no log,
+  // no lock inside the callback.
+  MusicEngine musicEngine_;
+  std::vector<std::int32_t> musicScratch_;
+  std::vector<std::int32_t> cueScratch_;
+  int musicVolume_ = 10;
+  int effectsVolume_ = 10;
+  // The duck of MUSIC.md's mixing rules: frames the music stays lowered
+  // after a clear or game-over cue, and the duck gain the callback ramps.
+  int duckHoldFrames_ = 0;
+  std::uint32_t duckGainQ16_ = 65536;
+  // The master mute fades both buses: the engine ramps its own copy, and this
+  // member ramps the cue bus in the callback at the same 15 millisecond rate,
+  // so neither bus clicks when the master switch moves.
+  std::uint32_t cueMasterGainQ16_ = 65536;
+  std::uint32_t cueMasterStep_ = 1;
+
+  void publishMusicGain();
+  void updateDuck(std::size_t frames);
 };
 
 }  // namespace stackfall

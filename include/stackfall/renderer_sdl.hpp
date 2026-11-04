@@ -10,11 +10,14 @@
 // comes from the source-defined 5x7 glyph table of stackfall/font.hpp, drawn
 // as filled rectangles (specification section 6.2).
 //
-// All coordinates below are logical pixels on the 960x544 canvas. The owner
-// of the SDL_Renderer sets that canvas through applyCanvas(), which the game
-// binary does once after creating the renderer and again whenever the window
-// resizes; the renderer then draws in logical units and SDL scales and
-// letterboxes the output for any window size.
+// All coordinates below are logical pixels on the 960x544 canvas, or on the
+// 544x960 portrait canvas of task T055 when the renderer draws portrait. The
+// owner of the SDL_Renderer sets the device canvas through applyCanvas(),
+// which the game binary does once after creating the renderer and again
+// whenever the window resizes; the renderer then draws in logical units and
+// SDL scales and letterboxes the output for any window size. Portrait adds
+// one fixed rotation inside that canvas, which the drawing primitives apply,
+// so the two orientations share every code path below.
 //
 // The layout and palette constants are constexpr and live in this header so
 // the SDL-path suite in tests/test_renderer_sdl.cpp can assert exact pixels
@@ -25,6 +28,7 @@
 #include <array>
 
 #include "stackfall/game.hpp"
+#include "stackfall/music.hpp"
 #include "stackfall/types.hpp"
 
 namespace stackfall {
@@ -34,6 +38,72 @@ namespace stackfall {
 // ---------------------------------------------------------------------------
 inline constexpr int kCanvasWidth = 960;
 inline constexpr int kCanvasHeight = 544;
+
+// ---------------------------------------------------------------------------
+// The portrait canvas of task T055 (notes/design-review.md, "Portrait mode").
+//
+// Portrait is the same device output turned one quarter: the player holds the
+// RG503 with its D-pad end up, the scene rotates the other way, and the
+// drawing space becomes 544 wide by 960 tall in the player's frame. The
+// window, the letterbox canvas of applyCanvas(), and every screenshot stay in
+// device space; a portrait pixel (x, y) reaches the device through one fixed
+// rotation, which the renderer's primitives apply, so no draw call names a
+// device coordinate itself.
+//
+// The board grows from 27 px cells to 40 px cells, the 10x20 field measures
+// 400x800 at (72, 120), and the HUD moves from two side columns into one
+// strip above the board. Landscape keeps its own constants below and its own
+// pixels; nothing here changes them.
+// ---------------------------------------------------------------------------
+inline constexpr int kPortraitCanvasWidth = kCanvasHeight;   // 544
+inline constexpr int kPortraitCanvasHeight = kCanvasWidth;   // 960
+inline constexpr int kPortraitBoardCellSize = 40;
+inline constexpr int kPortraitBoardOriginX = 72;
+inline constexpr int kPortraitBoardOriginY = 120;
+inline constexpr int kPortraitBoardPixelWidth =
+    kBoardWidth * kPortraitBoardCellSize;                     // 400
+inline constexpr int kPortraitBoardPixelHeight =
+    kBoardHeight * kPortraitBoardCellSize;                    // 800
+
+// The portrait board frame, the counterpart of boardFrame(): x=71..472 and
+// y=119..920, inside the 544x960 canvas with 39 quiet rows below it.
+constexpr SDL_Rect portraitBoardFrame() {
+  return SDL_Rect{kPortraitBoardOriginX - 1, kPortraitBoardOriginY - 1,
+                  kPortraitBoardPixelWidth + 2, kPortraitBoardPixelHeight + 2};
+}
+
+// The preview cell of the portrait HUD strip, smaller than the landscape 15
+// because the strip's boxes share one row of the 544-wide canvas.
+inline constexpr int kPortraitPreviewCellSize = 12;
+
+// The statistics fields across the top of the canvas: three label-over-value
+// groups centered on these columns, then the Hold group at the left and the
+// five Next slots in one row at the right, all above the board frame.
+inline constexpr int kPortraitStatsLabelY = 8;
+inline constexpr int kPortraitStatsValueY = 26;
+inline constexpr int kPortraitStatsCenterX[3] = {104, 272, 440};
+inline constexpr int kPortraitStatsFieldWidth = 128;
+inline constexpr int kPortraitPanelHeadingY = 60;
+inline constexpr int kPortraitPanelBoxY = 78;
+inline constexpr int kPortraitPreviewBoxWidth = 56;
+inline constexpr int kPortraitPreviewBoxHeight = 32;
+inline constexpr int kPortraitHoldCenterX = 40;
+inline constexpr int kPortraitNextRowX = 240;
+inline constexpr int kPortraitNextStride = 60;
+inline constexpr int kPortraitNextCenterX =
+    kPortraitNextRowX + (kPortraitNextStride * kPreviewCount - 4) / 2;
+
+constexpr SDL_Rect portraitHoldBox() {
+  return SDL_Rect{kPortraitHoldCenterX - kPortraitPreviewBoxWidth / 2,
+                  kPortraitPanelBoxY, kPortraitPreviewBoxWidth,
+                  kPortraitPreviewBoxHeight};
+}
+
+constexpr SDL_Rect portraitNextSlotBox(int index) {
+  return SDL_Rect{kPortraitNextRowX + index * kPortraitNextStride,
+                  kPortraitPanelBoxY, kPortraitPreviewBoxWidth,
+                  kPortraitPreviewBoxHeight};
+}
 
 // ---------------------------------------------------------------------------
 // The letterbox canvas of section 6.1 (design review finding
@@ -205,17 +275,18 @@ inline constexpr int kControlsGamepadX = 110;
 inline constexpr int kControlsKeyboardX = 410;
 inline constexpr int kControlsActionX = 710;
 
-// The options page (tasks T040 and T044): one heading, the six setting rows
-// at the shared menu metrics, one footer. The rows read their value from the
-// renderer's preference settings, because the rules core holds the cursor
-// alone and the values are platform state (specification section 7). Six rows
-// at the 44 px menu height span y = 144..385, so the heading moves up and the
-// footer moves down from the two-row layout; everything stays inside the
-// 960x544 canvas with the hint glyphs at their 14 px scale (task T037).
+// The options page (tasks T040, T044, and T062): one heading, the eight
+// setting rows at the shared menu metrics, one footer. The rows read their
+// value from the renderer's preference settings, because the rules core holds
+// the cursor alone and the values are platform state (specification section
+// 7). Eight rows at the 44 px menu height span y = 112..433, so the heading
+// stays high and the footer sits under the last row; everything stays inside
+// the 960x544 canvas with the hint glyphs at their 14 px scale (tasks T037
+// and T062).
 inline constexpr int kOptionsHeadingY = 64;
 inline constexpr int kOptionsHeadingScale = 4;
-inline constexpr int kOptionsMenuY = 144;
-inline constexpr int kOptionsFooterY = 456;
+inline constexpr int kOptionsMenuY = 112;
+inline constexpr int kOptionsFooterY = 464;
 
 // The overlays: a translucent veil over the frozen play scene plus one solid
 // panel that carries the text. Offsets are panel-relative.
@@ -230,17 +301,61 @@ inline constexpr int kOverRecordOffsetY = 240;
 inline constexpr int kOverMenuOffsetY = 296;
 inline constexpr int kOverHintOffsetY = 404;
 
-// The pause panel nests between the two HUD columns (x = 320..639, task
-// T037): the frozen round's statistics and previews stay visible beside it
-// under the veil, so the HUD reads continuously even while paused. The
-// game-over panel may span the columns; the round it reports is over.
+// Both overlay panels nest between the two HUD columns (x = 320..639, tasks
+// T037 and T043): the frozen round's statistics and previews stay visible
+// beside them under the veil, so the HUD reads continuously behind a modal.
+// The game-over panel keeps its own height, because it carries the three
+// final-statistics rows over its menu; it shares the pause panel's center.
 constexpr SDL_Rect pausePanel() {
   return SDL_Rect{320, 92, kRightPanelX - kLeftPanelX - kLeftPanelWidth,
                   360};
 }
 
 constexpr SDL_Rect gameoverPanel() {
-  return SDL_Rect{240, 52, 480, 440};
+  return SDL_Rect{pausePanel().x, 52, pausePanel().w, 440};
+}
+
+// ---------------------------------------------------------------------------
+// The portrait pages of the section 4.7 screens (task T055). The 544x960
+// canvas cannot hold the landscape columns - the controls page's three
+// columns measure 570 px side by side - so each page recomposes for the tall
+// frame: the title spreads its menu down the canvas, the controls page stacks
+// one action heading over its two mappings, and the options page keeps the
+// shared menu metrics with room to spare. The overlays center on the board,
+// which owns the canvas alone in portrait.
+// ---------------------------------------------------------------------------
+inline constexpr int kPTitleLogoY = 96;
+inline constexpr int kPTitlePreviewY = 200;
+inline constexpr int kPTitleMenuY = 330;
+inline constexpr int kPTitleHighScoreLabelY = 600;
+inline constexpr int kPTitleHighScoreValueY = 622;
+inline constexpr int kPTitleHintY = 880;
+
+inline constexpr int kPControlsHeadingY = 64;
+inline constexpr int kPControlsHeaderY = 140;
+inline constexpr int kPControlsFirstRowY = 176;
+inline constexpr int kPControlsRowHeight = 44;
+inline constexpr int kPControlsGamepadX = 64;
+inline constexpr int kPControlsKeyboardX = 278;
+inline constexpr int kPControlsFooterY = 640;
+
+inline constexpr int kPOptionsHeadingY = 64;
+inline constexpr int kPOptionsMenuY = 200;
+inline constexpr int kPOptionsFooterY = 880;
+
+// The music settings page behind the MUSIC row (task T062, MUSIC.md player
+// controls): the same heading and menu metrics as the options page, four rows
+// (mode, both volumes, Next track), the playing track's title on one line of
+// its own, and the same footer hint.
+inline constexpr int kMusicTrackY = 348;
+inline constexpr int kPMusicTrackY = 430;
+
+constexpr SDL_Rect pausePanelPortrait() {
+  return SDL_Rect{kPortraitBoardOriginX, 280, kPortraitBoardPixelWidth, 360};
+}
+
+constexpr SDL_Rect gameoverPanelPortrait() {
+  return SDL_Rect{(kPortraitCanvasWidth - 480) / 2, 200, 480, 440};
 }
 
 // ---------------------------------------------------------------------------
@@ -471,6 +586,32 @@ class Renderer {
   int nextPreviews() const noexcept;
   void setGrayscale(bool on) noexcept;
   bool grayscale() const noexcept;
+  // The orientation this renderer draws (task T055). The platform layer sets
+  // it once at startup from the persisted preference and never mid-session,
+  // because the layout, not just a color, depends on it: portrait turns the
+  // scene a quarter and moves to the portrait geometry above. Defaults to
+  // landscape, the recovery value of the settings file.
+  void setOrientation(Orientation orientation) noexcept;
+  Orientation orientation() const noexcept;
+  // The ORIENTATION row's own value, which the options screen shows and the
+  // settings file keeps. Selecting the row changes this mirror at once while
+  // the layout above stays until the next launch, so the row always names
+  // what the next launch draws (task T055).
+  void setOrientationPreference(Orientation orientation) noexcept;
+  Orientation orientationPreference() const noexcept;
+  // The music settings this renderer mirrors for the MUSIC row and the music
+  // settings page (task T062): the pool mode, both volume steps of the
+  // eleven-step table, and the title of the track the director is playing,
+  // which the page shows on its own line and which stays empty while music
+  // is silent. The platform layer owns the values and pushes them here.
+  void setMusicMode(MusicMode mode) noexcept;
+  MusicMode musicMode() const noexcept;
+  void setMusicVolume(int step) noexcept;
+  int musicVolume() const noexcept;
+  void setEffectsVolume(int step) noexcept;
+  int effectsVolume() const noexcept;
+  void setMusicTrackTitle(const char* title) noexcept;
+  const char* musicTrackTitle() const noexcept;
 
   // The glyph scale one statistics value draws at: the full value scale while
   // the number fits the statistics column, one step smaller when it does not,
@@ -496,6 +637,7 @@ class Renderer {
   void drawTitleScreen(const Game& game) const;
   void drawControlsScreen(const char* footer) const;
   void drawOptionsScreen(const Game& game) const;
+  void drawMusicOptionsScreen(const Game& game) const;
   void drawPauseOverlay(const Game& game) const;
   void drawGameOverOverlay(const Game& game) const;
   void drawOverlayPanel(const SDL_Rect& panel) const;
@@ -508,6 +650,82 @@ class Renderer {
   void drawCell(int x, int y, int size, const CellPalette& palette) const;
   void drawGhostCell(int x, int y, int size, SDL_Color color) const;
   void drawPreviewPiece(PieceId id, const SDL_Rect& box, bool dimmed) const;
+  void drawPreviewPiece(PieceId id, const SDL_Rect& box, bool dimmed,
+                        int cellSize) const;
+
+  // The geometry of the orientation this renderer draws. Every draw call
+  // reads its positions through these, so landscape keeps its pinned pixels
+  // and portrait reads its own (task T055).
+  bool portrait() const noexcept { return orientation_ == Orientation::Portrait; }
+  int canvasWidth() const noexcept {
+    return portrait() ? kPortraitCanvasWidth : kCanvasWidth;
+  }
+  int canvasHeight() const noexcept {
+    return portrait() ? kPortraitCanvasHeight : kCanvasHeight;
+  }
+  int boardCellSize() const noexcept {
+    return portrait() ? kPortraitBoardCellSize : kBoardCellSize;
+  }
+  int boardOriginX() const noexcept {
+    return portrait() ? kPortraitBoardOriginX : kBoardOriginX;
+  }
+  int boardOriginY() const noexcept {
+    return portrait() ? kPortraitBoardOriginY : kBoardOriginY;
+  }
+  int boardPixelWidth() const noexcept {
+    return portrait() ? kPortraitBoardPixelWidth : kBoardPixelWidth;
+  }
+  int boardPixelHeight() const noexcept {
+    return portrait() ? kPortraitBoardPixelHeight : kBoardPixelHeight;
+  }
+  SDL_Rect boardFrameNow() const noexcept {
+    return portrait() ? portraitBoardFrame() : boardFrame();
+  }
+  int previewCellSize() const noexcept {
+    return portrait() ? kPortraitPreviewCellSize : kPreviewCellSize;
+  }
+  // The hold box and the Next slot boxes of the orientation's HUD.
+  SDL_Rect holdBoxNow() const noexcept {
+    return portrait() ? portraitHoldBox() : holdBox();
+  }
+  SDL_Rect nextSlotBoxNow(int index) const noexcept {
+    return portrait() ? portraitNextSlotBox(index) : nextSlotBox(index);
+  }
+  // One filled axis-aligned line of one pixel, the rectangle a
+  // SDL_RenderDrawLine call of the same span draws. Stating lines this way
+  // lets the rotation below turn them, which a raw draw call cannot.
+  void drawUnitLine(SDL_Color color, int x, int y, int w, int h) const;
+  // The top-left canvas pixel of board cell (x, y) in the orientation's
+  // geometry, the orientation-aware counterpart of the landscape cellX and
+  // cellY of src/renderer_sdl.cpp.
+  int cellXNow(int x) const noexcept {
+    return boardOriginX() + x * boardCellSize();
+  }
+  int cellYNow(int y) const noexcept {
+    return boardOriginY() + y * boardCellSize();
+  }
+  // The widest value a statistics field draws in this orientation: the
+  // landscape column width, or the portrait field width of the top strip.
+  int statFieldWidth() const noexcept {
+    return portrait() ? kPortraitStatsFieldWidth : kLeftPanelWidth;
+  }
+  // The hint lines of the two frames. Portrait names the controls of the
+  // rotated table: the cursor moves on the D-pad's device left and right and
+  // the reversed cluster confirms on B and goes back on A (task T055).
+  const char* menuHintText() const noexcept {
+    return portrait() ? "LEFT/RIGHT CHOOSE - B CONFIRM - A BACK"
+                      : "UP/DOWN CHOOSE - A CONFIRM - B BACK";
+  }
+  const char* optionsHintText() const noexcept {
+    return portrait() ? "LEFT/RIGHT CHOOSE - B CHANGE - A BACK"
+                      : "UP/DOWN CHOOSE - A CHANGE - B BACK";
+  }
+  const char* confirmHintText() const noexcept {
+    return portrait() ? "B CONFIRM" : "A CONFIRM";
+  }
+  const char* pauseHintText() const noexcept {
+    return portrait() ? "B CONFIRM - A RESUME" : "A CONFIRM - B RESUME";
+  }
 
   // The palette of one piece under the current settings: grayscale on swaps
   // the color palettes for the gray ones everywhere the play scene draws a
@@ -522,6 +740,12 @@ class Renderer {
   bool showHold_ = true;
   int nextPreviews_ = kPreviewCount;
   bool grayscale_ = false;
+  Orientation orientation_ = Orientation::Landscape;
+  Orientation orientationPreference_ = Orientation::Landscape;
+  MusicMode musicMode_ = MusicMode::Auto;
+  int musicVolume_ = 6;
+  int effectsVolume_ = 8;
+  const char* musicTrackTitle_ = "";
 };
 
 }  // namespace stackfall

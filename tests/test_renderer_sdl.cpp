@@ -62,6 +62,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <string>
 #include <vector>
 
 #include <SDL.h>
@@ -1658,14 +1659,22 @@ void run_options_screen_checks() {
   game.openTitle(20261103);
 
   // The defaults mirror a session that loaded no settings file: every toggle
-  // on, five Next previews, grayscale off (task T044).
-  SC_CHECK(kOptionsItemCount == 6);
+  // on, five Next previews, grayscale off, landscape, the Auto music pool,
+  // and both MUSIC.md volume defaults (tasks T044, T055, and T062).
+  SC_CHECK(kOptionsItemCount == 8);
+  SC_CHECK(kOptionsMusicRow == 7);
   SC_CHECK(renderer.soundOn() == true);
   SC_CHECK(renderer.showGhost() == true);
   SC_CHECK(renderer.showGrid() == true);
   SC_CHECK(renderer.showHold() == true);
   SC_CHECK(renderer.nextPreviews() == kPreviewCount);
   SC_CHECK(renderer.grayscale() == false);
+  SC_CHECK(renderer.orientation() == Orientation::Landscape);
+  SC_CHECK(renderer.orientationPreference() == Orientation::Landscape);
+  SC_CHECK(renderer.musicMode() == MusicMode::Auto);
+  SC_CHECK(renderer.musicVolume() == 6);
+  SC_CHECK(renderer.effectsVolume() == 8);
+  SC_CHECK(std::string(renderer.musicTrackTitle()).empty());
 
   // Two downs from Start Game reach OPTIONS, and A opens the screen.
   menuDown(game);
@@ -1688,15 +1697,18 @@ void run_options_screen_checks() {
 
   // Every value combination draws: each row reads its label plus the value of
   // its renderer setting - ON or OFF for the five toggles, the digit for
-  // NEXT PIECES - and nothing else in a row band is bright or dim, so the
-  // exact glyph count pins the string.
-  for (int booleans = 0; booleans < 32; ++booleans) {
+  // NEXT PIECES, the frame for ORIENTATION - and nothing else in a row band
+  // is bright or dim, so the exact glyph count pins the string.
+  for (int booleans = 0; booleans < 64; ++booleans) {
     for (int next = 1; next <= kPreviewCount; ++next) {
       renderer.setSoundOn((booleans & 1) != 0);
       renderer.setShowGhost((booleans & 2) != 0);
       renderer.setShowGrid((booleans & 4) != 0);
       renderer.setShowHold((booleans & 8) != 0);
       renderer.setGrayscale((booleans & 16) != 0);
+      renderer.setOrientationPreference((booleans & 32) != 0
+                                             ? Orientation::Portrait
+                                             : Orientation::Landscape);
       renderer.setNextPreviews(next);
       renderer.draw(game);
       char nextRow[24];
@@ -1708,6 +1720,9 @@ void run_options_screen_checks() {
           (booleans & 8) ? "HOLD ON" : "HOLD OFF",
           nextRow,
           (booleans & 16) ? "GRAYSCALE ON" : "GRAYSCALE OFF",
+          (booleans & 32) ? "ORIENTATION PORTRAIT"
+                          : "ORIENTATION LANDSCAPE",
+          "MUSIC AUTO",
       };
       for (int index = 0; index < kOptionsItemCount; ++index) {
         const int y = kOptionsMenuY + index * kMenuItemHeight;
@@ -1751,12 +1766,12 @@ void run_options_screen_checks() {
     SC_CHECK(countColor(canvas, rowBelow, kAccent) == 0);
   }
 
-  // Five downs walk the cursor to the last row, and the marker follows: the
-  // first row goes dim and GRAYSCALE goes bright.
+  // Seven downs walk the cursor to the last row, and the marker follows: the
+  // first row goes dim and the MUSIC row goes bright.
   for (int step = 0; step < kOptionsItemCount - 1; ++step) {
     menuDown(game);
   }
-  SC_CHECK(game.optionsSelection() == kOptionsItemCount - 1);
+  SC_CHECK(game.optionsSelection() == kOptionsMusicRow);
   renderer.draw(game);
   SC_CHECK(countColor(canvas, menuRow(kOptionsMenuY, kMenuScale), kText) == 0);
   SC_CHECK(countColor(canvas,
@@ -1764,7 +1779,7 @@ void run_options_screen_checks() {
                                   (kOptionsItemCount - 1) * kMenuItemHeight,
                               kMenuScale),
                       kText) > 100);
-  // The sixth wrap down stays inside the screen: one more down wraps to the
+  // The eighth down stays inside the screen: one more down wraps to the
   // SOUND row, whose band turns bright again.
   menuDown(game);
   SC_CHECK(game.optionsSelection() == 0);
@@ -1793,10 +1808,10 @@ void run_options_screen_checks() {
   {
     const int lastY =
         kOptionsMenuY + (kOptionsItemCount - 1) * kMenuItemHeight;
-    const int textLeft =
-        kCanvasWidth / 2 - textWidth(kMenuScale, "GRAYSCALE OFF") / 2;
+    const int textLeft = kCanvasWidth / 2 -
+                         textWidth(kMenuScale, "ORIENTATION PORTRAIT") / 2;
     SC_CHECK(textLeft - kMenuMarkerGap - kMenuMarkerSize >= 0);
-    SC_CHECK(textLeft + textWidth(kMenuScale, "GRAYSCALE OFF") <=
+    SC_CHECK(textLeft + textWidth(kMenuScale, "ORIENTATION PORTRAIT") <=
              kCanvasWidth);
     SC_CHECK(lastY + kGlyphRows * kMenuScale <= kCanvasHeight);
   }
@@ -1815,6 +1830,150 @@ void run_options_screen_checks() {
   SC_CHECK(countColor(canvas,
                       menuRow(kTitleMenuY + 3 * kMenuItemHeight, kMenuScale),
                       kTextDim) > 100);
+}
+
+// The music settings page behind the MUSIC row (task T062, MUSIC.md player
+// controls): the same heading, menu metrics, and footer hint as the options
+// page, over its four rows and the playing track's dim title line, which
+// stays empty while music is silent. The exact glyph count pins each row's
+// string, exactly as the options page does.
+void run_music_options_screen_checks() {
+  Canvas canvas = makeCanvas(kCanvasWidth, kCanvasHeight);
+  SC_CHECK(canvas.ok);
+  Renderer renderer(canvas.renderer);
+  Game game;
+  game.openTitle(20261104);
+
+  // Reach the page: OPTIONS, seven downs to the MUSIC row, A to open.
+  menuDown(game);
+  menuDown(game);
+  SC_CHECK(game.titleSelection() == 2);
+  TickInput select;
+  select.menu.selectPressed = true;
+  game.tick(select);
+  SC_CHECK(game.scene() == Scene::Options);
+  for (int step = 0; step < kOptionsMusicRow; ++step) {
+    menuDown(game);
+  }
+  game.tick(select);
+  SC_CHECK(game.scene() == Scene::MusicOptions);
+  SC_CHECK(game.musicSelection() == 0);
+
+  // Plain background and a bright MUSIC heading at the shared constants.
+  renderer.draw(game);
+  SC_CHECK(sameColor(pixelAt(canvas, 5, 5), kBackground));
+  const SDL_Rect heading{0, kOptionsHeadingY, kCanvasWidth,
+                         kGlyphRows * kOptionsHeadingScale};
+  SC_CHECK(countColor(canvas, heading, kText) > 100);
+
+  // Every mode and volume combination draws: each row reads its label plus
+  // the value of its renderer mirror, and nothing else in a row band is
+  // bright or dim, so the exact glyph count pins the string. The track title
+  // line reads the mirror the platform layer feeds the director's title.
+  char modeText[16];
+  char musicVolumeText[24];
+  char effectsVolumeText[24];
+  const char* modeNames[5] = {"AUTO", "ARCADE", "GROOVE", "FOCUS", "OFF"};
+  for (int mode = 0; mode <= static_cast<int>(MusicMode::Off); ++mode) {
+    for (int music = 0; music <= 10; ++music) {
+      for (int effects = 0; effects <= 10; ++effects) {
+        renderer.setMusicMode(static_cast<MusicMode>(mode));
+        renderer.setMusicVolume(music);
+        renderer.setEffectsVolume(effects);
+        const bool silent = mode == static_cast<int>(MusicMode::Off);
+        renderer.setMusicTrackTitle(silent ? "" : "BOOT SEQUENCE");
+        renderer.draw(game);
+        std::snprintf(modeText, sizeof(modeText), "MUSIC %s",
+                      modeNames[mode]);
+        std::snprintf(musicVolumeText, sizeof(musicVolumeText),
+                      "MUSIC VOLUME %d", music);
+        std::snprintf(effectsVolumeText, sizeof(effectsVolumeText),
+                      "EFFECTS VOLUME %d", effects);
+        const char* rows[kMusicOptionsItemCount] = {
+            modeText, musicVolumeText, effectsVolumeText, "NEXT TRACK"};
+        for (int index = 0; index < kMusicOptionsItemCount; ++index) {
+          const int y = kOptionsMenuY + index * kMenuItemHeight;
+          const SDL_Rect row = menuRow(y, kMenuScale);
+          const int pixels =
+              glyphPixelCount(rows[index]) * kMenuScale * kMenuScale;
+          if (index == game.musicSelection()) {
+            SC_CHECK(countColor(canvas, row, kText) == pixels);
+            SC_CHECK(countColor(canvas, row, kTextDim) == 0);
+          } else {
+            SC_CHECK(countColor(canvas, row, kTextDim) == pixels);
+            SC_CHECK(countColor(canvas, row, kText) == 0);
+            SC_CHECK(countColor(canvas, row, kAccent) == 0);
+          }
+        }
+        // The title line: exactly the title's glyphs while a track plays,
+        // nothing at all while music is silent.
+        const SDL_Rect trackBand{0, kMusicTrackY - 6, kCanvasWidth,
+                                 kGlyphRows * kMenuScale + 12};
+        if (silent) {
+          SC_CHECK(countColor(canvas, trackBand, kTextDim) == 0);
+          SC_CHECK(countColor(canvas, trackBand, kText) == 0);
+        } else {
+          SC_CHECK(countColor(canvas, trackBand, kTextDim) ==
+                   glyphPixelCount("BOOT SEQUENCE") * kMenuScale * kMenuScale);
+          SC_CHECK(countColor(canvas, trackBand, kText) == 0);
+        }
+      }
+    }
+  }
+
+  // Back to the defaults, and the cursor walks the four rows with the marker:
+  // three downs reach NEXT TRACK and one more wraps to MUSIC.
+  renderer.setMusicMode(MusicMode::Auto);
+  renderer.setMusicVolume(6);
+  renderer.setEffectsVolume(8);
+  renderer.setMusicTrackTitle("BOOT SEQUENCE");
+  for (int step = 0; step < kMusicOptionsItemCount - 1; ++step) {
+    menuDown(game);
+  }
+  SC_CHECK(game.musicSelection() == kMusicOptionsItemCount - 1);
+  renderer.draw(game);
+  SC_CHECK(countColor(canvas, menuRow(kOptionsMenuY, kMenuScale), kText) == 0);
+  SC_CHECK(countColor(canvas,
+                      menuRow(kOptionsMenuY +
+                                  (kMusicOptionsItemCount - 1) *
+                                      kMenuItemHeight,
+                              kMenuScale),
+                      kText) > 100);
+  menuDown(game);
+  SC_CHECK(game.musicSelection() == 0);
+  renderer.draw(game);
+  SC_CHECK(countColor(canvas, menuRow(kOptionsMenuY, kMenuScale), kText) > 100);
+
+  // The footer band holds exactly the shared options hint, and every row, the
+  // title line, and the footer sit inside the canvas with nothing clipped.
+  const SDL_Rect footerBand{0, kOptionsFooterY - 6, kCanvasWidth,
+                            kGlyphRows * kHintScale + 12};
+  const std::vector<int> footerRuns = textRowRuns(canvas, footerBand);
+  SC_CHECK(footerRuns.size() == 1);
+  SC_CHECK(footerRuns[0] == kGlyphRows * kHintScale);
+  SC_CHECK(countColor(canvas, footerBand, kTextDim) ==
+           glyphPixelCount("UP/DOWN CHOOSE - A CHANGE - B BACK") * kHintScale *
+               kHintScale);
+  SC_CHECK(kOptionsHeadingY + kGlyphRows * kOptionsHeadingScale <
+           kOptionsMenuY);
+  SC_CHECK(kMusicTrackY > kOptionsMenuY +
+                              (kMusicOptionsItemCount - 1) * kMenuItemHeight +
+                              kGlyphRows * kMenuScale);
+  SC_CHECK(kMusicTrackY + kGlyphRows * kMenuScale < kOptionsFooterY);
+  SC_CHECK(kOptionsFooterY + kGlyphRows * kHintScale < kCanvasHeight);
+
+  // Back returns to the options screen with the cursor still on the MUSIC
+  // row, whose band turns bright again.
+  TickInput back;
+  back.menu.backPressed = true;
+  game.tick(back);
+  SC_CHECK(game.scene() == Scene::Options);
+  SC_CHECK(game.optionsSelection() == kOptionsMusicRow);
+  renderer.draw(game);
+  SC_CHECK(countColor(canvas,
+                      menuRow(kOptionsMenuY + kOptionsMusicRow * kMenuItemHeight,
+                              kMenuScale),
+                      kText) > 100);
 }
 
 void run_pause_overlay_checks() {
@@ -1988,8 +2147,30 @@ void run_gameover_overlay_checks() {
   SC_CHECK(game.newRecord());
   renderer.draw(game);
 
+  // The panel nests between the HUD columns like the pause panel: it spans
+  // the gap from the left column's edge to the right column's edge, its
+  // corner holds the exact panel fill, and the columns beside it stay free
+  // of the panel fill, so the dimmed statistics and previews read whole
+  // around the modal instead of peeking out at its edge (task T043).
   const SDL_Rect panel = gameoverPanel();
+  SC_CHECK(panel.x == kLeftPanelX + kLeftPanelWidth);
+  SC_CHECK(panel.x + panel.w == kRightPanelX);
+  SC_CHECK(panel.x == pausePanel().x && panel.w == pausePanel().w);
   SC_CHECK(sameColor(pixelAt(canvas, panel.x + 6, panel.y + 6), kPanelFill));
+  const SDL_Rect overLeftColumnBand{kLeftPanelX, 0, kLeftPanelWidth,
+                                    kCanvasHeight};
+  const SDL_Rect overRightColumnBand{kRightPanelX, 0, kRightPanelWidth,
+                                     kCanvasHeight};
+  SC_CHECK(countColor(canvas, overLeftColumnBand, kPanelFill) == 0);
+  SC_CHECK(countColor(canvas, overRightColumnBand, kPanelFill) == 0);
+
+  // The narrowed panel still holds its widest row: both 56 px margins, the
+  // five-glyph label, and an eight-digit score at the menu scale - the
+  // value scale's six-digit ceiling of the HUD column sits far below this -
+  // fit inside the panel's width without the label and value meeting.
+  SC_CHECK(2 * 56 + 5 * kGlyphAdvance * kLabelScale +
+               textWidth(kMenuScale, "99999999") <=
+           panel.w);
 
   const SDL_Rect heading{panel.x, panel.y + kOverHeadingOffsetY, panel.w,
                          kGlyphRows * kControlsHeadingScale};
@@ -2044,6 +2225,363 @@ void run_gameover_overlay_checks() {
   SC_CHECK(countColor(canvas, record, kAccent) == 0);
 }
 
+// ---------------------------------------------------------------------------
+// The portrait canvas of task T055 (notes/design-review.md, "Portrait mode").
+// The device canvas stays 960x544; portrait rotates every drawn rect one
+// quarter inside it, so these checks state the rotation here, on purpose,
+// with their own arithmetic: portrait pixel (x, y) lands on device pixel
+// (y, 543 - x), and a portrait rect lands as a transposed rect. A draw call
+// that misses the rotation fails them before any screenshot records it.
+// ---------------------------------------------------------------------------
+
+SDL_Point portraitPixel(int x, int y) {
+  return SDL_Point{y, kCanvasHeight - 1 - x};
+}
+
+SDL_Color pixelAtPoint(const Canvas& canvas, const SDL_Point& point) {
+  return pixelAt(canvas, point.x, point.y);
+}
+
+bool sameRect(const SDL_Rect& a, const SDL_Rect& b) {
+  return a.x == b.x && a.y == b.y && a.w == b.w && a.h == b.h;
+}
+
+SDL_Rect portraitDeviceRect(int x, int y, int w, int h) {
+  return SDL_Rect{y, kCanvasHeight - x - w, h, w};
+}
+
+// Portrait cell geometry helpers, the counterparts of cellCornerX and friends.
+constexpr int pCellCornerX(int x) {
+  return kPortraitBoardOriginX + x * kPortraitBoardCellSize;
+}
+constexpr int pCellCornerY(int y) {
+  return kPortraitBoardOriginY + y * kPortraitBoardCellSize;
+}
+
+void run_portrait_board_checks() {
+  Canvas canvas = makeCanvas(kCanvasWidth, kCanvasHeight);
+  SC_CHECK(canvas.ok);
+  Renderer renderer(canvas.renderer);
+  SC_CHECK(renderer.orientation() == Orientation::Landscape);
+
+  // The pinned geometry of notes/design-review.md: 40 px cells, a 400x800
+  // field at (72, 120), its frame at x=71..472 and y=119..920, all inside
+  // the 544x960 portrait canvas with quiet margins on every side.
+  SC_CHECK(kPortraitCanvasWidth == 544);
+  SC_CHECK(kPortraitCanvasHeight == 960);
+  SC_CHECK(kPortraitBoardCellSize == 40);
+  SC_CHECK(kPortraitBoardOriginX == 72);
+  SC_CHECK(kPortraitBoardOriginY == 120);
+  SC_CHECK(kPortraitBoardPixelWidth == 400);
+  SC_CHECK(kPortraitBoardPixelHeight == 800);
+  const SDL_Rect frame = portraitBoardFrame();
+  SC_CHECK(frame.x == 71 && frame.y == 119);
+  SC_CHECK(frame.w == 402 && frame.h == 802);
+  SC_CHECK(frame.x + frame.w - 1 == 472);
+  SC_CHECK(frame.y + frame.h - 1 == 920);
+  SC_CHECK(sameRect(portraitHoldBox(), SDL_Rect{12, 78, 56, 32}));
+  SC_CHECK(sameRect(portraitNextSlotBox(0), SDL_Rect{240, 78, 56, 32}));
+  SC_CHECK(sameRect(portraitNextSlotBox(4), SDL_Rect{480, 78, 56, 32}));
+  SC_CHECK(sameRect(pausePanelPortrait(), SDL_Rect{72, 280, 400, 360}));
+  SC_CHECK(sameRect(gameoverPanelPortrait(), SDL_Rect{32, 200, 480, 440}));
+
+  renderer.setOrientation(Orientation::Portrait);
+  SC_CHECK(renderer.orientation() == Orientation::Portrait);
+
+  Game game;
+  game.start(20261103);
+  renderer.draw(game);
+
+  // A column and a row of the empty field no active or ghost cell covers,
+  // the portrait counterpart of the landscape boundary suite's fixed column.
+  int clearColumn = -1;
+  for (int column = 0; column < kBoardWidth && clearColumn < 0; ++column) {
+    bool covered = false;
+    for (const Cell& cell : boardCells(game.activePiece())) {
+      covered = covered || cell.x == column;
+    }
+    for (const Cell& cell : boardCells(game.ghostPiece())) {
+      covered = covered || cell.x == column;
+    }
+    if (!covered) {
+      clearColumn = column;
+    }
+  }
+  SC_CHECK(clearColumn >= 0);
+  const int columnMidY =
+      kCanvasHeight - 1 - (pCellCornerX(clearColumn) + 20);
+
+  // The frame outline on the device canvas, through the rotation: portrait
+  // x=71..472 and y=119..920 becomes device x=119..920 and y=71..472. Along
+  // the clear column, from the canvas top of the turned frame to its bottom:
+  // background, frame, well, then the mirror image.
+  SC_CHECK(sameColor(pixelAt(canvas, 118, columnMidY), kBackground));
+  SC_CHECK(sameColor(pixelAt(canvas, 119, columnMidY), kFrame));
+  SC_CHECK(sameColor(pixelAt(canvas, 120, columnMidY), kBoardWell));
+  SC_CHECK(sameColor(pixelAt(canvas, 919, columnMidY), kBoardWell));
+  SC_CHECK(sameColor(pixelAt(canvas, 920, columnMidY), kFrame));
+  SC_CHECK(sameColor(pixelAt(canvas, 921, columnMidY), kBackground));
+  // Along the clear middle row of the field, from the frame's device left to
+  // its right: the same ladder.
+  const int rowMidX = pCellCornerY(0) + 10 * kPortraitBoardCellSize + 20;
+  SC_CHECK(sameColor(pixelAt(canvas, rowMidX, 70), kBackground));
+  SC_CHECK(sameColor(pixelAt(canvas, rowMidX, 71), kFrame));
+  SC_CHECK(sameColor(pixelAt(canvas, rowMidX, 72), kBoardWell));
+  SC_CHECK(sameColor(pixelAt(canvas, rowMidX, 471), kBoardWell));
+  SC_CHECK(sameColor(pixelAt(canvas, rowMidX, 472), kFrame));
+  SC_CHECK(sameColor(pixelAt(canvas, rowMidX, 473), kBackground));
+
+  // The quiet margins of the portrait frame, in portrait coordinates read
+  // through the rotation: the columns left and right of the board and the
+  // rows below it stay background, so nothing the strip draws can clip.
+  SC_CHECK(sameColor(pixelAtPoint(canvas, portraitPixel(5, 500)), kBackground));
+  SC_CHECK(sameColor(pixelAtPoint(canvas, portraitPixel(539, 500)), kBackground));
+  SC_CHECK(sameColor(pixelAtPoint(canvas, portraitPixel(272, 945)), kBackground));
+
+  // The grid at the 40 px pitch: the first interior boundary sits one cell
+  // in from the field's top-left corner, on the device canvas.
+  const SDL_Point firstGridX = portraitPixel(pCellCornerX(0) +
+                                             kPortraitBoardCellSize,
+                                             pCellCornerY(0) + 7);
+  const SDL_Point firstGridY = portraitPixel(pCellCornerX(0) + 7,
+                                             pCellCornerY(0) +
+                                                 kPortraitBoardCellSize);
+  SC_CHECK(sameColor(pixelAt(canvas, firstGridX.x, firstGridX.y), kGridLine));
+  SC_CHECK(sameColor(pixelAt(canvas, firstGridY.x, firstGridY.y), kGridLine));
+  const SDL_Point lastGridX = portraitPixel(
+      pCellCornerX(kBoardWidth - 1), pCellCornerY(0) + 7);
+  SC_CHECK(sameColor(pixelAt(canvas, lastGridX.x, lastGridX.y), kGridLine));
+
+  // A whole 40 px cell, settled at the field's top-left corner. Portrait
+  // (72, 120) is device (120, 471); the cell spans device x=120..159 and
+  // y=432..471, the transpose of its portrait block, with the frame at
+  // device x=119 to its portrait top and device y=472 to its portrait left.
+  Board& board = stackfall::GameTestPeer::board(game);
+  SC_CHECK(board.settleCell(0, 0, PieceId::I));
+  SC_CHECK(board.settleCell(kBoardWidth - 1, kBoardHeight - 1, PieceId::O));
+  renderer.draw(game);
+  const SDL_Point cellTopLeft = portraitPixel(pCellCornerX(0), pCellCornerY(0));
+  SC_CHECK(cellTopLeft.x == 120 && cellTopLeft.y == 471);
+  SC_CHECK(sameColor(pixelAt(canvas, 119, cellTopLeft.y), kFrame));
+  SC_CHECK(sameColor(pixelAt(canvas, cellTopLeft.x, 472), kFrame));
+  SC_CHECK(sameColor(pixelAt(canvas, cellTopLeft.x, cellTopLeft.y),
+                     kCellEdge));
+  SC_CHECK(sameColor(pixelAt(canvas, cellTopLeft.x, 432), kCellEdge));
+  // The light and dark bands turn with the cell: portrait's light top and
+  // left become the device block's left column and bottom row, and portrait's
+  // dark bottom and right become the device right column and top row.
+  SC_CHECK(sameColor(pixelAt(canvas, 121, 450),
+                     cellPalette(PieceId::I).light));
+  SC_CHECK(sameColor(pixelAt(canvas, 140, 470),
+                     cellPalette(PieceId::I).light));
+  SC_CHECK(sameColor(pixelAt(canvas, 158, 450), cellPalette(PieceId::I).dark));
+  SC_CHECK(sameColor(pixelAt(canvas, 140, 433), cellPalette(PieceId::I).dark));
+  SC_CHECK(sameColor(pixelAt(canvas, 140, 450), pieceFill(PieceId::I)));
+  // The bottom-right cell lands whole at the far corner of the device frame.
+  const SDL_Point farCorner = portraitPixel(pCellCornerX(kBoardWidth - 1),
+                                            pCellCornerY(kBoardHeight - 1));
+  SC_CHECK(farCorner.x == 880 && farCorner.y == 111);
+  SC_CHECK(sameColor(pixelAt(canvas, farCorner.x, farCorner.y), kCellEdge));
+  SC_CHECK(sameColor(pixelAt(canvas, farCorner.x + 20, farCorner.y - 20),
+                     pieceFill(PieceId::O)));
+}
+
+// The portrait HUD strip above the board and the screens of section 4.7, all
+// through the same rotation: text bands assert in device space, so a glyph
+// row that drifts out of the strip fails here.
+void run_portrait_hud_and_screens_checks() {
+  Canvas canvas = makeCanvas(kCanvasWidth, kCanvasHeight);
+  SC_CHECK(canvas.ok);
+  Renderer renderer(canvas.renderer);
+  renderer.setOrientation(Orientation::Portrait);
+
+  Game game;
+  game.start(20261103);
+  playRounds(game, 2);
+  SC_CHECK(game.scene() == Scene::Playing);
+  renderer.draw(game);
+
+  // The three statistics groups: a dim label row and a bright value row per
+  // group, each inside its 128 px field of the strip, above the board frame.
+  for (int index = 0; index < 3; ++index) {
+    const int centerX = kPortraitStatsCenterX[index];
+    const SDL_Rect label = portraitDeviceRect(
+        centerX - kPortraitStatsFieldWidth / 2, kPortraitStatsLabelY,
+        kPortraitStatsFieldWidth, kGlyphRows * kLabelScale);
+    const SDL_Rect value = portraitDeviceRect(
+        centerX - kPortraitStatsFieldWidth / 2, kPortraitStatsValueY,
+        kPortraitStatsFieldWidth, kGlyphRows * kValueScale);
+    SC_CHECK(countColor(canvas, label, kTextDim) > 40);
+    SC_CHECK(countColor(canvas, value, kText) > 20);
+  }
+
+  // The Hold and Next groups share one row of the strip: their dim headings
+  // sit above their boxes, and the preview queue draws one box per preview
+  // at the 12 px cell.
+  const SDL_Rect holdHeading = portraitDeviceRect(
+      kPortraitHoldCenterX - 40, kPortraitPanelHeadingY, 80,
+      kGlyphRows * kLabelScale);
+  SC_CHECK(countColor(canvas, holdHeading, kTextDim) > 20);
+  for (int index = 0; index < kPreviewCount; ++index) {
+    const SDL_Rect slot = portraitNextSlotBox(index);
+    const SDL_Rect deviceSlot =
+        portraitDeviceRect(slot.x, slot.y, slot.w, slot.h);
+    // Every slot but the last holds queue pieces; the fifth is the fourth
+    // preview drawn dim. The first draws at full color.
+    if (index == 0) {
+      SC_CHECK(countColor(canvas, deviceSlot, kCellEdge) > 0);
+    }
+  }
+  const SDL_Rect nextHeading = portraitDeviceRect(
+      kPortraitNextCenterX - 40, kPortraitPanelHeadingY, 80,
+      kGlyphRows * kLabelScale);
+  SC_CHECK(countColor(canvas, nextHeading, kTextDim) > 20);
+
+  // The whole strip sits above the board frame and inside the canvas: no
+  // label, value, or box of the strip reaches the frame's portrait row 119.
+  SC_CHECK(kPortraitPanelBoxY + kPortraitPreviewBoxHeight <=
+           portraitBoardFrame().y);
+  SC_CHECK(kPortraitStatsValueY + kGlyphRows * kValueScale <=
+           portraitBoardFrame().y);
+
+  // The title page: logo, preview row, four-item menu, the high score, and
+  // the hint, each inside its band of the tall canvas.
+  Game title;
+  title.openTitle(20261103);
+  renderer.draw(title);
+  const SDL_Rect logo = portraitDeviceRect(
+      0, kPTitleLogoY, kPortraitCanvasWidth, kGlyphRows * kTitleLogoScale);
+  SC_CHECK(countColor(canvas, logo, kText) > 400);
+  const SDL_Rect menu = portraitDeviceRect(
+      0, kPTitleMenuY, kPortraitCanvasWidth,
+      kTitleItemCount * kMenuItemHeight);
+  SC_CHECK(countColor(canvas, menu, kText) > 100);
+  SC_CHECK(countColor(canvas, menu, kAccent) > 20);
+  const SDL_Rect highScore = portraitDeviceRect(
+      0, kPTitleHighScoreLabelY, kPortraitCanvasWidth,
+      kPTitleHighScoreValueY + kGlyphRows * kValueScale -
+          kPTitleHighScoreLabelY);
+  SC_CHECK(countColor(canvas, highScore, kText) > 30);
+  const SDL_Rect hint = portraitDeviceRect(
+      0, kPTitleHintY, kPortraitCanvasWidth, kGlyphRows * kHintScale);
+  SC_CHECK(countColor(canvas, hint, kTextDim) > 30);
+  SC_CHECK(kPTitleHintY + kGlyphRows * kHintScale < kPortraitCanvasHeight);
+
+  // The options page: seven rows including ORIENTATION, the shared menu
+  // metrics, heading, and footer, all inside the tall canvas.
+  Game options;
+  options.openTitle(20261103);
+  renderer.setOrientationPreference(Orientation::Portrait);
+  menuDown(options);
+  menuDown(options);
+  TickInput select;
+  select.menu.selectPressed = true;
+  options.tick(select);
+  SC_CHECK(options.scene() == Scene::Options);
+  renderer.draw(options);
+  const SDL_Rect rows = portraitDeviceRect(
+      0, kPOptionsMenuY, kPortraitCanvasWidth,
+      kOptionsItemCount * kMenuItemHeight);
+  SC_CHECK(countColor(canvas, rows, kText) > 100);
+  SC_CHECK(countColor(canvas, rows, kTextDim) > 100);
+  SC_CHECK(kPOptionsMenuY + kOptionsItemCount * kMenuItemHeight <
+           kPOptionsFooterY);
+  const SDL_Rect footer = portraitDeviceRect(
+      0, kPOptionsFooterY, kPortraitCanvasWidth, kGlyphRows * kHintScale);
+  SC_CHECK(countColor(canvas, footer, kTextDim) > 30);
+  SC_CHECK(kPOptionsFooterY + kGlyphRows * kHintScale <
+           kPortraitCanvasHeight);
+  renderer.setOrientationPreference(Orientation::Landscape);
+
+  // The controls page: one heading, its two mapping columns, ten rows, and
+  // the footer inside the tall canvas.
+  Game controls;
+  controls.openTitle(20261103);
+  menuDown(controls);
+  TickInput openControls;
+  openControls.menu.selectPressed = true;
+  controls.tick(openControls);
+  SC_CHECK(controls.scene() == Scene::Controls);
+  renderer.draw(controls);
+  const SDL_Rect controlRows = portraitDeviceRect(
+      0, kPControlsFirstRowY, kPortraitCanvasWidth,
+      kControlRowCount * kPControlsRowHeight);
+  SC_CHECK(countColor(canvas, controlRows, kText) > 200);
+  SC_CHECK(countColor(canvas, controlRows, kTextDim) > 200);
+  const SDL_Rect controlsHeading = portraitDeviceRect(
+      0, kPControlsHeadingY, kPortraitCanvasWidth,
+      kGlyphRows * kControlsHeadingScale);
+  SC_CHECK(countColor(canvas, controlsHeading, kText) > 100);
+  const SDL_Rect controlsFooter = portraitDeviceRect(
+      0, kPControlsFooterY, kPortraitCanvasWidth, kGlyphRows * kLabelScale);
+  SC_CHECK(countColor(canvas, controlsFooter, kText) > 30);
+  SC_CHECK(kPControlsFooterY + kGlyphRows * kHintScale <
+           kPortraitCanvasHeight);
+
+  // The pause overlay centers its panel on the board, which owns the canvas
+  // alone in portrait; the game-over panel centers on the canvas.
+  game.tick(TickInput{});
+  TickInput pause;
+  pause.game.pausePressed = true;
+  game.tick(pause);
+  game.tick(TickInput{});
+  SC_CHECK(game.scene() == Scene::Paused);
+  renderer.draw(game);
+  const SDL_Rect pauseBox =
+      portraitDeviceRect(72, 280, 400, 360);
+  SC_CHECK(countColor(canvas, pauseBox, kPanelFill) > 10000);
+  const SDL_Point pauseCenter = portraitPixel(272, 460);
+  SC_CHECK(sameColor(pixelAt(canvas, pauseCenter.x, pauseCenter.y),
+                     kPanelFill));
+
+  Game over;
+  over.openTitle(20261103);
+  over.tick(select);
+  over.tick(TickInput{});
+  forceGameOver(over);
+  SC_CHECK(over.scene() == Scene::GameOver);
+  renderer.draw(over);
+  const SDL_Rect overBox = portraitDeviceRect(32, 200, 480, 440);
+  SC_CHECK(countColor(canvas, overBox, kPanelFill) > 20000);
+}
+
+// Portrait leaves the landscape pixels exactly as they were: switching there
+// and back reproduces the same canvas bytes, because landscape keeps its own
+// constants and its own code path (task T055 acceptance).
+void run_portrait_landscape_invariance_checks() {
+  Canvas canvas = makeCanvas(kCanvasWidth, kCanvasHeight);
+  SC_CHECK(canvas.ok);
+  Renderer renderer(canvas.renderer);
+
+  Game game;
+  game.start(20261103);
+  playRounds(game, 3);
+  game.tick(TickInput{});
+  TickInput pause;
+  pause.game.pausePressed = true;
+  game.tick(pause);
+  game.tick(TickInput{});
+
+  renderer.draw(game);
+  std::vector<Uint32> before(
+      static_cast<std::size_t>(canvas.surface->w) * canvas.surface->h);
+  SDL_LockSurface(canvas.surface);
+  std::memcpy(before.data(), canvas.surface->pixels,
+              before.size() * sizeof(Uint32));
+  SDL_UnlockSurface(canvas.surface);
+
+  renderer.setOrientation(Orientation::Portrait);
+  renderer.draw(game);
+  renderer.setOrientation(Orientation::Landscape);
+  renderer.draw(game);
+  SDL_LockSurface(canvas.surface);
+  const bool identical =
+      std::memcmp(before.data(), canvas.surface->pixels,
+                  before.size() * sizeof(Uint32)) == 0;
+  SDL_UnlockSurface(canvas.surface);
+  SC_CHECK(identical);
+}
+
 }  // namespace
 
 int main() {
@@ -2065,8 +2603,12 @@ int main() {
   run_title_screen_checks();
   run_controls_screen_checks();
   run_options_screen_checks();
+  run_music_options_screen_checks();
   run_pause_overlay_checks();
   run_gameover_overlay_checks();
+  run_portrait_board_checks();
+  run_portrait_hud_and_screens_checks();
+  run_portrait_landscape_invariance_checks();
 
   SDL_Quit();
   stackfall_test::print_summary();

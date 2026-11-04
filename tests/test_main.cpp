@@ -40,6 +40,9 @@ void run_fixture_tests();
 // The bounded script-count rule shared by the two mirrored script parsers
 // (task T025's fuzz repair): core code with no SDL.
 void run_script_tests();
+// The generated soundtrack of MUSIC.md (task T062): engine, catalogue, and
+// scene policy, all rendered offline with no audio device.
+void run_music_tests();
 
 namespace {
 
@@ -122,6 +125,7 @@ int main(int argc, char** argv) {
   run_storage_tests();
   run_fixture_tests();
   run_script_tests();
+  run_music_tests();
 
   stackfall_test::print_summary();
   return stackfall_test::g_failures == 0 ? EXIT_SUCCESS : EXIT_FAILURE;

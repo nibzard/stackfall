@@ -52,7 +52,7 @@ tests/harness/run.sh
 ```
 
 It builds `stackfall` and `stackfall_reference`, runs the headless `ctest`
-suites first, then drives fifteen sessions through the real SDL application
+suites first, then drives nineteen sessions through the real SDL application
 under `SDL_VIDEODRIVER=dummy` with the SDL dummy audio device, a fixed seed,
 an explicit save directory, a frame bound, and a process timeout:
 
@@ -67,12 +67,26 @@ an explicit save directory, a frame bound, and a process timeout:
   the ghost at its on default, then the session opens OPTIONS, moves to the
   GHOST row, selects it to turn the ghost off, returns to the title, and
   plays a second round from the same empty board.
-- `options-six-keyboard`, `options-six-pad` (T045): the six-row options
-  screen on both inputs. Each session reaches every row, wraps past
-  GRAYSCALE back to SOUND, and changes the four settings of the expansion -
-  GRID off, HOLD off, NEXT PIECES cycled, GRAYSCALE on - and the pad session
-  then plays a round in which its own hold inputs, Y and the left shoulder,
-  change nothing while HOLD is off.
+- `options-six-keyboard`, `options-six-pad` (T045, T055, and T062): the
+  eight-row options screen on both inputs. Each session reaches every row,
+  wraps past MUSIC back to SOUND, and changes the four settings of the
+  expansion - GRID off, HOLD off, NEXT PIECES cycled, GRAYSCALE on - while
+  the ORIENTATION and MUSIC rows are reached but never selected, so both
+  sessions stay landscape and never open the music settings page. The pad
+  session then plays a round in which its own hold inputs, Y and the left
+  shoulder, change nothing while HOLD is off.
+- `music-settings`, `music-settings-pad` (T062): the music settings page
+  behind the MUSIC row, on both inputs. Each session opens the page from the
+  MUSIC row, takes one select per row - the MUSIC mode cycles Auto ->
+  Arcade, MUSIC VOLUME and EFFECTS VOLUME step once, NEXT TRACK requests
+  another track without changing a setting, and a select never moves the
+  cursor off its row - and back returns to the options screen with the
+  cursor still on the MUSIC row. The keyboard session selects all four rows
+  and quits with the mode and both volumes saved; the pad session selects
+  the mode and NEXT TRACK, returns on B, and quits with the mode alone
+  saved. The checker compares every checkpoint with the reference replay
+  and pins the four-row page layout from screenshots, the exact saved
+  bytes, and the input-log lines.
 - `hold-off` (T045): HOLD off, a round whose C and Left Shift presses move
   nothing and spend no lock while the Hold group draws nothing at all, then
   HOLD back on for a round that proves the once-per-piece rule survived.
@@ -81,6 +95,8 @@ an explicit save directory, a frame bound, and a process timeout:
   same shape of round in color.
 - `options-relaunch`, `options-legacy`, `next-count` (T045): the staged
   sessions. See the next paragraph.
+- `portrait-keyboard`, `portrait-pad` (T055): the staged portrait sessions.
+  See the next paragraph.
 - `record-abandon-save` (T052): the mid-round record persistence of
   specification sections 4.7 and 9. A round scores through two hard drops,
   pauses, and leaves through QUIT TO TITLE, so it never reaches a game over;
@@ -114,17 +130,17 @@ order the manifest lists, and a stage may carry `settings=<name>` to copy a
 file from `tests/harness/settings/` into that directory first. The driver
 snapshots the settings file before and after every stage, the reference
 replays each stage against the settings file it started from, and the checker
-compares every stage's records with its own reference stream. The three
+compares every stage's records with its own reference stream. The five
 staged sessions are:
 
 - `options-relaunch`: four keyboard processes, each selecting one of the four
   new rows once and quitting. The snapshot after every stage is one exact
-  canonical rendering of the six preferences, the snapshot before the next
+  canonical rendering of the preferences, the snapshot before the next
   stage is the same file a relaunch read, and every startup log line names
   the values that process restored.
 - `options-legacy`: stage one starts from the three-line file of the
   sound-and-ghost era (`sound=off`, `ghost=off`), keeps both saved values,
-  receives the four defaults, and upgrades the file to the six-line form on
+  receives the later defaults, and upgrades the file to the current form on
   its one GRID save; stage two starts from the two-line file of the
   sound-only era (`sound=off`), receives every later preference at its
   default, and changes nothing, so the file must still hold the exact legacy
@@ -137,10 +153,41 @@ staged sessions are:
   stage after the first loads that record - while the checker reads each
   stage's screenshots and requires exactly its count of previews in queue
   order, the first at full color and the rest dim.
+- `portrait-keyboard`, `portrait-pad` (T055): two stages over one save
+  directory each. Stage one runs landscape, walks to the seventh OPTIONS row,
+  ORIENTATION, and selects it, so the stored preference flips to portrait and
+  the settings file carries the eleven-line canonical form while the running
+  process keeps its landscape layout. Stage two is the relaunch that applied
+  the saved value at startup: the round plays on the rotated table of the
+  session's device - key up or D-pad up moves right, key down or D-pad down
+  moves left, Z or B rotates clockwise, X or A counter-clockwise, Space or X
+  holds, C or Y hard drops - the pause overlay navigates on the rotated menu
+  roles, and the round ends at the game-over screen and the title quit. The
+  reference replays stage two on its own rotated tables, which it picks from
+  the orientation line of the settings file it starts from.
+
+The T055 portrait sessions add their own proofs to the checker: the play
+frame read from pixels through the rotation (portrait x=71..472, y=119..920
+is device x=119..920, y=71..472, with both frame edges in the frame color
+for their whole span and the lines one past them background, which pins the
+rotation and the 40 px cell size together), the HUD strip above the board,
+the quiet portrait margins, the pause and game-over panels at their rotated
+device boxes, the quiet rows below the board on every page that clears the
+canvas, the exact settings bytes of the portrait preference with the
+landscape startup line that still names landscape, and the rotated mapping
+itself: the per-tick input log must carry the ordered action bits of the
+rotated table for the keyboard and for the pad - a landscape table fails
+every step of the ordered walk, because key up would raise a clockwise
+rotation before any move-right. Landscape keeps its own proofs unchanged:
+the pixel suite pins the landscape geometry constants, and the observation
+streams and screenshots of every session whose script did not change stay
+byte-identical to the runs before the feature, outside the options page that
+legitimately gained its seventh row with ORIENTATION and its eighth with
+MUSIC (T062).
 
 The T045 sessions add their own pixel and file proofs to the checker: the
 options page itself (heading, one text line per row with the accent marker on
-the highlighted row, footer, and nothing under the footer, so the six rows
+the highlighted row, footer, and nothing under the footer, so the eight rows
 fit the canvas), the Hold group hidden to the last pixel while HOLD is off
 and drawn with the stashed piece's exact shape and shade while it is on, the
 preview slots' shapes and shades against the record's queue, the grayscale

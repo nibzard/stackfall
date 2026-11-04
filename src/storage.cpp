@@ -22,6 +22,7 @@
 
 #include <filesystem>
 #include <string>
+#include <string_view>
 #include <utility>
 
 #if defined(_WIN32)
@@ -206,22 +207,6 @@ SaveFileBytes readSaveFile(const std::string& directory, const char* fileName) {
     file.status = SaveStatus::Invalid;
     return file;
   }
-}
-
-// The settings file as the sound-only era of task T013 wrote it. The parser
-// still accepts both legacy renderings, with the preferences the file does
-// name at their saved values and every later preference at its default.
-std::string legacySettingsFile(bool soundOn) {
-  return std::string("version=") + std::to_string(kSaveFormatVersion) +
-         "\nsound=" + (soundOn ? "on" : "off") + "\n";
-}
-
-// The settings file as the sound-and-ghost era of task T039 wrote it, before
-// the grid, hold, next, and grayscale lines of T044 joined.
-std::string legacySettingsFile(bool soundOn, bool ghostOn) {
-  return std::string("version=") + std::to_string(kSaveFormatVersion) +
-         "\nsound=" + (soundOn ? "on" : "off") +
-         "\nghost=" + (ghostOn ? "on" : "off") + "\n";
 }
 
 }  // namespace
@@ -425,55 +410,154 @@ std::string formatSettingsFile(const SettingsValues& values) {
   bytes += std::to_string(values.nextPreviews);
   bytes += "\ngrayscale=";
   bytes += values.grayscaleOn ? "on" : "off";
+  bytes += "\norientation=";
+  bytes += values.orientation == Orientation::Portrait ? "portrait"
+                                                        : "landscape";
+  bytes += "\nmusic=";
+  bytes += musicModeName(values.musicMode);
+  bytes += "\nmusicvolume=";
+  bytes += std::to_string(values.musicVolume);
+  bytes += "\neffectsvolume=";
+  bytes += std::to_string(values.effectsVolume);
   bytes += "\n";
   return bytes;
 }
+
+namespace {
+
+// Splits "key=value" at the first '='. False when the line carries no '=' or
+// a second one, either of which the canonical form never writes.
+bool splitSettingsLine(std::string_view line, std::string_view* key,
+                       std::string_view* value) {
+  const std::size_t equals = line.find('=');
+  if (equals == std::string_view::npos) {
+    return false;
+  }
+  *key = line.substr(0, equals);
+  *value = line.substr(equals + 1);
+  return value->find('=') == std::string_view::npos;
+}
+
+bool settingsToggleValue(std::string_view value, bool* out) {
+  if (value == "on") {
+    *out = true;
+    return true;
+  }
+  if (value == "off") {
+    *out = false;
+    return true;
+  }
+  return false;
+}
+
+// The canonical count rendering: plain digits, no padding, inside the bounds.
+bool settingsCountValue(std::string_view value, int minimum, int maximum,
+                        int* out) {
+  if (value.empty() || value.size() > 2 ||
+      (value.size() > 1 && value[0] == '0')) {
+    return false;
+  }
+  int parsed = 0;
+  for (const char digit : value) {
+    if (digit < '0' || digit > '9') {
+      return false;
+    }
+    parsed = parsed * 10 + (digit - '0');
+  }
+  if (parsed < minimum || parsed > maximum) {
+    return false;
+  }
+  *out = parsed;
+  return true;
+}
+
+}  // namespace
 
 bool parseSettingsFile(const std::string& bytes, SettingsValues* values) {
   if (bytes.size() > kMaxSaveFileBytes) {
     return false;
   }
-  // Exact-format check against every readable rendering, so only whole,
-  // canonical files continue and everything else, including one that lost its
-  // final newline, is a damaged preference rather than a setting.
+  // One strict line parser for every era (MUSIC.md, persistence and
+  // compatibility): each line must be the canonical rendering of the next
+  // key in the fixed order, and the file must end where a whole line ended.
+  // A file that stops early leaves the unnamed preferences at their
+  // defaults, which is how a legacy upgrade keeps its saved choices; every
+  // other deviation - a swapped pair, a padded count, a volume past 10 - is a
+  // damaged preference set, not a setting.
   SettingsValues parsed;
-  bool readable = false;
-  // The four boolean preferences pair with the grayscale flag and the next
-  // count: 2^5 combinations times the five counts are the 160 canonical
-  // renderings of the current format.
-  for (int booleans = 0; booleans < 32; ++booleans) {
-    for (int next = kSettingsNextMin; next <= kSettingsNextMax; ++next) {
-      const SettingsValues candidate{(booleans & 1) != 0, (booleans & 2) != 0,
-                                     (booleans & 4) != 0, (booleans & 8) != 0,
-                                     next, (booleans & 16) != 0};
-      if (bytes == formatSettingsFile(candidate)) {
-        parsed = candidate;
-        readable = true;
+  std::size_t at = 0;
+  int line = 0;
+  while (at < bytes.size()) {
+    const std::size_t end = bytes.find('\n', at);
+    if (end == std::string::npos) {
+      return false;  // the canonical file ends with a newline
+    }
+    const std::string_view content(bytes.data() + at, end - at);
+    std::string_view key;
+    std::string_view value;
+    bool ok = splitSettingsLine(content, &key, &value);
+    if (ok && line == 0) {
+      const std::string versionLine =
+          std::string("version=") + std::to_string(kSaveFormatVersion);
+      ok = content == versionLine;
+    } else if (ok && line == 1) {
+      ok = key == "sound" && settingsToggleValue(value, &parsed.soundOn);
+    } else if (ok && line == 2) {
+      ok = key == "ghost" && settingsToggleValue(value, &parsed.ghostOn);
+    } else if (ok && line == 3) {
+      ok = key == "grid" && settingsToggleValue(value, &parsed.gridOn);
+    } else if (ok && line == 4) {
+      ok = key == "hold" && settingsToggleValue(value, &parsed.holdOn);
+    } else if (ok && line == 5) {
+      ok = key == "next" && settingsCountValue(value, kSettingsNextMin,
+                                               kSettingsNextMax,
+                                               &parsed.nextPreviews);
+    } else if (ok && line == 6) {
+      ok = key == "grayscale" &&
+           settingsToggleValue(value, &parsed.grayscaleOn);
+    } else if (ok && line == 7) {
+      ok = key == "orientation";
+      if (ok && value == "portrait") {
+        parsed.orientation = Orientation::Portrait;
+      } else if (ok && value == "landscape") {
+        parsed.orientation = Orientation::Landscape;
+      } else {
+        ok = false;
       }
-    }
-  }
-  // The legacy three-line file of the sound-and-ghost era parses with the
-  // four later preferences at their defaults, so an upgrade never loses a
-  // saved sound or ghost choice.
-  for (int soundValue = 0; soundValue <= 1; ++soundValue) {
-    for (int ghostValue = 0; ghostValue <= 1; ++ghostValue) {
-      if (bytes == legacySettingsFile(soundValue == 1, ghostValue == 1)) {
-        parsed = SettingsValues{soundValue == 1, ghostValue == 1, true, true,
-                                kSettingsNextMax, false};
-        readable = true;
+    } else if (ok && line == 8) {
+      ok = key == "music";
+      if (ok) {
+        const std::string modeName(value);
+        MusicMode mode = MusicMode::Auto;
+        ok = musicModeFromName(modeName.c_str(), &mode);
+        if (ok) {
+          parsed.musicMode = mode;
+        }
       }
+    } else if (ok && line == 9) {
+      ok = key == "musicvolume" &&
+           settingsCountValue(value, kSettingsVolumeMin,
+                              kSettingsVolumeMax, &parsed.musicVolume);
+    } else if (ok && line == 10) {
+      ok = key == "effectsvolume" &&
+           settingsCountValue(value, kSettingsVolumeMin,
+                              kSettingsVolumeMax, &parsed.effectsVolume);
+    } else {
+      ok = false;  // past the last preference line
     }
-  }
-  // The legacy two-line file of the sound-only era parses with the ghost and
-  // the four later preferences at their defaults.
-  for (int soundValue = 0; soundValue <= 1; ++soundValue) {
-    if (bytes == legacySettingsFile(soundValue == 1)) {
-      parsed = SettingsValues{soundValue == 1, true, true, true,
-                              kSettingsNextMax, false};
-      readable = true;
+    if (!ok) {
+      return false;
     }
+    ++line;
+    at = end + 1;
   }
-  if (!readable) {
+  // Only the forms that shipped parse (MUSIC.md, one parser for the
+  // resulting format): the two-line sound-only file, the three-line
+  // sound-and-ghost file, the seven-line grayscale-era file, the eight-line
+  // orientation-era file, and the full eleven-line music-era file. A file
+  // that stops between those - four or five lines, or new lines missing -
+  // never existed, so it is damaged like every other deviation.
+  if (line != 2 && line != 3 && line != 7 && line != 8 && line != 11) {
     return false;
   }
   if (values != nullptr) {
@@ -515,6 +599,7 @@ SettingsResult SettingsStore::load() const {
     result.holdOn = values.holdOn;
     result.nextPreviews = values.nextPreviews;
     result.grayscaleOn = values.grayscaleOn;
+    result.orientation = values.orientation;
     result.status = SaveStatus::Ok;
     return result;
   } catch (...) {
@@ -526,6 +611,7 @@ SettingsResult SettingsStore::load() const {
     result.holdOn = true;
     result.nextPreviews = kSettingsNextMax;
     result.grayscaleOn = false;
+    result.orientation = Orientation::Landscape;
     result.status = SaveStatus::Invalid;
     return result;
   }

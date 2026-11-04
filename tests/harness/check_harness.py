@@ -18,7 +18,7 @@ Reads one harness run directory and decides pass or fail from evidence:
     when the GHOST row was turned off, while its save directory holds the
     three-line settings file that toggle wrote;
   * the options-expansion sessions of task T045 add their own pixel and file
-    proofs: the six-row options page fits the canvas with the marker on the
+    proofs: the eight-row options page fits the canvas with the marker on the
     highlighted row, the staged relaunch session pins the exact canonical
     settings bytes after every one-preference change and the values the next
     process restored, the legacy stages pin the three-line and two-line files
@@ -37,6 +37,19 @@ Reads one harness run directory and decides pass or fail from evidence:
     carries each mid-round save with a tick that precedes the abandon, and
     the title after the abandon shows the persisted record while the
     abandoned round's own counters reset;
+  * the staged portrait sessions of task T055 prove the turned mode end to
+    end: a landscape stage selects the ORIENTATION row and leaves the exact
+    portrait settings bytes, the portrait relaunch applies the 544x960 canvas
+    with 40 px cells, and from pixels the rotated board frame, the HUD strip,
+    and the quiet margins prove the composition while the ordered action bits
+    of the per-tick input log pin the rotated mapping for the keyboard and
+    for the pad;
+  * the music sessions of task T062 prove the music settings page behind
+    the eighth options row: the page opens on its MUSIC row, one select per
+    row changes the value and never the row, back returns to the options
+    screen on the same row, the four-row page layout holds from pixels, and
+    the saved bytes and input-log lines carry the changed mode, the
+    volumes, and the Next track action;
   * each game run must exit 0, log a clean shutdown, and label every fixture
     it used;
   * the high-score file of a session that set a record must hold that record;
@@ -154,9 +167,35 @@ HOLD_GROUP_BOX = (192, 4, 128, 86)
 # proof that grayscale leaves the text its color.
 STATS_FIELD_BOX = (192, 108, 128, 38)
 OPTIONS_HEADING_BOX = (0, 64, 960, 28)      # kOptionsHeadingY, scale 4
-OPTIONS_ROW_BOXES = [(0, 144 + 44 * i, 960, 21) for i in range(6)]
-OPTIONS_FOOTER_BOX = (0, 456, 960, 14)      # kOptionsFooterY, hint scale
-OPTIONS_BELOW_FOOTER_BOX = (0, 471, 960, 73)
+OPTIONS_ROW_BOXES = [(0, 112 + 44 * i, 960, 21) for i in range(8)]
+OPTIONS_FOOTER_BOX = (0, 464, 960, 14)      # kOptionsFooterY, hint scale
+OPTIONS_BELOW_FOOTER_BOX = (0, 479, 960, 65)
+# The music settings page shares the options metrics (task T062): its four
+# rows sit at the top of the same band, and its quiet title line - the
+# playing track's name, empty while music is silent - sits between the last
+# row and the footer.
+MUSIC_PAGE_ROW_BOXES = OPTIONS_ROW_BOXES[:4]
+MUSIC_TITLE_BOX = (0, 342, 960, 33)         # kMusicTrackY, menu scale
+
+# The portrait geometry of task T055, from include/stackfall/renderer_sdl.hpp
+# and the rotation notes/design-review.md pins, restated in device pixels:
+# portrait pixel (x, y) reaches the device canvas at (y, 543 - x), so the
+# portrait frame - x=71..472 and y=119..920 around 40 px cells at (72, 120) -
+# lands on device x=119..920 and y=71..472, with the HUD strip in device
+# columns x=0..118 and the below-board quiet rows in x=921..959.
+PORTRAIT_FRAME = (119, 71, 802, 402)
+PORTRAIT_STRIP_BOX = (0, 0, 119, 544)
+# The solid panel face the overlays draw, mixToward(BACKGROUND, FRAME, 2, 5),
+# and the device boxes of the portrait pause and game-over panels: portrait
+# {72, 280, 400, 360} and {32, 200, 480, 440} through the rotation.
+PANEL_FILL_COLOR = mix_toward(BACKGROUND_COLOR, FRAME_COLOR, 2, 5)
+PORTRAIT_PAUSE_PANEL = (280, 72, 360, 400)
+PORTRAIT_GAMEOVER_PANEL = (200, 32, 440, 480)
+# The portrait rows below the board frame, device columns x=921..959: no
+# portrait page - play scene, title, controls, options, or overlay - draws
+# there, so the box staying background proves the tall composition clipped
+# nothing (task T055).
+PORTRAIT_BELOW_BOARD_BOX = (921, 0, 39, 544)
 
 # The seven piece fills of the color palette and of the grayscale palette, in
 # PieceId order I, O, T, S, Z, J, L (renderer_sdl.hpp). The checker derives
@@ -575,43 +614,56 @@ def check_high_score_file(session, save_dir, expected, rule):
 
 
 def settings_file_bytes(sound_on, ghost_on, grid_on, hold_on, next_previews,
-                        grayscale_on):
+                        grayscale_on, orientation="landscape",
+                        music_mode="auto", music_volume=6, effects_volume=8):
     """The canonical settings file, exactly as `formatSettingsFile` renders it
     (specification sections 6.3 and 9): the sound and ghost lines of the
-    earlier eras plus the grid, hold, next, and grayscale lines of task T044."""
+    earlier eras, the grid, hold, next, and grayscale lines of task T044, the
+    orientation line of task T055, and the music mode and volume lines of
+    task T062 (MUSIC.md persistence)."""
     return ("version=1\nsound=%s\nghost=%s\ngrid=%s\nhold=%s\nnext=%d\n"
-            "grayscale=%s\n" % (
+            "grayscale=%s\norientation=%s\nmusic=%s\nmusicvolume=%d\n"
+            "effectsvolume=%d\n" % (
                 "on" if sound_on else "off", "on" if ghost_on else "off",
                 "on" if grid_on else "off", "on" if hold_on else "off",
-                next_previews, "on" if grayscale_on else "off"))
+                next_previews, "on" if grayscale_on else "off", orientation,
+                music_mode, music_volume, effects_volume))
 
 
 def check_settings_path(session, path, sound_on, ghost_on, grid_on, hold_on,
-                        next_previews, grayscale_on, rule):
-    """One settings file against the canonical rendering of six values."""
+                        next_previews, grayscale_on, rule,
+                        orientation="landscape", music_mode="auto",
+                        music_volume=6, effects_volume=8):
+    """One settings file against the canonical rendering of ten values."""
     if not os.path.isfile(path):
         fail(rule, "missing %s" % path)
         return
     with open(path) as handle:
         text = handle.read()
     wanted = settings_file_bytes(sound_on, ghost_on, grid_on, hold_on,
-                                 next_previews, grayscale_on)
+                                 next_previews, grayscale_on, orientation,
+                                 music_mode, music_volume, effects_volume)
     if text != wanted:
         fail(rule, "%s holds %r, expected %r" % (path, text, wanted))
     else:
-        good(rule, "%s: sound=%s ghost=%s grid=%s hold=%s next=%d grayscale=%s"
+        good(rule, "%s: sound=%s ghost=%s grid=%s hold=%s next=%d grayscale=%s "
+             "orientation=%s music=%s volumes=%d/%d"
              % (os.path.basename(os.path.dirname(path)),
                 "on" if sound_on else "off", "on" if ghost_on else "off",
                 "on" if grid_on else "off", "on" if hold_on else "off",
-                next_previews, "on" if grayscale_on else "off"))
+                next_previews, "on" if grayscale_on else "off", orientation,
+                music_mode, music_volume, effects_volume))
 
 
 def check_settings_file(session, save_dir, sound_on, ghost_on, grid_on,
-                        hold_on, next_previews, grayscale_on, rule):
+                        hold_on, next_previews, grayscale_on, rule,
+                        orientation="landscape", music_mode="auto",
+                        music_volume=6, effects_volume=8):
     """The settings file of the player preferences in one save directory."""
     check_settings_path(session, os.path.join(save_dir, "settings.dat"),
                         sound_on, ghost_on, grid_on, hold_on, next_previews,
-                        grayscale_on, rule)
+                        grayscale_on, rule, orientation, music_mode,
+                        music_volume, effects_volume)
 
 
 def check_settings_bytes(session, path, wanted, rule):
@@ -1003,11 +1055,59 @@ def check_ghost_readable(session, record, grayscale, rule):
          (found, "gray" if grayscale else "color", expected, record["check"]))
 
 
+def check_music_page_layout(session, record, rule):
+    """The music settings page inside the canvas (task T062, MUSIC.md player
+    controls): the MUSIC heading, its four rows at the shared menu metrics
+    with the accent marker on the highlighted row, the footer hint below, and
+    nothing at all under the footer. The title line between the rows and the
+    footer is allowed to be empty - it is silent whenever no track plays."""
+    loaded = load_shot(record, rule)
+    if loaded is None:
+        return
+    _, _, pixel = loaded
+    selected = record["menu"].split(":")
+    if len(selected) != 2 or not selected[1].isdigit():
+        fail(rule, "record %s is not on the music page: menu=%s" %
+             (record["check"], record.get("menu")))
+        return
+    selected = int(selected[1])
+    heading, _ = scan_box(pixel, OPTIONS_HEADING_BOX, (BACKGROUND_COLOR,))
+    if TEXT_COLOR not in heading:
+        fail(rule, "the MUSIC heading draws no bright glyph at %s" %
+             record["check"])
+        return
+    for index, box in enumerate(MUSIC_PAGE_ROW_BOXES):
+        counts, _ = scan_box(pixel, box, (BACKGROUND_COLOR,))
+        if TEXT_DIM_COLOR not in counts and TEXT_COLOR not in counts:
+            fail(rule, "music page row %d draws no text at %s" %
+                 (index, record["check"]))
+            return
+        if index == selected and ACCENT_COLOR not in counts:
+            fail(rule, "the highlighted music row %d draws no marker at %s" %
+                 (index, record["check"]))
+            return
+    footer, _ = scan_box(pixel, OPTIONS_FOOTER_BOX, (BACKGROUND_COLOR,))
+    if TEXT_DIM_COLOR not in footer:
+        fail(rule, "the music page footer draws no hint at %s" %
+             record["check"])
+        return
+    below, total = scan_box(pixel, OPTIONS_BELOW_FOOTER_BOX, (BACKGROUND_COLOR,))
+    if below:
+        detail = ", ".join("%d x %s" % (n, c) for c, n in sorted(below.items()))
+        fail(rule, "%d of %d pixels below the footer are drawn at %s (%s), so "
+             "the page does not fit the canvas" %
+             (sum(below.values()), total, record["check"], detail))
+        return
+    good(rule, "MUSIC heading, four rows with row %d marked, footer, quiet "
+         "canvas at %s" % (selected, record["check"]))
+
+
 def check_options_screen_layout(session, record, rule):
-    """The six-row options page inside the canvas (task T044): the heading,
-    one text line per row at the shared menu metrics with the accent marker on
-    the highlighted row, the footer hint below, and nothing at all under the
-    footer, so no row or hint can have slipped off the 960x544 canvas."""
+    """The eight-row options page inside the canvas (tasks T044, T055, and
+    T062): the heading, one text line per row at the shared menu metrics with
+    the accent marker on the highlighted row, the footer hint below, and
+    nothing at all under the footer, so no row or hint can have slipped off
+    the 960x544 canvas."""
     loaded = load_shot(record, rule)
     if loaded is None:
         return
@@ -1042,8 +1142,8 @@ def check_options_screen_layout(session, record, rule):
              "the page does not fit the canvas" %
              (sum(below.values()), total, record["check"], detail))
         return
-    good(rule, "heading, six rows with row %d marked, footer, quiet canvas at "
-         "%s" % (selected, record["check"]))
+    good(rule, "heading, eight rows with row %d marked, footer, quiet canvas "
+         "at %s" % (selected, record["check"]))
 
 
 def check_hold_ignored(session, records, before, after, rule):
@@ -1090,6 +1190,213 @@ def check_no_hold_edges(session, input_log_path, rule):
 
 
 # ---------------------------------------------------------------------------
+# The portrait proofs of task T055: the rotated board geometry from pixels,
+# the tall pages that clip nothing, and the rotated mappings of both input
+# devices pinned from the per-tick input log the game writes.
+# ---------------------------------------------------------------------------
+
+def check_portrait_play_frame(session, record, rule):
+    """The rotated play scene from pixels (task T055, notes/design-review.md):
+    the board frame - x=71..472 and y=119..920 of the 544x960 portrait frame,
+    which is device x=119..920 and y=71..472 - draws its outline on all four
+    edges, the HUD strip lives in the device columns above it, and the quiet
+    margins beside and below the board stay background, so the 40 px cell
+    composition clipped nothing."""
+    loaded = load_shot(record, rule)
+    if loaded is None:
+        return
+    _, _, pixel = loaded
+    x, y, w, h = PORTRAIT_FRAME
+    # Both frame edges hold the frame color for their whole span, and the
+    # lines one past them hold the background: this pins the rotation and the
+    # 40 px cell size together, because a 27 px landscape field or the
+    # opposite rotation lands elsewhere.
+    for edge_x, outside in ((x, x - 1), (x + w - 1, x + w)):
+        wrong = [edge_y for edge_y in range(y, y + h)
+                 if pixel(edge_x, edge_y) != FRAME_COLOR]
+        if wrong:
+            fail(rule, "device column %d holds %d non-frame pixels of %d "
+                 "(first at y=%d, color %s) at %s" %
+                 (edge_x, len(wrong), h, wrong[0],
+                  pixel(edge_x, wrong[0]), record["check"]))
+            return
+        if any(pixel(outside, edge_y) == FRAME_COLOR
+               for edge_y in range(y, y + h)):
+            fail(rule, "device column %d, outside the frame, holds frame "
+                 "pixels at %s" % (outside, record["check"]))
+            return
+    for edge_y, outside in ((y, y - 1), (y + h - 1, y + h)):
+        wrong = [edge_x for edge_x in range(x, x + w)
+                 if pixel(edge_x, edge_y) != FRAME_COLOR]
+        if wrong:
+            fail(rule, "device row %d holds %d non-frame pixels of %d at %s" %
+                 (edge_y, len(wrong), w, record["check"]))
+            return
+        if any(pixel(edge_x, outside) == FRAME_COLOR
+               for edge_x in range(x, x + w)):
+            fail(rule, "device row %d, outside the frame, holds frame pixels "
+                 "at %s" % (outside, record["check"]))
+            return
+    # The quiet margins: portrait columns left and right of the board and the
+    # rows below it stay background.
+    margins = [(5, 500), (539, 500), (272, 945)]
+    for portrait_x, portrait_y in margins:
+        device_x, device_y = portrait_y, CANVAS[1] - 1 - portrait_x
+        if pixel(device_x, device_y) != BACKGROUND_COLOR:
+            fail(rule, "portrait margin pixel (%d, %d) is %s, expected "
+                 "background at %s" %
+                 (portrait_x, portrait_y, pixel(device_x, device_y),
+                  record["check"]))
+            return
+    # The HUD strip above the board: bright and dim text both live there.
+    strip, strip_total = scan_box(pixel, PORTRAIT_STRIP_BOX,
+                                  (BACKGROUND_COLOR,))
+    if TEXT_COLOR not in strip or TEXT_DIM_COLOR not in strip:
+        fail(rule, "the portrait HUD strip holds %d bright colors and %d dim "
+             "ones at %s; expected both text colors" %
+             (len(strip), len(strip), record["check"]))
+        return
+    good(rule, "rotated frame %dx%d, 40 px cells, strip and margins clean at "
+         "%s" % (w, h, record["check"]))
+
+
+def check_portrait_page_quiet(session, record, rule):
+    """One portrait page that clears the canvas - title, controls, or
+    options - keeps the portrait rows below the board frame empty, so no text
+    or preview of the tall composition clipped. Overlay pages are excluded:
+    their veil covers those rows with dimmed play-scene pixels by design."""
+    loaded = load_shot(record, rule)
+    if loaded is None:
+        return
+    _, _, pixel = loaded
+    below, total = scan_box(pixel, PORTRAIT_BELOW_BOARD_BOX,
+                            (BACKGROUND_COLOR,))
+    if below:
+        detail = ", ".join("%d x %s" % (n, c) for c, n in sorted(below.items()))
+        fail(rule, "%d of %d pixels below the portrait board frame are drawn "
+             "at %s (%s), so the page does not fit the turned canvas" %
+             (sum(below.values()), total, record["check"], detail))
+        return
+    good(rule, "quiet below-board rows at %s" % record["check"])
+
+
+def check_portrait_overlay_panel(session, record, box, rule):
+    """One portrait overlay's panel sits at its rotated device box: the solid
+    panel face fills the box's quiet corners, while the veil the overlay
+    draws over the frozen round keeps everything outside the panel drawn, so
+    a panel that missed the rotation or clipped an edge fails here."""
+    loaded = load_shot(record, rule)
+    if loaded is None:
+        return
+    _, _, pixel = loaded
+    x, y, w, h = box
+    corners = [(x + 8, y + 8), (x + w - 9, y + 8), (x + 8, y + h - 9),
+               (x + w - 9, y + h - 9)]
+    for corner_x, corner_y in corners:
+        if pixel(corner_x, corner_y) != PANEL_FILL_COLOR:
+            fail(rule, "portrait panel corner (%d, %d) is %s, expected the "
+                 "panel face %s at %s" %
+                 (corner_x, corner_y, pixel(corner_x, corner_y),
+                  PANEL_FILL_COLOR, record["check"]))
+            return
+    # The panel must not reach past its box: the pixel just outside each edge
+    # is veiled round, never the solid panel face.
+    outside = [(x - 2, y + h // 2), (x + w + 1, y + h // 2),
+               (x + w // 2, y - 2), (x + w // 2, y + h + 1)]
+    for outside_x, outside_y in outside:
+        if pixel(outside_x, outside_y) == PANEL_FILL_COLOR:
+            fail(rule, "the portrait panel reaches past its box to (%d, %d) "
+                 "at %s" % (outside_x, outside_y, record["check"]))
+            return
+    good(rule, "panel at device (%d, %d, %d, %d) at %s" %
+         (x, y, w, h, record["check"]))
+
+
+def check_rotated_mapping(session, input_log_path, device, rule):
+    """The rotated mapping of one device, pinned from the per-tick input log
+    (task T055): the gameplay actions must appear in the order the portrait
+    script presses them, with exactly the action bits the rotated tables
+    produce. The landscape table fails every step - key up would raise a
+    clockwise rotation before any move-right, pad B a counter-clockwise one -
+    so the pin proves the tables turned with the orientation."""
+    if not os.path.isfile(input_log_path):
+        fail(rule, "missing %s" % input_log_path)
+        return
+    with open(input_log_path) as handle:
+        ticks = [line for line in handle.read().splitlines()
+                 if line.startswith("tick=")]
+    if not ticks:
+        fail(rule, "%s holds no tick line" % input_log_path)
+        return
+
+    def field(line, name):
+        match = re.search(r"(?:^| )%s=(\S+)" % name, line)
+        return match.group(1) if match else None
+
+    if device == "keyboard":
+        # The presses of the portrait-keyboard script, in order: key up moves
+        # right, key down moves left, Z rotates clockwise, X
+        # counter-clockwise, Space holds, C hard drops; later key left is
+        # menu-up and key right is soft drop plus menu-down.
+        steps = [
+            ("key up -> move right", lambda line: field(line, "R") == "1"),
+            ("key down -> move left", lambda line: field(line, "L") == "1"),
+            ("key z -> rotate clockwise",
+             lambda line: field(line, "cw") == "1"),
+            ("key x -> rotate counter-clockwise",
+             lambda line: field(line, "ccw") == "1"),
+            ("key space -> hold", lambda line: field(line, "hold") == "1"),
+            ("key c -> hard drop", lambda line: field(line, "drop") == "1"),
+            ("key esc -> pause", lambda line: field(line, "pause") == "1"),
+            ("key left -> menu up",
+             lambda line: field(line, "menu") == "1000"),
+            ("key right -> soft drop plus menu down",
+             lambda line: field(line, "D") == "1" and
+             field(line, "menu") == "0100"),
+            ("key enter -> select",
+             lambda line: field(line, "menu") == "0010"),
+        ]
+    else:
+        # The presses of the portrait-pad script, in order: D-pad up moves
+        # right, D-pad down moves left, B rotates clockwise and selects, A
+        # rotates counter-clockwise and goes back, X holds, Y hard drops;
+        # later D-pad left is menu-up and D-pad right soft drop plus
+        # menu-down.
+        steps = [
+            ("pad up -> move right", lambda line: field(line, "R") == "1"),
+            ("pad down -> move left", lambda line: field(line, "L") == "1"),
+            ("pad b -> rotate clockwise and select",
+             lambda line: field(line, "cw") == "1" and
+             field(line, "menu") == "0010"),
+            ("pad a -> rotate counter-clockwise and back",
+             lambda line: field(line, "ccw") == "1" and
+             field(line, "menu") == "0001"),
+            ("pad x -> hold", lambda line: field(line, "hold") == "1"),
+            ("pad y -> hard drop", lambda line: field(line, "drop") == "1"),
+            ("pad start -> pause", lambda line: field(line, "pause") == "1"),
+            ("pad left -> menu up",
+             lambda line: field(line, "menu") == "1000"),
+            ("pad right -> soft drop plus menu down",
+             lambda line: field(line, "D") == "1" and
+             field(line, "menu") == "0100"),
+        ]
+    # A menu bit from the opening select of the round can precede the
+    # gameplay steps, so the walk starts at the first gameplay tick and each
+    # step searches forward only.
+    position = 0
+    for name, matches in steps:
+        found = next((index for index in range(position, len(ticks))
+                      if matches(ticks[index])), None)
+        if found is None:
+            fail(rule, "no tick carries the rotated %s bit pattern after tick "
+                 "line %d of %s" % (name, position, input_log_path))
+            return
+        position = found + 1
+    good(rule, "%d ordered rotated-%s actions pinned from %d tick lines" %
+         (len(steps), device, len(ticks)))
+
+
+# ---------------------------------------------------------------------------
 # Per-session expectations. Values pinned here come from the SPEC arithmetic
 # and the headless rules suite, never from the run under test: a change in
 # game behavior fails the harness instead of moving the pin. The whole-round
@@ -1106,16 +1413,20 @@ def check_no_hold_edges(session, input_log_path, rule):
 # ---------------------------------------------------------------------------
 
 def settings_log_line(sound_on, ghost_on, grid_on, hold_on, next_previews,
-                      grayscale_on, status):
+                      grayscale_on, status, orientation="landscape",
+                      music_mode="auto", music_volume=6, effects_volume=8):
     return ("Settings: sound %s, ghost preview %s, grid %s, hold %s, next "
-            "previews %d, grayscale %s (%s) from" % (
+            "previews %d, grayscale %s, orientation %s, music %s, volumes "
+            "%d/%d (%s) from" % (
                 "on" if sound_on else "off", "on" if ghost_on else "off",
                 "on" if grid_on else "off", "on" if hold_on else "off",
-                next_previews, "on" if grayscale_on else "off", status))
+                next_previews, "on" if grayscale_on else "off", orientation,
+                music_mode, music_volume, effects_volume, status))
 
 
 def settings_start_lines(sound_on, ghost_on, grid_on, hold_on, next_previews,
-                         grayscale_on):
+                         grayscale_on, orientation="landscape",
+                         music_mode="auto", music_volume=6, effects_volume=8):
     return [
         "sound start=%s" % ("on" if sound_on else "off"),
         "ghost start=%s" % ("on" if ghost_on else "off"),
@@ -1123,6 +1434,10 @@ def settings_start_lines(sound_on, ghost_on, grid_on, hold_on, next_previews,
         "hold start=%s" % ("on" if hold_on else "off"),
         "next start=%d" % next_previews,
         "grayscale start=%s" % ("on" if grayscale_on else "off"),
+        "orientation start=%s" % orientation,
+        "music start=%s" % music_mode,
+        "musicvolume start=%d" % music_volume,
+        "effectsvolume start=%d" % effects_volume,
     ]
 
 
@@ -1487,8 +1802,7 @@ def check_session(run_dir, session):
                             False, session + "/saved-settings")
         check_log(session, log_path, [
             "Clean shutdown",
-            "Settings: sound on, ghost preview on, grid on, hold on, next "
-            "previews 5, grayscale off (not found)",
+            settings_log_line(True, True, True, True, 5, False, "not found"),
             "Scene title -> options", "Scene options -> title",
         ])
         check_log(session, os.path.join(run_dir, session, "input.log"), [
@@ -1497,18 +1811,21 @@ def check_session(run_dir, session):
             "ghost hidden status=ok",
         ], name="input-log")
     elif session == "options-six-keyboard":
-        # The six-row options screen on the keyboard (task T045): the cursor
-        # reaches every row, one select changes each of the four new
-        # preferences, the cursor wraps past GRAYSCALE back to SOUND, and the
-        # session quits with the settings file holding every new value.
+        # The eight-row options screen on the keyboard (tasks T045, T055, and
+        # T062): the cursor reaches every row, one select changes each of the
+        # four T045 preferences, the cursor reaches ORIENTATION and MUSIC
+        # without selecting them and wraps past MUSIC back to SOUND, and the
+        # session quits with the settings file holding every new value and
+        # landscape.
         check_scene_sequence(run_records, [
-            "title", "title"] + ["options"] * 11 + [
+            "title", "title"] + ["options"] * 13 + [
             "title", "title", "title"], session + "/scene-sequence")
         check_field(by_name["title-at-options"], "menu", "title:2",
                     session + "/options-item-reached")
         rows = [("options-sound-row", 0), ("options-ghost-row", 1),
                 ("options-grid-row", 2), ("options-hold-row", 3),
-                ("options-next-row", 4), ("options-grayscale-row", 5)]
+                ("options-next-row", 4), ("options-grayscale-row", 5),
+                ("options-orientation-row", 6), ("options-music-row", 7)]
         for name, row in rows:
             check_field(by_name[name], "menu", "options:%d" % row,
                         session + "/row-%d-reached" % row)
@@ -1542,13 +1859,15 @@ def check_session(run_dir, session):
             "next 1 status=ok", "grayscale on status=ok",
         ], name="input-log")
     elif session == "options-six-pad":
-        # The same six rows on the developer virtual controller (task T045),
-        # the input path of scene-cycle-pad: A changes each of the four new
-        # preferences - NEXT PIECES three times, 5 -> 1 -> 2 -> 3 - the cursor
-        # wraps past GRAYSCALE, and a round then proves the pad's own hold
-        # inputs, Y and the left shoulder, change nothing while HOLD is off.
+        # The same eight rows on the developer virtual controller (tasks T045,
+        # T055, and T062), the input path of scene-cycle-pad: A changes each
+        # of the four T045 preferences - NEXT PIECES three times,
+        # 5 -> 1 -> 2 -> 3 - the cursor reaches ORIENTATION and MUSIC without
+        # selecting them and wraps past MUSIC, and a round then proves the
+        # pad's own hold inputs, Y and the left shoulder, change nothing
+        # while HOLD is off.
         check_scene_sequence(run_records, [
-            "title", "title"] + ["options"] * 13 + [
+            "title", "title"] + ["options"] * 15 + [
             "title", "title", "playing", "playing", "playing", "playing",
             "playing", "playing", "paused", "paused", "title", "title",
             "title"], session + "/scene-sequence")
@@ -1557,13 +1876,15 @@ def check_session(run_dir, session):
         for name, row in [("options-sound-row", 0), ("options-ghost-row", 1),
                           ("options-grid-row", 2), ("options-hold-row", 3),
                           ("options-next-row", 4),
-                          ("options-grayscale-row", 5)]:
+                          ("options-grayscale-row", 5),
+                          ("options-orientation-row", 6),
+                          ("options-music-row", 7)]:
             check_field(by_name[name], "menu", "options:%d" % row,
                         session + "/row-%d-reached" % row)
             check_options_screen_layout(session, by_name[name],
                                         session + "/layout-%s" % name)
         check_field(by_name["options-wrapped-to-sound"], "menu", "options:0",
-                    session + "/wrap-past-grayscale")
+                    session + "/wrap-past-music")
         check_options_screen_layout(session, by_name["options-wrapped-to-sound"],
                                     session + "/layout-wrapped")
         for name in ("grid-toggled", "hold-toggled", "next-one", "next-two",
@@ -1605,6 +1926,114 @@ def check_session(run_dir, session):
             "grid hidden status=ok", "hold disabled status=ok",
             "next 1 status=ok", "next 2 status=ok", "next 3 status=ok",
             "grayscale on status=ok",
+        ], name="input-log")
+    elif session == "music-settings":
+        # The music settings page behind the MUSIC row (task T062, MUSIC.md
+        # player controls): the page opens on its MUSIC row, one select per
+        # row cycles the mode Auto -> Arcade, steps both volumes once, and
+        # requests another track, back returns to the options screen on the
+        # MUSIC row, and the session quits with the settings file holding
+        # arcade and the new volume steps.
+        check_scene_sequence(run_records, [
+            "title", "title", "options", "options"] + ["musicoptions"] * 8 + [
+            "options", "title", "title", "title"],
+            session + "/scene-sequence")
+        check_field(by_name["title-at-options"], "menu", "title:2",
+                    session + "/options-item-reached")
+        check_field(by_name["options-open"], "menu", "options:0",
+                    session + "/options-opens-on-sound")
+        check_field(by_name["options-music-row"], "menu", "options:7",
+                    session + "/music-row-reached")
+        check_options_screen_layout(session, by_name["options-music-row"],
+                                    session + "/layout-options-music-row")
+        # The page itself: it opens on its MUSIC row, the cursor walks the
+        # volume and action rows, a select never moves it, and every record
+        # proves the four rows, the heading, the footer, and the quiet canvas.
+        check_field(by_name["music-page-open"], "scene", "musicoptions",
+                    session + "/page-opens")
+        for name, row in [("music-page-open", 0), ("music-mode-cycled", 0),
+                          ("music-volume-row", 1), ("music-volume-up", 1),
+                          ("music-effects-row", 2), ("music-effects-up", 2),
+                          ("music-next-row", 3), ("music-next-track", 3)]:
+            check_field(by_name[name], "scene", "musicoptions",
+                        session + "/%s-stays-on-the-page" % name)
+            check_field(by_name[name], "menu", "music:%d" % row,
+                        session + "/%s-keeps-the-row" % name)
+            check_music_page_layout(session, by_name[name],
+                                    session + "/layout-%s" % name)
+        # Back lands on the MUSIC row of the options screen, and back again
+        # leaves through the title exactly as the seven-row era did.
+        check_field(by_name["options-back-on-music"], "menu", "options:7",
+                    session + "/back-keeps-music-row")
+        check_options_screen_layout(session, by_name["options-back-on-music"],
+                                    session + "/layout-back-on-music")
+        check_field(by_name["title-back"], "menu", "title:2",
+                    session + "/back-keeps-options-cursor")
+        check_field(by_name["title-at-quit"], "menu", "title:3",
+                    session + "/title-still-four-items")
+        check_field(by_name["quit-confirmed"], "quit", "1",
+                    session + "/quit-confirmed")
+        # The saved file: every row's change persisted, the Next track action
+        # changed nothing, and the seven earlier preferences ride along.
+        check_settings_file(session, save_dir, True, True, True, True, 5,
+                            False, session + "/saved-settings",
+                            music_mode="arcade", music_volume=7,
+                            effects_volume=9)
+        check_log(session, log_path, [
+            "Clean shutdown",
+            settings_log_line(True, True, True, True, 5, False, "not found"),
+            "Scene title -> options", "Scene options -> musicoptions",
+            "Scene musicoptions -> options", "Scene options -> title",
+        ])
+        check_log(session, input_log, [
+            "music start=auto", "musicvolume start=6",
+            "effectsvolume start=8", "music arcade status=ok",
+            "musicvolume 7 status=ok", "effectsvolume 9 status=ok",
+            "music next track",
+        ], name="input-log")
+    elif session == "music-settings-pad":
+        # The same page on the developer virtual controller (task T062): the
+        # pad opens the page from the MUSIC row, A cycles the mode once, the
+        # D-pad walks to NEXT TRACK and A runs it, B returns to the options
+        # screen on the MUSIC row, and the session quits with arcade saved
+        # and both volumes at their defaults.
+        check_scene_sequence(run_records, [
+            "title", "title", "options", "options"] + ["musicoptions"] * 4 + [
+            "options", "title", "title", "title"],
+            session + "/scene-sequence")
+        check_field(by_name["options-music-row"], "menu", "options:7",
+                    session + "/music-row-reached")
+        check_options_screen_layout(session, by_name["options-music-row"],
+                                    session + "/layout-options-music-row")
+        for name, row in [("music-page-open", 0), ("music-mode-cycled", 0),
+                          ("music-next-row", 3), ("music-next-track", 3)]:
+            check_field(by_name[name], "scene", "musicoptions",
+                        session + "/%s-stays-on-the-page" % name)
+            check_field(by_name[name], "menu", "music:%d" % row,
+                        session + "/%s-keeps-the-row" % name)
+            check_music_page_layout(session, by_name[name],
+                                    session + "/layout-%s" % name)
+        check_field(by_name["options-back-on-music"], "menu", "options:7",
+                    session + "/back-keeps-music-row")
+        check_field(by_name["title-back"], "menu", "title:2",
+                    session + "/back-keeps-options-cursor")
+        check_field(by_name["title-at-quit"], "menu", "title:3",
+                    session + "/title-still-four-items")
+        check_field(by_name["quit-confirmed"], "quit", "1",
+                    session + "/quit-confirmed")
+        check_settings_file(session, save_dir, True, True, True, True, 5,
+                            False, session + "/saved-settings",
+                            music_mode="arcade")
+        check_log(session, log_path, [
+            "Clean shutdown",
+            settings_log_line(True, True, True, True, 5, False, "not found"),
+            "Scene title -> options", "Scene options -> musicoptions",
+            "Scene musicoptions -> options", "Scene options -> title",
+        ])
+        check_log(session, input_log, [
+            "music start=auto", "musicvolume start=6",
+            "effectsvolume start=8", "music arcade status=ok",
+            "music next track",
         ], name="input-log")
     elif session == "hold-off":
         # The HOLD preference against specification sections 4.3 and 5 (task
@@ -1879,6 +2308,126 @@ def check_session(run_dir, session):
                         "%s/stage%d-loaded-record" % (session, index + 1))
         check_settings_path(session, stages[-1]["after"], True, True, True,
                             True, 5, False, rule=session + "/final-settings")
+    elif session in ("portrait-keyboard", "portrait-pad"):
+        # The staged portrait sessions of task T055. Stage one runs landscape,
+        # walks to the seventh OPTIONS row, and selects it: the preference
+        # flips to portrait, the settings file carries it, and the running
+        # process keeps its landscape layout because the saved value applies
+        # at the next launch. Stage two is that launch: the orientation line
+        # it restores names portrait, the startup applies the turned canvas,
+        # and a whole round plays on the rotated table of the session's
+        # device - keyboard or pad - through the pause overlay and the
+        # game-over screen, with the reference replaying the same script on
+        # the same rotated tables (the stage stream comparison above). The
+        # pins below add what the stream cannot name: the rotated pixels and
+        # the rotated mapping of the device.
+        device = "keyboard" if session == "portrait-keyboard" else "pad"
+        stage = stages[0]
+        stage_records = records["stage1"]
+        stage_by_name = {r["check"]: r for r in stage_records}
+        check_field(stage_by_name["title-at-options"], "menu", "title:2",
+                    "%s/stage1-options-item" % session)
+        check_field(stage_by_name["options-orientation-row"], "menu",
+                    "options:6", "%s/stage1-orientation-row" % session)
+        check_field(stage_by_name["orientation-toggled"], "menu", "options:6",
+                    "%s/stage1-select-keeps-the-row" % session)
+        check_field(stage_by_name["quit-confirmed"], "quit", "1",
+                    "%s/stage1-quit" % session)
+        for name in ("options-sound-row", "options-orientation-row",
+                     "orientation-toggled"):
+            check_options_screen_layout(session, stage_by_name[name],
+                                        "%s/stage1-layout-%s" % (session,
+                                                                 name))
+        # The stored preference flipped and nothing else moved.
+        check_settings_path(session, stage["after"], True, True, True, True,
+                            5, False, rule="%s/stage1-settings" % session,
+                            orientation="portrait")
+        check_log(session, stage["log"], [
+            "Clean shutdown",
+            settings_log_line(True, True, True, True, 5, False, "not found",
+                              "landscape"),
+            "Orientation: landscape (960 x 544 canvas, 27 px cells)",
+            "Orientation preference portrait; it applies at the next launch",
+            "Scene title -> options", "Scene options -> title",
+        ])
+        check_log(session, stage["input_log"], [
+            "orientation start=landscape", "orientation portrait status=ok",
+        ], name="%s/stage1-input-log" % session)
+
+        stage = stages[1]
+        stage_records = records["stage2"]
+        stage_by_name = {r["check"]: r for r in stage_records}
+        # The relaunch read the portrait file stage one wrote and applied it.
+        check_settings_path(session, stage["before"], True, True, True, True,
+                            5, False, rule="%s/stage2-relaunch-read" % session,
+                            orientation="portrait")
+        check_log(session, stage["log"], [
+            "Clean shutdown",
+            settings_log_line(True, True, True, True, 5, False, "ok",
+                              "portrait"),
+            "Orientation: portrait (544 x 960 canvas, 40 px cells)",
+        ])
+        check_log(session, stage["input_log"], [
+            "orientation start=portrait",
+        ], name="%s/stage2-input-log" % session)
+        # The round itself: the pause overlay navigates on the rotated menu
+        # roles - left wraps Resume up to Quit to Title, left again lands on
+        # Controls, and the wrap plus the walk back down prove both directions
+        # - and the game-over menu and the title quit keep their cursor pins.
+        check_field(stage_by_name["paused"], "menu", "pause:0",
+                    "%s/stage2-pause-opens-on-resume" % session)
+        check_field(stage_by_name["paused-at-quit"], "menu", "pause:3",
+                    "%s/stage2-menu-up-wraps" % session)
+        check_field(stage_by_name["paused-at-controls"], "menu", "pause:2",
+                    "%s/stage2-menu-up-again" % session)
+        check_field(stage_by_name["pause-controls-open"], "scene",
+                    "pausecontrols",
+                    "%s/stage2-controls-screen-open" % session)
+        check_field(stage_by_name["pause-controls-back"], "menu", "pause:2",
+                    "%s/stage2-controls-screen-back" % session)
+        check_field(stage_by_name["paused-at-restart"], "menu", "pause:1",
+                    "%s/stage2-menu-down-walks" % session)
+        check_field(stage_by_name["resumed"], "scene", "playing",
+                    "%s/stage2-resumed" % session)
+        check_field(stage_by_name["gameover-at-title"], "menu", "over:1",
+                    "%s/stage2-over-cursor" % session)
+        check_field(stage_by_name["title-at-quit"], "menu", "title:3",
+                    "%s/stage2-title-cursor" % session)
+        check_field(stage_by_name["quit-confirmed"], "quit", "1",
+                    "%s/stage2-quit" % session)
+        # The rotated pixels: the play scene's frame, strip, and margins; the
+        # pause and game-over panels at their rotated boxes; and the quiet
+        # rows below the board on every page that clears the canvas.
+        check_portrait_play_frame(session, stage_by_name["playing-start"],
+                                  "%s/stage2-play-frame" % session)
+        check_portrait_overlay_panel(session, stage_by_name["paused"],
+                                     PORTRAIT_PAUSE_PANEL,
+                                     "%s/stage2-pause-panel" % session)
+        check_portrait_overlay_panel(session, stage_by_name["gameover-first"],
+                                     PORTRAIT_GAMEOVER_PANEL,
+                                     "%s/stage2-gameover-panel" % session)
+        for name in ("title-start", "title-at-start", "pause-controls-open",
+                     "title-return"):
+            check_portrait_page_quiet(session, stage_by_name[name],
+                                      "%s/stage2-quiet-%s" % (session, name))
+        # The rotated mapping of the session's device, from the input log.
+        check_rotated_mapping(session, stage["input_log"], device,
+                              "%s/stage2-rotated-mapping" % session)
+        # The round changed no preference: the file the session leaves holds
+        # exactly what stage one wrote.
+        check_settings_path(session, stage["after"], True, True, True, True,
+                            5, False, rule="%s/stage2-settings" % session,
+                            orientation="portrait")
+        # The game-over round set a record; its value is the score the
+        # gameover record names, and the file holds exactly that (the
+        # mid-round saves of task T052 raise it along the way).
+        gameover = stage_by_name["gameover-first"]
+        if "high" not in gameover:
+            fail("%s/stage2-record" % session,
+                 "the gameover record names no high field")
+        else:
+            check_high_score_file(session, stage["save"], int(gameover["high"]),
+                                  "%s/stage2-saved-record" % session)
     else:
         fail("%s/unknown" % session, "no expectations defined")
 

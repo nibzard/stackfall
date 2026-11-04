@@ -1,0 +1,128 @@
+# Music-settings session (T062, MUSIC.md player controls,
+# docs/AGENT_TESTING.md): the MUSIC row of the options screen opens the music
+# settings page, each of its four rows takes one select - the mode cycles
+# Auto -> Arcade, MUSIC VOLUME 6 -> 7, EFFECTS VOLUME 8 -> 9, and NEXT TRACK
+# requests another track without changing a setting - back returns to the
+# options screen with the cursor still on the MUSIC row, and the session
+# quits through the title menu with the settings file holding arcade and both
+# new volume steps. A `wait` follows every check, so no record carries the
+# tick of the input that comes after it.
+check title-start
+wait 1
+key down down
+wait 2
+key down up
+wait 2
+key down down
+wait 2
+key down up
+wait 2
+check title-at-options
+wait 1
+key enter down
+wait 2
+key enter up
+wait 2
+check options-open
+wait 1
+key down down
+wait 2
+key down up
+wait 2
+key down down
+wait 2
+key down up
+wait 2
+key down down
+wait 2
+key down up
+wait 2
+key down down
+wait 2
+key down up
+wait 2
+key down down
+wait 2
+key down up
+wait 2
+key down down
+wait 2
+key down up
+wait 2
+key down down
+wait 2
+key down up
+wait 2
+check options-music-row
+wait 1
+key enter down
+wait 2
+key enter up
+wait 2
+check music-page-open
+wait 1
+key enter down
+wait 2
+key enter up
+wait 2
+check music-mode-cycled
+wait 1
+key down down
+wait 2
+key down up
+wait 2
+check music-volume-row
+wait 1
+key enter down
+wait 2
+key enter up
+wait 2
+check music-volume-up
+wait 1
+key down down
+wait 2
+key down up
+wait 2
+check music-effects-row
+wait 1
+key enter down
+wait 2
+key enter up
+wait 2
+check music-effects-up
+wait 1
+key down down
+wait 2
+key down up
+wait 2
+check music-next-row
+wait 1
+key enter down
+wait 2
+key enter up
+wait 2
+check music-next-track
+wait 1
+key esc down
+wait 2
+key esc up
+wait 2
+check options-back-on-music
+wait 1
+key esc down
+wait 2
+key esc up
+wait 2
+check title-back
+wait 1
+key down down
+wait 2
+key down up
+wait 2
+check title-at-quit
+wait 1
+check quit-confirmed
+key enter down
+wait 2
+key enter up
+wait 2

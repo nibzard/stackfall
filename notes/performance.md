@@ -275,3 +275,30 @@ Every number above reproduces from the repository root (Release binary at
   inside the approved rules that measurement supports.
 - The menu benchmark row is short (265 frames, scripted quit) and carries
   timer granularity; it is supporting evidence only, as noted in Method.
+
+
+## Music callback cost, desktop (T062, 2026-11-04)
+
+MUSIC.md's callback budget checked on the desktop build through the real
+mixer path: `stackfall_audio_tests` times `AudioDriver::mixFrames` at the
+dummy device's own buffer size, with the densest catalogue track
+(arcade-redline, 150 BPM) at high intensity and all five cue voices
+retriggered every fifth callback.
+
+- Obtained device: 44100 Hz, 2 channels, 512-frame callbacks (11.61 ms).
+- 2000 measured callbacks after 50 warm-up callbacks: p50 0.047 ms,
+  p99 0.084 ms, about 1 percent of the buffer duration.
+- Budget: MUSIC.md proposes p99 below 25 percent of the buffer on the
+  target device; the desktop headroom is two orders of magnitude, and the
+  same measurement prints from every `ctest` run of the audio suite.
+- The 25 percent budget, the 30-minute dropout watch, and the RG503's
+  obtained rate and buffer size stay device measurements (task T036
+  follow-up); this row is the desktop evidence that the engine cannot
+  plausibly overrun them.
+
+Command:
+
+```bash
+cmake --build build --target stackfall_audio_tests &&
+./build/stackfall_audio_tests 2>&1 | grep "music callback"
+```

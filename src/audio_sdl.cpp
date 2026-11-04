@@ -418,6 +418,22 @@ bool AudioDriver::open() {
   obtainedRate_ = obtained.freq;
   obtainedChannels_ = obtained.channels;
   const std::size_t channels = static_cast<std::size_t>(obtainedChannels_);
+  // The music engine joins the device at its real rate (MUSIC.md, native
+  // audio design). Building the catalogue and the wave tables here, on the
+  // main thread, keeps the callback free of allocation and file access; the
+  // two scratch buffers take the device's own maximum callback size, so the
+  // callback never allocates either.
+  musicCatalogue();
+  musicEngine_.initialize(obtainedRate_);
+  obtainedBufferFrames_ = static_cast<int>(obtained.samples);
+  musicScratch_.assign(static_cast<std::size_t>(obtained.samples) + 16, 0);
+  cueScratch_.assign(
+      (static_cast<std::size_t>(obtained.samples) + 16) * channels, 0);
+  publishMusicGain();
+  musicEngine_.publishMasterGain(65536);
+  cueMasterGainQ16_ = 65536;
+  cueMasterStep_ = static_cast<std::uint32_t>(
+      65536 / (obtainedRate_ / 1000 * 15) + 1);
   for (const SoundCue cue : kAllSoundCues) {
     const std::size_t index = static_cast<std::size_t>(cue);
     std::vector<std::int16_t> mono;
@@ -453,6 +469,10 @@ void AudioDriver::close() {
     cue.clear();
     cue.shrink_to_fit();
   }
+  musicScratch_.clear();
+  musicScratch_.shrink_to_fit();
+  cueScratch_.clear();
+  cueScratch_.shrink_to_fit();
   if (subsystemInitialized_) {
     SDL_QuitSubSystem(SDL_INIT_AUDIO);
     subsystemInitialized_ = false;
@@ -464,7 +484,49 @@ void AudioDriver::setMuted(bool muted) {
     return;
   }
   muted_ = muted;
+  // The master switch fades both buses (MUSIC.md: master mute preserves the
+  // music timeline). The engine ramps toward the published target; the cue
+  // side reads muted_ directly below, as it always has.
+  musicEngine_.publishMasterGain(muted_ ? 0u : 65536u);
   std::printf("Sound %s\n", muted_ ? "muted" : "unmuted");
+}
+
+void AudioDriver::setMusicVolume(int step) {
+  musicVolume_ = std::max(0, std::min(10, step));
+  publishMusicGain();
+}
+
+void AudioDriver::setEffectsVolume(int step) {
+  effectsVolume_ = std::max(0, std::min(10, step));
+}
+
+void AudioDriver::publishMusicGain() {
+  // The music bus gain is the volume step times the duck, published as one
+  // latest-value atomic (MUSIC.md, thread communication).
+  const std::uint32_t volume =
+      MusicEngine::kVolumeGainQ16[static_cast<std::size_t>(musicVolume_)];
+  musicEngine_.publishMusicGain(
+      static_cast<std::uint32_t>((static_cast<std::uint64_t>(volume) *
+                                  duckGainQ16_) >> 16));
+}
+
+void AudioDriver::updateDuck(std::size_t frames) {
+  // The duck lowers the music about 4 decibels for the cue that asked plus
+  // a release near 200 milliseconds; the attack is as fast as one callback.
+  if (duckHoldFrames_ > 0) {
+    duckHoldFrames_ -= static_cast<int>(
+        std::min<std::size_t>(frames, static_cast<std::size_t>(duckHoldFrames_)));
+  }
+  const std::uint32_t target = duckHoldFrames_ > 0 ? 41352u : 65536u;
+  const std::size_t releaseSamples =
+      static_cast<std::size_t>(obtainedRate_) / 5;  // 200 ms
+  const std::uint32_t step = std::max<std::uint32_t>(
+      1, 65536 / std::max<std::size_t>(1, releaseSamples));
+  if (duckGainQ16_ < target) {
+    duckGainQ16_ = std::min(target, duckGainQ16_ + step * 4);  // fast attack
+  } else if (duckGainQ16_ > target) {
+    duckGainQ16_ = std::max(target, duckGainQ16_ - step);
+  }
 }
 
 void AudioDriver::setPaused(bool paused) {
@@ -484,6 +546,30 @@ void AudioDriver::play(SoundCue cue) {
   if (device_ == 0) {
     ++droppedCount_;
     return;
+  }
+  // The cues that matter most duck the music for their length plus a short
+  // release (MUSIC.md, mixing and gain). A move or a rotation never does.
+  if (obtainedRate_ > 0) {
+    int holdMs = 0;
+    switch (cue) {
+      case SoundCue::Clear:
+        holdMs = 320;
+        break;
+      case SoundCue::FourLineClear:
+        holdMs = 470;
+        break;
+      case SoundCue::GameOver:
+        holdMs = 820;
+        break;
+      default:
+        break;
+    }
+    if (holdMs > 0) {
+      duckHoldFrames_ =
+          std::max(duckHoldFrames_,
+                   static_cast<int>(static_cast<std::size_t>(holdMs) *
+                                    obtainedRate_ / 1000));
+    }
   }
   ++played_[index];
   voiceRequest_[index].store(
@@ -511,13 +597,21 @@ void AudioDriver::mixFrames(std::int16_t* out, std::size_t frames) {
   if (out == nullptr || obtainedChannels_ <= 0) {
     return;
   }
-  const std::size_t cells =
-      frames * static_cast<std::size_t>(obtainedChannels_);
+  const std::size_t channels = static_cast<std::size_t>(obtainedChannels_);
+  const std::size_t cells = frames * channels;
   std::fill(out, out + cells, static_cast<std::int16_t>(0));
   if (device_ == 0 || cells == 0) {
     return;
   }
 
+  // The effect bus: every sounding cue sums into one 32-bit accumulator
+  // per cell, unclamped, so the per-voice saturation of the cue-only mixer
+  // is gone and one safety clamp at the end covers both buses (MUSIC.md,
+  // mixing and gain).
+  if (cells > cueScratch_.size()) {
+    return;  // sized at open(); a larger callback would be a device bug
+  }
+  std::fill(cueScratch_.begin(), cueScratch_.begin() + cells, 0);
   for (const SoundCue cue : kAllSoundCues) {
     const std::size_t index = static_cast<std::size_t>(cue);
     // A play request that arrived since the last callback restarts the voice.
@@ -536,13 +630,47 @@ void AudioDriver::mixFrames(std::int16_t* out, std::size_t frames) {
     if (position >= cueSamples.size()) {
       continue;
     }
-    const std::size_t mixable = std::min(cells, cueSamples.size() - position);
+    const std::size_t mixable =
+        std::min(cells, cueSamples.size() - position);
     for (std::size_t i = 0; i < mixable; ++i) {
-      const std::int32_t sum =
-          out[i] + static_cast<std::int32_t>(cueSamples[position + i]);
-      out[i] = clampSample(sum);
+      cueScratch_[i] += cueSamples[position + i];
     }
     position += mixable;
+  }
+
+  // The music bus beside it, then both volume steps and one final clamp.
+  updateDuck(frames);
+  publishMusicGain();
+  if (frames > 0 && frames <= musicScratch_.size()) {
+    std::fill(musicScratch_.begin(), musicScratch_.begin() + frames, 0);
+    musicEngine_.renderAdd(musicScratch_.data(), frames);
+  } else if (frames > 0) {
+    std::fill(musicScratch_.begin(), musicScratch_.end(), 0);
+  }
+  const std::uint32_t effectsGain =
+      MusicEngine::kVolumeGainQ16[static_cast<std::size_t>(effectsVolume_)];
+  const std::uint32_t masterTarget = muted_ ? 0u : 65536u;
+  for (std::size_t frame = 0; frame < frames; ++frame) {
+    // The cue bus ramps its own master copy, one step per frame at the same
+    // 15 millisecond rate as the engine, so a mute move fades instead of
+    // stepping (MUSIC.md, master mute).
+    cueMasterGainQ16_ =
+        cueMasterGainQ16_ < masterTarget
+            ? std::min<std::uint32_t>(masterTarget,
+                                      cueMasterGainQ16_ + cueMasterStep_)
+            : (cueMasterGainQ16_ > cueMasterStep_
+                   ? std::max<std::uint32_t>(
+                         masterTarget, cueMasterGainQ16_ - cueMasterStep_)
+                   : masterTarget);
+    const std::int32_t music = musicScratch_[frame];
+    for (std::size_t channel = 0; channel < channels; ++channel) {
+      const std::size_t cell = frame * channels + channel;
+      const std::int64_t effects =
+          (static_cast<std::int64_t>(cueScratch_[cell]) * effectsGain *
+           cueMasterGainQ16_) >>
+          32;
+      out[cell] = clampSample(static_cast<std::int32_t>(effects + music));
+    }
   }
 }
 

@@ -1,12 +1,14 @@
-# Options-six-pad session (T045, docs/AGENT_TESTING.md): the six-row options
-# screen on the developer virtual controller, seed 20261103, the input path of
-# scene-cycle-pad. The pad reaches all six rows and wraps past GRAYSCALE back
-# to SOUND, A changes each of the four new preferences (GRID off, HOLD off,
-# NEXT PIECES 5 -> 1 -> 2 -> 3, GRAYSCALE on), and B returns to the title.
-# A round then proves the pad's own hold inputs - Y and the left shoulder -
-# change nothing while HOLD is off, and the session quits through the title
-# menu. A `wait` follows every check, so no record carries the tick of the
-# input that comes after it.
+# Options-six-pad session (T045, T055, and T062, docs/AGENT_TESTING.md):
+# the eight-row options screen on the developer virtual controller, seed
+# 20261103, the input path of scene-cycle-pad. The pad reaches every row from
+# SOUND down to MUSIC and wraps past MUSIC back to SOUND, A changes each of
+# the four T045 preferences (GRID off, HOLD off, NEXT PIECES 5 -> 1 -> 2 ->
+# 3, GRAYSCALE on), and the ORIENTATION and MUSIC rows are reached but never
+# selected, so the session stays landscape and never opens the music page.
+# landscape, and B returns to the title. A round then proves the pad's own
+# hold inputs - Y and the left shoulder - change nothing while HOLD is off,
+# and the session quits through the title menu. A `wait` follows every check,
+# so no record carries the tick of the input that comes after it.
 check title-start
 wait 1
 pad down down
@@ -90,6 +92,18 @@ wait 2
 pad a up
 wait 2
 check grayscale-toggled
+wait 1
+pad down down
+wait 2
+pad down up
+wait 2
+check options-orientation-row
+wait 1
+pad down down
+wait 2
+pad down up
+wait 2
+check options-music-row
 wait 1
 pad down down
 wait 2

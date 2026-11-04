@@ -57,6 +57,9 @@ constexpr ControllerBinding kControllerBindings[] = {
     {SDL_CONTROLLER_BUTTON_LEFTSHOULDER, GameAction::Hold, kNoGameAction},
     {SDL_CONTROLLER_BUTTON_START, GameAction::Pause, kNoGameAction},
 };
+constexpr int kControllerBindingCount =
+    static_cast<int>(sizeof(kControllerBindings) /
+                     sizeof(kControllerBindings[0]));
 
 // The section 5 desktop table: arrows move and soft drop, X or Up rotate
 // clockwise, Z rotates counter-clockwise, Space hard drops, C or left Shift
@@ -76,6 +79,8 @@ constexpr KeyboardBinding kKeyboardBindings[] = {
     {SDL_SCANCODE_RETURN, GameAction::Pause, GameAction::MenuSelect},
     {SDL_SCANCODE_ESCAPE, GameAction::Pause, GameAction::MenuBack},
 };
+constexpr int kKeyboardBindingCount =
+    static_cast<int>(sizeof(kKeyboardBindings) / sizeof(kKeyboardBindings[0]));
 
 // Writes the actions of `binding` into `actions` and returns how many: zero
 // for an unmapped control, one or two otherwise.
@@ -90,6 +95,49 @@ int bindingActions(const Binding& binding, GameAction* actions) {
   }
   return count;
 }
+
+// The portrait tables of task T055, the rotated mapping
+// notes/design-review.md pins. Every direction keeps its device identity and
+// takes the action whose on-screen direction in the rotated frame matches the
+// direction that press points to: the device D-pad's up, down, left, and right
+// become move right, move left, menu up, and soft drop plus menu down, because
+// the turned device points them there. The cluster reverses each pair under
+// the left thumb: B rotates clockwise and confirms, A rotates the other way
+// and goes back, Y hard drops, and X holds. Start and the left shoulder are
+// their own controls, not cluster buttons, so they keep their roles, and so do
+// the keyboard's Enter and Esc.
+constexpr ControllerBinding kPortraitControllerBindings[] = {
+    {SDL_CONTROLLER_BUTTON_DPAD_LEFT, GameAction::MenuUp, kNoGameAction},
+    {SDL_CONTROLLER_BUTTON_DPAD_RIGHT, GameAction::Down, GameAction::MenuDown},
+    {SDL_CONTROLLER_BUTTON_DPAD_DOWN, GameAction::Left, kNoGameAction},
+    {SDL_CONTROLLER_BUTTON_DPAD_UP, GameAction::Right, kNoGameAction},
+    {SDL_CONTROLLER_BUTTON_B, GameAction::RotateCW, GameAction::MenuSelect},
+    {SDL_CONTROLLER_BUTTON_A, GameAction::RotateCCW, GameAction::MenuBack},
+    {SDL_CONTROLLER_BUTTON_Y, GameAction::HardDrop, kNoGameAction},
+    {SDL_CONTROLLER_BUTTON_X, GameAction::Hold, kNoGameAction},
+    {SDL_CONTROLLER_BUTTON_LEFTSHOULDER, GameAction::Hold, kNoGameAction},
+    {SDL_CONTROLLER_BUTTON_START, GameAction::Pause, kNoGameAction},
+};
+
+constexpr KeyboardBinding kPortraitKeyboardBindings[] = {
+    {SDL_SCANCODE_LEFT, GameAction::MenuUp, kNoGameAction},
+    {SDL_SCANCODE_RIGHT, GameAction::Down, GameAction::MenuDown},
+    {SDL_SCANCODE_DOWN, GameAction::Left, kNoGameAction},
+    {SDL_SCANCODE_UP, GameAction::Right, kNoGameAction},
+    {SDL_SCANCODE_Z, GameAction::RotateCW, kNoGameAction},
+    {SDL_SCANCODE_X, GameAction::RotateCCW, kNoGameAction},
+    {SDL_SCANCODE_C, GameAction::HardDrop, kNoGameAction},
+    {SDL_SCANCODE_LSHIFT, GameAction::HardDrop, kNoGameAction},
+    {SDL_SCANCODE_SPACE, GameAction::Hold, kNoGameAction},
+    {SDL_SCANCODE_RETURN, GameAction::Pause, GameAction::MenuSelect},
+    {SDL_SCANCODE_ESCAPE, GameAction::Pause, GameAction::MenuBack},
+};
+constexpr int kPortraitControllerBindingCount =
+    static_cast<int>(sizeof(kPortraitControllerBindings) /
+                     sizeof(kPortraitControllerBindings[0]));
+constexpr int kPortraitKeyboardBindingCount =
+    static_cast<int>(sizeof(kPortraitKeyboardBindings) /
+                     sizeof(kPortraitKeyboardBindings[0]));
 
 // The name of the virtual pad, stable storage for the SDL descriptor.
 constexpr char kVirtualPadName[] = "STACKFALL Virtual Pad";
@@ -112,18 +160,40 @@ constexpr Uint16 kVirtualPadProductId = 0xFA11;
 // ---------------------------------------------------------------------------
 
 int mapControllerButton(SDL_GameControllerButton button, GameAction* actions) {
-  for (const ControllerBinding& binding : kControllerBindings) {
-    if (binding.button == button) {
-      return bindingActions(binding, actions);
+  return mapControllerButton(button, Orientation::Landscape, actions);
+}
+
+int mapKeyboardScancode(SDL_Scancode scancode, GameAction* actions) {
+  return mapKeyboardScancode(scancode, Orientation::Landscape, actions);
+}
+
+int mapControllerButton(SDL_GameControllerButton button,
+                        Orientation orientation, GameAction* actions) {
+  const ControllerBinding* table = kControllerBindings;
+  int count = kControllerBindingCount;
+  if (orientation == Orientation::Portrait) {
+    table = kPortraitControllerBindings;
+    count = kPortraitControllerBindingCount;
+  }
+  for (int index = 0; index < count; ++index) {
+    if (table[index].button == button) {
+      return bindingActions(table[index], actions);
     }
   }
   return 0;
 }
 
-int mapKeyboardScancode(SDL_Scancode scancode, GameAction* actions) {
-  for (const KeyboardBinding& binding : kKeyboardBindings) {
-    if (binding.scancode == scancode) {
-      return bindingActions(binding, actions);
+int mapKeyboardScancode(SDL_Scancode scancode, Orientation orientation,
+                        GameAction* actions) {
+  const KeyboardBinding* table = kKeyboardBindings;
+  int count = kKeyboardBindingCount;
+  if (orientation == Orientation::Portrait) {
+    table = kPortraitKeyboardBindings;
+    count = kPortraitKeyboardBindingCount;
+  }
+  for (int index = 0; index < count; ++index) {
+    if (table[index].scancode == scancode) {
+      return bindingActions(table[index], actions);
     }
   }
   return 0;
@@ -177,8 +247,8 @@ void SdlInput::handleEvent(const SDL_Event& event) {
         break;
       }
       GameAction actions[2];
-      const int count =
-          mapKeyboardScancode(event.key.keysym.scancode, actions);
+      const int count = mapKeyboardScancode(event.key.keysym.scancode,
+                                            orientation_, actions);
       const bool pressed = event.type == SDL_KEYDOWN;
       for (int i = 0; i < count; ++i) {
         onButton(kKeyboardInputSource, actions[i], pressed);
@@ -190,7 +260,7 @@ void SdlInput::handleEvent(const SDL_Event& event) {
       GameAction actions[2];
       const int count = mapControllerButton(
           static_cast<SDL_GameControllerButton>(event.cbutton.button),
-          actions);
+          orientation_, actions);
       const bool pressed = event.type == SDL_CONTROLLERBUTTONDOWN;
       const int source = static_cast<int>(event.cbutton.which);
       for (int i = 0; i < count; ++i) {
