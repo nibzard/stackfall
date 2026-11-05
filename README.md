@@ -2,7 +2,7 @@
 
 An offline block-stacking game for the Anbernic RG503, with procedural graphics and synthesized sound.
 
-![STACKFALL gameplay: a yellow square piece falls with its ghost outline over a settled stack, Hold and the statistics sit on the left, and five Next previews sit on the right.](docs/images/gameplay.png)
+![STACKFALL gameplay: a yellow square piece in flight above a settled piece, with Hold and the statistics on the left and five Next previews on the right.](docs/images/gameplay.png)
 
 Clear lines, keep room for the next piece, and chase your high score as the game gets faster.
 Hold a piece for later, plan around five previews, and use the ghost outline to place each drop.
