@@ -19,7 +19,18 @@ First release. The binary reports the version `1.0.0` in its startup log.
   music. All ten persisted values survive between sessions.
 - Portrait play: set Options to Portrait and the whole game turns at once into
   a tall 544 x 960 frame with 40-pixel board squares and controls that keep
-  the action they point at.
+  the action they point at. The turn takes effect in the running session, with
+  no restart and no relaunch.
+- Every gameplay control is yours to change. Open **Controls** from the title
+  screen or the pause menu, press A, and pick a row to bind a new control. A
+  change saves on its own in `ports/stackfall/conf/` and survives the next
+  launch; **Restore defaults** returns the shipped table. The menu controls
+  never change, so every screen stays reachable.
+- Hard drop sits on D-pad up, both in landscape and on the D-pad arm that
+  points at the ceiling when you hold the device sideways in portrait. The
+  press that leaves a menu never drops the piece of the round that follows.
+- The high-score save now runs on its own worker, so the moment a round
+  passes your best score no longer waits for the save to reach the disk.
 - A generated twelve-track soundtrack in three collections, composed and
   synthesized at run time. The Music settings page selects the collection
   pool, both volumes, and the next track; each track layers more voices as

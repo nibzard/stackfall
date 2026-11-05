@@ -118,6 +118,14 @@ if want_phase builds; then
       >/dev/null 2>&1 || fail "cmake configure failed for $dir"
     cmake --build "$dir" --clean-first > "$run_dir/builds/build-$name.log" 2>&1 ||
       fail "build failed for $dir (see $run_dir/builds/build-$name.log)"
+    # The zero-warning gate belongs to the build itself, not only to the
+    # check phase, so a round that runs just 'builds hashes' still fails on
+    # a compiler warning. check_t015.py re-derives the same verdict from the
+    # kept log when the full gate runs. This is the gate the Scene::Rebind
+    # warning of T066 slipped past, because the later rounds ran the subset.
+    warnings=$(grep -c "warning:" "$run_dir/builds/build-$name.log" || true)
+    [ "$warnings" = 0 ] ||
+      fail "$type build has $warnings compiler warnings (see $run_dir/builds/build-$name.log)"
     ctest --test-dir "$dir" --output-on-failure \
       > "$run_dir/builds/ctest-$name.txt" 2>&1 ||
       fail "ctest failed in $dir (see $run_dir/builds/ctest-$name.txt)"

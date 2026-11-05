@@ -4841,3 +4841,289 @@ Findings and open questions:
 - None. The exclusion lists of the frozen snapshot and of the
   specification-phase briefs stay as history; only the living
   specification states the shipped scope.
+
+## T070: the final performance and input regression pass (2026-11-05)
+
+Round post-v1.0 closure (device feedback). Status: passed, with one
+repaired regression.
+
+The device-feedback features are all landed - the T065 record writer, the
+T066 controls customization screen, the T067 D-pad-up hard drop, and the
+T068 same-session orientation turn - so this pass re-ran, at the integrated
+revision, the performance measurement set of T065 and the input regression
+coverage of the T023/T024 harness: keyboard and virtual controller across
+gameplay, menus, rebinding, both orientations, pause and resume, focus loss,
+and disconnect. The performance half, with its tables, is the T070 section
+of `notes/performance.md`.
+
+- Source identity: commit `0cd6422`, a clean tree under
+  `src include tests CMakeLists.txt tools` when the pass began, plus the
+  repairs listed below (each verified by a rerun at the same evidence set).
+  Evidence directories, all under `build/agent-checks/`:
+  `t070-t015-builds-hashes` (the warning, before the repair),
+  `t070-t015-builds-hashes-repaired` and `t070-t015-builds-hashes-repaired2`
+  (the final tree, with the hardened `builds` gate), `t070-harness-debug`,
+  `t070-harness-release`, `t070-t024`, `t070-t025-hardkill`,
+  `t070-t025-san`, and `t070-perf`. Each carries its own `source.sha256` or
+  per-file hashes; the harness and T024 runs also carry every screenshot.
+- Seeds: the harness sessions keep their scripted seeds (31337, 20261103,
+  20261104, 777, 999, and the rest the sessions name), the T024 sessions
+  31337, 20261104, and 777, and the whole performance set seed 31 - the
+  T025/T026/T065 seed, so every performance number compares with those
+  baselines directly.
+
+### The regression this pass found and repaired
+
+The first clean rebuild failed the zero-warning gate that `check_t015.py`
+holds over the T015 build logs, in both configurations:
+
+```
+tests/test_regression.cpp:326:10: warning: enumeration value 'Rebind'
+    not handled in switch [-Wswitch]
+```
+
+T066 appended `Scene::Rebind` to the scene enum but the test suite's own
+`sceneName` switch never gained the case. Every later gate that ran a
+compile counted the warning or did not look, so the tree carried it from
+T066 to this pass. The repair adds `case Scene::Rebind: return "rebind";`
+beside the other screen names, matching the grouping `src/observe.cpp`
+uses. Verified: clean rebuild in both configurations with zero warnings,
+the rules suite still byte-identical between Debug and Release, and the
+five pinned scenario hashes unchanged. Evidence:
+`t070-t015-builds-hashes/builds/build-{debug,release}.log` (before) and
+`t070-t015-builds-hashes-repaired/` (after).
+
+The warning survived three rounds because the zero-warning verdict lived
+only in `check_t015.py`, and the rounds after T066 ran the
+`T015_PHASES="builds hashes"` subset, which builds and keeps the compile
+log without reading it. The `builds` phase now fails on any `warning:` in
+its own compile log, so the subset holds the same gate the full check
+holds. Verified both ways: the guard fails on the pre-repair log of this
+run (1 warning counted) and the full phase passes on the repaired tree
+(`t070-t015-builds-hashes-repaired2/`, M3 GATE PASS, zero warnings).
+
+Two defects in `tests/harness/t065.sh` surfaced the same way, because this
+pass ran the whole driver again rather than the subset the earlier rounds
+used. The `profile` phase put `env` inside `valgrind`, so valgrind traced
+`env`, exited 0, and wrote an empty `callgrind.out` while the phase still
+reported `passed`; and the pacing grep searched for a sentence the game
+never logs, so `pacing.txt` always read empty. Both are repaired, and the
+profile phase now fails on an empty profile. The repaired runs produced the
+callgrind tables and the 31-limiter-line pacing file that the T070
+performance section cites.
+
+### Commands and outcomes
+
+1. `T015_RUN_ID=t070-t015-builds-hashes-repaired2 T015_PHASES="builds
+   hashes" tests/harness/t015.sh`: M3 GATE PASS - clean Debug and Release
+   rebuilds, 5 of 5 ctest suites in each, zero compiler warnings, the rules
+   suite at seed 987654321 byte-identical between the configurations, and
+   the five pinned scenario hashes (`gravity-lock` 0xcbc3d0ac48e709d5,
+   `soft-drop-moves` 0x73c9f9b3446d866f, `hold-and-pause`
+   0x3fe169192382b9d1, `stack-and-clear` 0xeab46107fc034bc1, `block-out`
+   0x108537ace8574743) exactly the values `tests/test_regression.cpp`
+   pins. The input of the rules core did not move, so no hash could.
+2. `HARNESS_RUN_ID=t070-harness-debug tests/harness/run.sh`: PASS,
+   twenty-four sessions, 1232 of 1232 checks, 0 failures, 617 screenshots.
+3. `HARNESS_BUILD_DIR=build-rel HARNESS_RUN_ID=t070-harness-release
+   tests/harness/run.sh`: PASS, 1232 of 1232 on the Release build.
+4. `T024_RUN_ID=t070-t024 tests/harness/t024.sh`: PASS, 291 of 291,
+   including the X11 session under Xvfb with openbox and xdotool
+   (`t024-focus-letterbox`), 170 screenshots.
+5. `T025_RUN_ID=t070-t025-hardkill T025_PHASES="host hardkill"
+   tests/harness/t025.sh`: PASS - 24 SIGKILLs during save writes, every
+   resulting record file canonical (24 canonical, 0 damaged, 0 absent),
+   and the two-instances-on-one-save-directory check exiting 0/0 with the
+   prior record 10 replaced by 200.
+6. `T025_RUN_ID=t070-t025-san T025_PHASES="host san" tests/harness/t025.sh`:
+   PASS - the suites under AddressSanitizer and UndefinedBehaviorSanitizer,
+   plus the scoped-cleanup exit paths (render failure exits 1, an invalid
+   script is rejected, a pad detach stays clean).
+7. `T065_RUN_ID=t070-perf T065_TAG=final tests/harness/t065.sh`: all phases
+   passed - the T070 section of `notes/performance.md` carries the tables.
+
+### Input regression coverage, check by check
+
+The harness sessions of commands 2 and 3 cover every dimension the task
+names, on both inputs, with the reference replay comparing every checkpoint
+field by field:
+
+- Gameplay: `normal-game-clears` (a planned game from an empty board with
+  rotations, taps, hold, soft drop, delayed auto-shift, a line clear, and a
+  pause), `harddrop-pad`, the three labeled board fixtures, and the five
+  performance scenarios of command 7 (which the `verify` phase proves kept
+  playing: game over at 0.0% of ticks in all five).
+- Menus: the full scene cycle on both inputs - title, controls, options,
+  the music settings page, the customization screen, pause, game over,
+  restart, play again, and quit - with the cursor pinned at every step.
+- Rebinding: `controls-keyboard` and `controls-pad` (open, capture,
+  rejection that names the holder, cancellation, restore, egress through
+  both menus, and the round-level proof that a freed control settles
+  nothing while a bound one locks the piece), `controls-relaunch` (two
+  stages over one save directory, both `settings=none`, custom tables
+  saved, relaunched, played, and restored to the exact section 5 bytes),
+  and `controls-invalid` (the damaged file recovered to the defaults with
+  every menu reachable and the file left byte-identical).
+- Both orientations: the staged `portrait-keyboard` and `portrait-pad`
+  sessions - three turns inside one process on each input, the turned
+  geometry and the rotated table pinned from pixels and from the per-tick
+  input log, `stage1-turn-spends-input` proving all three turns spent the
+  select edge, the held level, and every pending edge, and the stage-two
+  relaunch reading the saved orientation. Landscape bytes stay pinned by
+  every landscape session.
+- Pause and resume: `pause-freeze` counters frozen under the overlay in the
+  scene cycles, the pause detour through the controls screen returning to
+  the same frozen round, `record-abandon-save` quitting mid-round with the
+  record persisted, and the performance `pause` scenario's 41 cycles.
+- Focus loss: the X11 session of command 4 - the window minimized while
+  Left is held, `Window focus lost; every held button cleared` in the log,
+  no stuck movement after the refocus, a re-press moving again, and the
+  960x544 canvas letterboxed correctly at 640x480 through pause, resume,
+  and the return to the title.
+- Disconnect: `scene-cycle-pad` detaching the virtual controller mid-game
+  with a direction held (`pad-detach-stops-movement`), `controls-pad`
+  unplugging while a direction is held (`detach-keeps-round`, no counter
+  moved) and replugging onto an instance that answers the custom binding at
+  once, and command 6's pad-detach exit path under the sanitizers.
+
+Screenshots: 617 per harness run (both orientations, every screen, every
+rebinding step, and the fixture boards) and 170 in the T024 run (all seven
+shapes, the I spawn, the double and triple clears, and the whole focus-loss
+and letterbox sequence), all read by the checkers as BMPs with no image
+library. Representative paths: `t070-harness-debug/portrait-keyboard/
+stage1/shots/orientation-portrait-live.bmp` and `.../orientation-
+landscape-live.bmp` for the same-session turn, `.../stage2/shots/
+playing-start.bmp` for the relaunch onto the saved orientation, and
+`t070-t024/t024-focus-letterbox/shots/focus-lost-frozen.bmp` beside
+`refocus-repress-moves.bmp`.
+
+### Save compatibility, edges, and pacing
+
+Save compatibility held everywhere the files are exercised: the staged
+`options-relaunch` and `options-legacy` sessions (the canonical settings
+bytes after every change, the two legacy files upgraded or preserved
+exactly), `next-count` carrying a mid-round record across five stages, the
+`controls.dat` round trips above, `record-abandon-save`, the T015 hash
+gate, and the 24 hard kills of command 5, every one of which left a
+canonical record the next launch could read. Input edges are pinned by the
+harness (`restart-edge-spent`, `turn-spends-input`, the once-per-press
+capture rule, and the reference comparison of every stream), and pacing by
+the performance set: 60.00 ticks/s in all 30 paced samples, the sustained
+session, the pressure case, and the portrait rows, with 31 limiter lines
+and 0 stall lines.
+
+### Findings and open questions
+
+- The zero-warning regression is closed; no other defect surfaced in any
+  check of this pass.
+- Unavailable, labeled: every physical-device check. No RG503 is attached
+  to this environment, so the T018 section 12 checklist and the T036
+  blocking-vsync frame tails remain open operator gates; the desktop
+  evidence above does not replace them. `tools/perf/device-capture.sh` is
+  the prepared procedure.
+- The next step is T071, the refreshed ARM64 PortMaster archive at this
+  revision; the shipped archive still predates the whole device-feedback
+  wave, as `README.md` and the specification already state.
+
+
+## T071: the release package refreshed for the device-feedback wave (2026-11-05)
+
+Task T071, the third package refresh, the T061 pattern at the post-v1.0
+revision. The shipped archive predated the whole device-feedback wave: the
+last refresh had pinned `9220a074...` at the T043 revision, and T065 through
+T070 changed sources under `src/`, `include/`, and `tests/` after it without
+touching a `portmaster/` file. Sources: the task contract of T071 and
+[agent testing contract](../AGENT_TESTING.md). Tested in the detached
+worktree of `8fc7f35` plus the uncommitted task changes (the release notes,
+the BUILDING.md pin, and the documentation below). No game code changed.
+
+The refresh, in the order the task contract lists:
+
+- `tools/arm64/build-arm64.sh` reran against the pinned image
+  (`STACKFALL_ARM64_SKIP_IMAGE_BUILD=1`, the same invocation `tests/harness/
+  t019.sh` uses). Evidence `build/agent-checks/t071-arm64-2026-11-05/`: the
+  binary reports `ARM aarch64`, links only `libSDL2-2.0.so.0`,
+  `libstdc++.so.6`, `libgcc_s.so.1`, `libc.so.6`, and `libm.so.6`, and hashes
+  `91c9f102ac62bfcfef522f62e8369c7b705f3d1af3349f15d7ca1ff854fabc92`. The
+  glibc symbol span is still 2.17 to 2.34, so `min_glibc` 2.34 stays. The
+  suite ran twice inside the environment (342,920 checks, 0 failures) and
+  `ctest` passed 5 of 5 there; the printed state hashes equal the desktop
+  run's, including the five pinned scenario hashes.
+- `portmaster/BUILDING.md` names that hash and dates the source commit
+  2026-11-05. Nothing else in the file moved: the environment, the commands,
+  the `file` form, the runtime libraries, and the glibc span are unchanged,
+  because the Dockerfile did not move.
+- `portmaster/release-notes.md` now states the four device-feedback features
+  the wave added: the same-session orientation turn, the controls
+  customization screen with its persisted `controls.dat` and RESTORE
+  DEFAULTS, the D-pad-up hard-drop default with the menu press that never
+  drops, and the record save on its own worker. The 1.0.0 headline and its
+  date stay, so the version gate still holds one value everywhere.
+- `tests/harness/t019.sh` repackaged and drove the archive end to end.
+  Evidence `build/agent-checks/t019-package-2026-11-05-t071/` (78 checks, 0
+  failures), with the package report in its `-package` subdirectory. The
+  `repro` phase rebuilt the tree in a fresh container from the pinned image
+  into a clean build directory and printed the same hash
+  `91c9f102...`, so the build is deterministic and only the pin was stale.
+- `tests/harness/t035.sh` after the edits (31 checks, 0 failures), because
+  BUILDING.md and the release notes ship in the archive and that gate reads
+  every shipped file.
+
+Package identity of the refreshed archive:
+
+- archive `build/portmaster-package/stackfall.zip`, SHA-256
+  `6716a77dcd27fae2fb7a45afa387f7b488e941076a20c27995dacedb0ff8933b`;
+- binary `stackfall/stackfall.aarch64`, SHA-256
+  `91c9f102ac62bfcfef522f62e8369c7b705f3d1af3349f15d7ca1ff854fabc92`,
+  named by the BUILDING.md inside the archive;
+- source commit `8fc7f356bb6f8199dc9245ccc0b5d1512be7a1c1`.
+
+The archived screenshot was measured again as part of the 78 checks: 640x480
+(4:3), centered letterbox bars of 59 rows, a settled stack of several colors
+with a piece in flight, and readable text in both HUD columns. The archived
+launcher exited 0 against the stub PortMaster control folder and its session
+log carries the `STACKFALL 1.0.0` banner.
+
+### Operator handoff for the T018 device pass
+
+The refreshed package this handoff names supersedes every earlier archive
+hash in the T018 record: the binary pin `dd51324f...` and `9220a074...`, and
+the archive hashes `7d5e0f63...` and `4b9d10f0...`, are retired. Workers
+cannot edit the backlog, so this section is the current handoff of record.
+
+- Take the archive from `build/portmaster-package/stackfall.zip`, SHA-256
+  `6716a77dcd27fae2fb7a45afa387f7b488e941076a20c27995dacedb0ff8933b`, and
+  its `package-report.txt` from
+  `build/agent-checks/t019-package-2026-11-05-t071-package/`. Ignore any
+  older `stackfall.zip` copied from an earlier round.
+- The binary inside must hash
+  `91c9f102ac62bfcfef522f62e8369c7b705f3d1af3349f15d7ca1ff854fabc92`, the
+  value the archive's own BUILDING.md names. A different hash means an older
+  archive.
+- This is the first package that carries the device-feedback wave, so the
+  section 12 checklist grew three items beside the portrait item: the
+  controls customization screen (T066), the D-pad-up hard-drop default
+  (T067), and the record-save moment (T065). The reported stutter lived in
+  the record save, so the checklist now asks whether the instant a running
+  score passes the stored best still hiccups on the device.
+
+Commands:
+
+```bash
+STACKFALL_ARM64_SKIP_IMAGE_BUILD=1 \
+  STACKFALL_ARM64_RUN_ID=t071-arm64-2026-11-05 tools/arm64/build-arm64.sh
+T019_RUN_ID=t019-package-2026-11-05-t071 tests/harness/t019.sh
+T035_RUN_ID=t035-version-2026-11-05-t071 tests/harness/t035.sh
+```
+
+Findings and open questions:
+
+- The archive hash changes between package runs by design: the screenshot is
+  a real-time-paced capture, so the fall row of the piece in flight can move
+  by a row. The binary hash does not move; the clean container reproduced it.
+- The backlog text of T018 still names the retired hashes above; it needs the
+  operator or an idle-boundary backlog import to catch up, and this section
+  stands in until then.
+- The blocked gates are otherwise unchanged: T018 (the RG503 checklist, now
+  with the four device-feedback items), T020 (the fresh ROCKNIX install),
+  T021 (publication), and T036 (device frame-time percentiles).

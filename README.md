@@ -253,9 +253,10 @@ and reproducible build instructions.
 The release version is 1.0.0, one value in the version constants, the CMake
 project version, the sanity pin, the state-hash pins, the startup banner,
 and the package release notes; `tests/harness/t035.sh` holds them together.
-The assembled archive predates the performance fixes, the controls
+The assembled archive carries the performance fixes, the controls
 customization screen, the D-pad-up default, and the same-session
-orientation switch; the refresh that carries them is pending.
+orientation switch; it was refreshed at the integrated revision and its
+binary reproduces byte for byte in a clean container.
 Testing on the RG503 and public publication follow. The panel research in
 `notes/anbernic-resolutions.md` covers every Anbernic device class and the
 letterbox result on each; the owner's choice of a strategy per class sets

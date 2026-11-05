@@ -608,3 +608,224 @@ inputs recorded. Copy to the device: the game binary, the same-architecture
 tail measurements stay open with T036: no RG503 was available to this round,
 and this report's desktop numbers deliberately infer nothing about the
 handheld's blocking vsync, its storage latency, or its battery.
+
+
+## T070: the final measurement pass at the integrated revision (2026-11-05)
+
+Round post-v1.0 closure. The device-feedback features are all in - the T065
+record writer, the T066 controls customization screen, the T067 D-pad-up
+hard drop, and the T068 same-session orientation turn - so this section
+re-runs the whole measurement set of the T065 driver at the integrated
+revision and re-checks every optimization the earlier rounds retained. The
+input half of the pass, with its screenshots, is the T070 section of
+`notes/agent-testing.md`. Evidence: `build/agent-checks/t070-perf/` (ignored
+build output; `host/` holds the source identity, `summary-final.txt` every
+table). Nothing here measures the RG503.
+
+### Source identity, host, and commands
+
+- Source: commit `0cd6422` ("Refresh project baseline for Looper"), a clean
+  tree under `src include tests CMakeLists.txt tools` at run time, plus the
+  two harness repairs this pass itself made and verified (below). The
+  driver recorded the per-file hashes in `host/source.sha256`.
+- Host: the recorded host of every earlier section - Linux 6.8.0-147
+  x86_64, i9-12900HK, 8 cores, 11.7 GiB RAM, ext4 on `/dev/sda1`, SDL
+  2.30.0, Release `-O3 -DNDEBUG`, `perf` blocked
+  (`kernel.perf_event_paranoid = 4`) so callgrind carries the profile.
+- Commands, repository root:
+  1. The whole set: `T065_RUN_ID=t070-perf T065_TAG=final
+     tests/harness/t065.sh` (seed 31, three samples per scenario, renderer,
+     and save mode; five scenarios; three work renderers; 60 s paced
+     samples; 180 s sustained; 60 s pressured; the hypotheses; callgrind).
+  2. Tables from the evidence directory alone:
+     `python3 tests/harness/t065_summarize.py --run-dir
+     build/agent-checks/t070-perf`.
+  3. The save probe: `./build-rel/stackfall_save_probe DIR 300`.
+- Scenario verification (the `verify` phase, from the run's own logs): all
+  five scenarios held game over at 0.0% of their ticks while playing 65% to
+  100% of them, and restarted their rounds at least three times each -
+  `rotate-move` 175 rotations each way, `drops` 2632 soft-drop ticks and 94
+  hard drops, `clears` 125 labeled four-line fixture cycles, `pause` 41
+  pause and resume cycles, `pad-mixed` the same coverage on the virtual
+  controller. No sample dwells at a game over screen.
+
+### Both retained optimizations still hold
+
+The project has exactly two measured-and-retained optimizations: the T026
+candidate 1 glyph batching and the T065 record writer. Both were re-measured.
+
+**1. The T065 record writer (the confirmed stutter cause, fixed).** The
+paired save mode isolates the write inside one workload: `fresh` starts the
+save directory empty so the T052 mid-round record saves fire; `banked`
+preloads an unreachable record so none fire. Work per frame, dummy-software,
+three samples per cell, seed 31:
+
+| Scenario | fresh us/frame | banked us/frame | delta | T065 fixed, both modes |
+| --- | --- | --- | --- | --- |
+| clears | 544.8 | 544.2 | +0.6 (0.1%) | 544.2 |
+| drops | 417.6 | 417.6 | 0.0 | 417.6 |
+| pad-mixed | 413.5 | 413.5 | 0.0 | 413.5 |
+| pause | 751.4 | 751.4 | 0.0 | 751.4 |
+| rotate-move (never scores) | 294.6 | 294.6 | 0.0 | 294.6 |
+
+Every row sits on its banked control, and every row reproduces the T065
+fixed-build number exactly. The T065 baseline had paid +207 us/frame
+(+38%) on `clears` and +111 us (+27%) on `drops` for the same saves; the
+write still costs what it cost (the probe below), it just no longer occupies
+the gameplay thread. The control row - `rotate-move`, which never scores and
+never saves - reads identically in both modes, as it must.
+
+The store's own save, re-probed on this host: p50 2738.1 us, p95 3541.3 us,
+p99 5153.3 us, max 6396.8 us, against 43.8 us for the same write without
+the fsync. The durability the T052 guarantee is made of still costs what it
+cost, and the writer thread still pays it.
+
+**2. The T026 glyph batching (candidate 1, accepted).** Two independent
+checks. First, the absolute work per frame of every scenario reproduces the
+T065 fixed state exactly (the table above), and the T065 fixed state is the
+T026-optimized renderer with nothing later touching `drawText`. Second, the
+callgrind profile of this run (`profile/final/`, 900 frames of `drops`,
+892,453,649 instructions, 991,615 per frame) attributes 8,967,030
+instructions, 1.0% of the program, to `drawText`, and counts 7,200
+`SDL_RenderFillRects` calls over those 900 frames - 8 per frame, one batched
+submit per text draw. The T026 baseline had `drawText` at 19.28% of the
+program with about 1,570 per-pixel `SDL_RenderFillRect` calls per frame for
+text alone. The batched path is intact; no per-pixel text fill returned.
+
+The x11 work rows sit on the same presentation floor every earlier round
+recorded, 16,083.3 us per frame in every scenario and renderer, so the
+rendering work below that floor is unchanged as well.
+
+### The measurement set
+
+Paced mode (the whole 16.67 ms slot, deliberate wait included), three
+samples per scenario and save mode, 60 s each, dummy-software:
+
+| Scenario, mode | median ms | p95 ms | p99 ms | max ms | ticks/s |
+| --- | --- | --- | --- | --- | --- |
+| clears banked | 16.831 | 17.116 | 17.387 | 17.862 | 60.00 |
+| clears fresh | 16.860 | 17.159 | 17.422 | 17.984 | 60.00 |
+| drops banked | 16.755 | 17.301 | 17.672 | 17.928 | 60.00 |
+| drops fresh | 16.740 | 17.249 | 17.671 | 18.028 | 60.00 |
+| pad-mixed banked | 16.703 | 17.549 | 17.695 | 17.904 | 60.00 |
+| pad-mixed fresh | 16.695 | 17.523 | 17.680 | 17.874 | 60.00 |
+| pause banked | 16.725 | 17.447 | 17.681 | 17.823 | 60.00 |
+| pause fresh | 16.730 | 17.349 | 17.690 | 18.037 | 60.00 |
+| rotate-move banked | 16.634 | 17.555 | 17.676 | 17.887 | 60.00 |
+| rotate-move fresh | 16.630 | 17.531 | 17.661 | 17.819 | 60.00 |
+
+Every mode holds 60.00 ticks/s. The busiest scenario's work (751.4 us of
+`pause`) is 4.5% of the frame slot, so the slot is mostly deliberate wait on
+this host. Each of the 30 paced samples plus the sustained session logged
+exactly one `Fallback frame limiter engaged` line and no stall line at all
+(`hypotheses/final/pacing.txt`; 31 limiter lines, 0 stall lines), so the
+elapsed-time limiter is what holds the 60 Hz simulation under the dummy
+driver, as T025 and T026 found.
+
+Sustained play (180 s, 10,800 frames, nine round restarts, 63 record saves,
+229 session-log lines): median 16.674 ms, p95 17.559 ms, p99 17.675 ms, max
+17.758 ms, 60.00 ticks/s. Resident memory 13,412 KiB at the first sample
+after bring-up and 13,432 KiB at the last, peak 13,432 KiB - +20 KiB over
+the whole session, the writer thread's own pages. Writes stayed bounded at
+587 syscalls and 1,368 KiB. No growth to fix.
+
+The portrait row (`drops` paced with the stored orientation portrait, three
+samples): median 16.726-16.768 ms, p99 17.639-17.647 ms, 60.00 ticks/s - the
+same band as the landscape row, so the rotated frame's different work (40 px
+cells, a different HUD strip) still fits the slot on this host.
+
+Soundtrack and logging, the two pairs that close the remaining hypotheses:
+music off against a playing arcade pool measured medians of 16.683-16.733 ms
+and 16.690-16.713 ms with p99 at 17.668-17.681 ms and 17.663-17.687 ms,
+three samples each - no difference beyond run variance (one of the six
+samples took a single 46.3 ms host-scheduling outlier at max; its p99 is
+17.677 ms, its tick count is complete, and no stall warning fired, the
+threshold being 50 ms). The logging pair held identical write syscalls (214
+in both variants) with the write bytes differing only by the log's own
+(368 against 320 KiB for 94 lines).
+
+Audio callback work and command traffic: the instrumented session ran 5372
+callbacks at a mean of 0.016 ms and a worst single callback of 0.134 ms -
+1.2% of one 11.61 ms buffer; the audio suite's own budget print reads p50
+0.009 ms, p99 0.016 ms. Every real-time session of the set, including the
+sustained one (10,343 commands), pushed music commands with zero rejections;
+the rejections that appear in fast-forward runs are the producer outrunning
+the audio thread's own clock, a test artifact, exactly as T065 recorded.
+
+### Pressure case (bounded)
+
+The same `drops` workload, four kinds on two renderers, 60 s each, with the
+durable-save probe measured inside the same window:
+
+| kind / renderer | median ms | p95 ms | p99 ms | max ms | save p50 us |
+| --- | --- | --- | --- | --- | --- |
+| idle / dummy | 16.707 | 17.320 | 17.673 | 17.772 | 2559 |
+| idle / x11-opengl | 16.541 | 17.497 | 17.607 | 17.724 | 2785 |
+| cpu / dummy | 16.666 | 17.355 | 17.618 | 19.843 | 2528 |
+| cpu / x11-opengl | 16.718 | 17.409 | 17.666 | 19.250 | 2600 |
+| storage / dummy | 16.726 | 17.258 | 17.678 | 17.762 | 18814 |
+| storage / x11-opengl | 16.559 | 17.515 | 17.629 | 17.805 | 2634 |
+| both / dummy | 16.694 | 17.378 | 17.646 | 21.946 | 2869 |
+| both / x11-opengl | 16.714 | 17.369 | 17.668 | 20.314 | 2686 |
+
+The storage row is the one that carries a finding: while the bounded writer
+kept the storage queue busy, one durable save cost 18.8 ms median on this
+host - more than an entire frame slot - and the game's percentiles did not
+move (16.726 / 17.258 / 17.678 / 17.762, the flattest row of the eight,
+with the same 127 record saves the idle row issued). That is the T065 fix
+doing its job under exactly the pressure the owner's report described: the
+write still happens, the gameplay thread no longer waits for it. The worker
+stayed inside its bounds (256 MiB, one directory inside the evidence tree,
+killed and removed at the end of each kind).
+
+### Harness repairs this pass made
+
+Two defects in `tests/harness/t065.sh` surfaced because this pass ran the
+whole driver again; both are repaired and re-verified at the same run id.
+
+1. The `profile` phase ran `valgrind ... env SDL_...=... game`. Valgrind
+   does not follow an `exec` by default, so it profiled `env`, exited 0, and
+   wrote a 0-byte `callgrind.out` - and the phase checked only that the file
+   existed, so it reported `passed` with no data. The T026 driver already
+   ordered it correctly (`env` outside). Repaired to that order, and the
+   phase now fails when the callgrind output is empty. The
+   rerun produced 892,453,649 instructions for `drops` and 752,168,755 for
+   `rotate-move`; the numbers cited above come from the repaired runs.
+2. The `hypotheses` phase's pacing grep searched for `fallback limiter`,
+   which matches nothing the game logs (`Fallback frame limiter engaged` in
+   `src/main.cpp`), so `pacing.txt` always read empty and a reader could
+   take it for "no limiter engaged". Repaired to the exact logged sentences;
+   the regenerated file counts 31 limiter lines and 0 stall lines.
+
+A third repair belongs to the gate rather than this driver: the `builds`
+phase of `tests/harness/t015.sh` now fails on any compiler warning in its
+own compile log, so the `builds hashes` subset holds the zero-warning gate
+that only `check_t015.py` held before - the gap that let the `Scene::Rebind`
+warning of T066 through. Its verification is in the T070 section of
+`notes/agent-testing.md`.
+
+### Regression gate at this revision
+
+- Clean rebuild, Debug and Release: 5 of 5 ctest suites each, zero compiler
+  warnings after the `Scene::Rebind` case this pass restored to
+  `tests/test_regression.cpp` (the T066 scene had left the test suite's own
+  switch without it; see the T070 section of `notes/agent-testing.md`).
+- The rules suite at seed 987654321 is byte-identical between Debug and
+  Release, and all five pinned scenario hashes are unchanged
+  (`build/agent-checks/t070-t015-builds-hashes-repaired2/`, the run at the
+  final tree, with the warning gate of the `builds` phase in force).
+- The unattended SDL harness, the T024 play sessions with the X11 focus-loss
+  session, the T025 hard-kill save phase, and the T025 sanitizer phase all
+  passed at this revision; the T070 section of `notes/agent-testing.md`
+  carries them.
+
+### What stays open
+
+No optimization candidate was run in this pass because no measurement asked
+for one: both retained optimizations reproduce their accepted numbers, every
+scenario holds 60.00 ticks/s, and the remaining measured costs are the
+approved visuals and the durable save's fsync, both outside the frame budget
+on this host. Actual RG503 frame tails, blocking vsync, storage latency, and
+battery stay with the blocked device gates T018 and T036, which no desktop
+evidence replaces; `tools/perf/device-capture.sh` is the procedure that runs
+them.

@@ -77,7 +77,7 @@ The commands the script runs, in order, for anyone rebuilding by hand:
 
 ## What the build produces
 
-For release 1.0 (source commit of 2026-11-04):
+For release 1.0 (source commit of 2026-11-05):
 
 - `file`: `ELF 64-bit LSB pie executable, ARM aarch64, version 1 (GNU/Linux),
   dynamically linked, interpreter /lib/ld-linux-aarch64.so.1, for GNU/Linux
@@ -88,7 +88,7 @@ For release 1.0 (source commit of 2026-11-04):
 - The glibc symbol versions referenced run from `GLIBC_2.17` to
   `GLIBC_2.34`, so the package metadata declares `min_glibc` 2.34.
 - SHA-256:
-  `9220a074bd785b072a77bb37c418ae0f7a3ebda320db6697bead9aca86b69041`.
+  `91c9f102ac62bfcfef522f62e8369c7b705f3d1af3349f15d7ca1ff854fabc92`.
 
 Two builds from the same source in the same environment produce the same
 SHA-256: the sources embed no timestamps, paths, or build dates. The build

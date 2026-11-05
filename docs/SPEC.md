@@ -15,9 +15,9 @@ and tested headless; the M3 desktop gate passed (T015), the AArch64
 binary builds in the PortMaster-aligned environment with hash parity  
 (T016), the PortMaster launcher and install layout are written and checked  
 (T017), and the release package is assembled locally and checked with its  
-version pinned at 1.0.0 (T019, T035) and now waits on the refresh that  
-carries the device-feedback features (T071); device validation and  
-publication remain
+version pinned at 1.0.0 (T019, T035), refreshed at the integrated  
+revision so it carries the device-feedback features (T071); device  
+validation and publication remain
 
 Development runs unattended with AI coding agents. Agents run all available
 software checks and inspect the desktop game throughout development. Defer
@@ -599,6 +599,21 @@ The release is complete only when all of these pass on a real RG503 running ROCK
       control moving the piece in the on-screen direction of the rotated
       frame, repeated changes inside one session and a relaunch onto the
       saved orientation both hold, and nothing clips in either orientation.
+- [ ] Controls customization (task T066): CONTROLS opens the customization
+      page on the pad, a captured control moves the action it now names
+      through a full round, a capture that would give one control two
+      actions is rejected with the message that names the holder, RESTORE
+      DEFAULTS returns the shipped table, the custom table survives a
+      relaunch, and a damaged file recovers to the defaults with every menu
+      still reachable.
+- [ ] Default hard drop (task T067): D-pad up hard drops in landscape and the
+      D-pad arm that points at the ceiling in portrait hard drops there, the
+      button the default freed carries nothing during play, the same D-pad-up
+      press still moves the cursor on every menu, and the press that leaves a
+      menu never drops the piece of the round that follows.
+- [ ] Record-save moment (task T065): the instant a running score passes the
+      stored best produces no visible stutter, and the new record still
+      persists through a quit and a reboot.
 - [ ] Continuous 10-minute play session remains responsive at approximately 60 FPS; record actual frame times, identify spikes, and verify no sustained slowdowns.
 - [ ] No controller-disconnect, audio-init, renderer-fallback or missing-save crash.
 - [ ] Launch log shows a clean process exit; launch and quit repeatedly.

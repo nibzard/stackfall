@@ -332,6 +332,8 @@ const char* sceneName(Scene scene) {
       return "controls";
     case Scene::Options:
       return "options";
+    case Scene::Rebind:
+      return "rebind";
     case Scene::Playing:
       return "playing";
     case Scene::Paused:

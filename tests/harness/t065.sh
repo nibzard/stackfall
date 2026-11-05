@@ -610,7 +610,10 @@ if want_phase hypotheses; then
   #    rendering versus waiting stays explicit in the tables.
   {
     echo "limiter and stall lines across this evidence set:"
-    grep -H -E "fallback limiter|Unusual frame stall|Frame stall of" \
+    # The patterns spell the logged sentences of src/main.cpp exactly; an
+    # approximation here matched nothing and made the file read as 'no
+    # limiter engaged', which the paced logs themselves contradict.
+    grep -H -E "Fallback frame limiter engaged|Unusual frame stall|Frame stall of" \
       "$run_dir"/bench/"$tag"/paced/*/*/*/*/run.log \
       "$run_dir"/sustained/"$tag"/run.log 2>/dev/null | sort | uniq -c
     echo "(end)"
@@ -629,13 +632,20 @@ if want_phase profile; then
   if ! command -v valgrind > /dev/null 2>&1; then
     status profile unavailable "valgrind missing; callgrind skipped"
   else
+    profile_ok=1
     for scenario in drops rotate-move; do
       dir="$prof/$scenario"
       mkdir -p "$dir/save"
       prepare_save_dir "$dir/save" fresh
-      timeout --foreground 900 valgrind --tool=callgrind \
-        --callgrind-out-file="$dir/callgrind.out" \
+      # The environment sits outside valgrind on purpose. Valgrind does not
+      # follow an exec by default, so 'valgrind env VAR=... game' profiles
+      # env alone and writes an empty callgrind file that still exits 0 -
+      # exactly what the first T070 profile run produced before this order
+      # was pinned. The T026 driver already ordered it this way.
+      timeout --foreground 900 \
         env SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy \
+        valgrind --tool=callgrind \
+        --callgrind-out-file="$dir/callgrind.out" \
         "$game" --seed "$seed" --tick-per-frame --frames "$profile_frames" \
         --save-dir "$dir/save" \
         --input-script "$run_dir/scenarios/$scenario.script.txt" \
@@ -643,13 +653,23 @@ if want_phase profile; then
         > "$dir/run.log" 2>&1
       code=$?
       echo "$code" > "$dir/exit"
-      if [ -f "$dir/callgrind.out" ]; then
+      # An empty callgrind file is a failed profile, not a quiet one: the
+      # annotate output must carry the program totals before the phase may
+      # claim the instrumentation ran.
+      if [ -s "$dir/callgrind.out" ]; then
         callgrind_annotate "$dir/callgrind.out" > "$dir/annotate.txt" 2>&1
         echo "$scenario: exit $code, $(wc -l < "$dir/annotate.txt") \
 annotated lines"
+      else
+        echo "$scenario: exit $code, callgrind output empty" >&2
+        profile_ok=0
       fi
     done
-    status profile passed "callgrind runs kept out of the timed samples"
+    if [ "$profile_ok" = 1 ]; then
+      status profile passed "callgrind runs kept out of the timed samples"
+    else
+      status profile failed "a callgrind run produced no profile"
+    fi
   fi
 fi
 
