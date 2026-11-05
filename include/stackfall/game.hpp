@@ -61,6 +61,9 @@ enum class Scene : std::uint8_t {
   MusicOptions,    // the music settings page behind the MUSIC row: MUSIC,
                    // MUSIC VOLUME, EFFECTS VOLUME, NEXT TRACK (task T062,
                    // MUSIC.md player controls)
+  Rebind,          // the controls customization screen behind the mappings
+                   // screen: one row per gameplay action plus RESTORE
+                   // DEFAULTS (task T066)
 };
 
 // Tick-flow constants of section 4.5, all counted in 60 Hz simulation ticks.
@@ -83,6 +86,13 @@ inline constexpr int kOptionsMusicRow = 7;
 // The music settings page of MUSIC.md's player controls: the mode row, both
 // volume rows, and the Next track action.
 inline constexpr int kMusicOptionsItemCount = 4;
+// The controls customization screen of task T066: eight rows, one per
+// rebindable gameplay action of stackfall/bindings.hpp, then RESTORE DEFAULTS.
+// A select changes nothing in the core - the binding tables are platform
+// state, exactly as the options row values are - so the platform layer reads
+// the highlighted row and runs the capture or the restore itself.
+inline constexpr int kRebindItemCount = 9;
+inline constexpr int kRebindRestoreRow = 8;
 
 class Game {
  public:
@@ -174,6 +184,11 @@ class Game {
   int overSelection() const;
   int optionsSelection() const;
   int musicSelection() const;
+  int rebindSelection() const;
+
+  // The screen the customization screen returns to on back: Controls when the
+  // title opened it, PauseControls when the pause overlay did (task T066).
+  Scene rebindOrigin() const;
 
   // The session high score shown on the title screen. The platform layer
   // loads it at startup, saves the record the moment a running score passes
@@ -255,8 +270,23 @@ class Game {
   // shows the player settings, Quit asks the platform layer to exit.
   void tickTitle(const MenuFrame& menu);
 
-  // CONTROLS: confirm and back both return to the title.
+  // CONTROLS: back returns to the title and select opens the controls
+  // customization screen of task T066, which remembers this screen as its
+  // way back. Before T066 confirm and back both returned to the title; the
+  // mappings table gained a doorway instead of losing one.
   void tickControls(const MenuFrame& menu);
+
+  // PAUSE_CONTROLS: the same two edges over a frozen round - back returns to
+  // the pause overlay on its Controls item, select opens the customization
+  // screen with this screen as its way back (task T066).
+  void tickPauseControls(const MenuFrame& menu);
+
+  // REBIND: back returns to the screen that opened this one and the D-pad
+  // moves the cursor over the nine rows. A select changes nothing here, for
+  // the same reason as the options screen: the binding tables are platform
+  // state the core never holds, so the platform layer applies the capture or
+  // the restore of the highlighted row itself (task T066).
+  void tickRebind(const MenuFrame& menu);
 
   // OPTIONS: back returns to the title and the D-pad moves the cursor over
   // the eight rows. Select on the MUSIC row opens the music settings page;
@@ -278,12 +308,6 @@ class Game {
   // item, and the pause key alone still resumes. Every gameplay counter stays
   // frozen (section 4.5).
   void tickPaused(const TickInput& input);
-
-  // PAUSE_CONTROLS: the mappings screen of the ordinary Controls page, opened
-  // over a frozen round from the pause overlay (task T037). Confirm and back
-  // both return to the overlay with the cursor still on its Controls item;
-  // no counter of the round below moves.
-  void tickPauseControls(const MenuFrame& menu);
 
   // GAME_OVER: Play Again opens a fresh round, Title returns to the title.
   void tickGameOver(const MenuFrame& menu);
@@ -336,6 +360,8 @@ class Game {
   int overCursor_ = 0;            // highlighted game-over item, 0..1
   int optionsCursor_ = 0;         // highlighted options row, 0..7
   int musicCursor_ = 0;           // highlighted music page row, 0..3
+  int rebindCursor_ = 0;          // highlighted rebind row, 0..8 (T066)
+  Scene rebindFrom_ = Scene::Controls;  // where back returns (T066)
   bool newRecord_ = false;        // the ended round beat highScore_
   bool quitRequested_ = false;    // Quit confirmed on the title menu
 

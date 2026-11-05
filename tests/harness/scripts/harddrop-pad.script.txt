@@ -1,0 +1,220 @@
+# T067 landscape default-hard-drop session (docs/AGENT_TESTING.md): the
+# landscape pad table puts hard drop on D-pad up and nothing on X, the menu
+# role of D-pad up survives on every screen, and the press that returns a
+# round to play drops no piece - through the pause overlay, the game-over
+# menu, and a scripted restart, the one scene change that happens outside a
+# tick. The desktop keyboard defaults ride the same session unchanged: X
+# rotates and Space hard drops. A `wait` follows every check, so no record
+# carries the tick of the input that comes after it.
+check title-first
+wait 1
+# D-pad up still moves the title cursor: START GAME wraps up to QUIT
+pad up down
+wait 2
+pad up up
+wait 2
+check title-at-quit
+wait 1
+pad down down
+wait 2
+pad down up
+wait 2
+check title-at-start
+wait 1
+pad a down
+wait 2
+pad a up
+wait 2
+check playing-start
+wait 1
+# X carries nothing: no lock, no rotation, no hold
+pad x down
+wait 2
+pad x up
+wait 2
+check x-carries-nothing
+wait 1
+# D-pad up hard drops: the piece locks in the same tick
+pad up down
+wait 2
+pad up up
+wait 2
+check up-hard-drops
+wait 1
+# the pause overlay: D-pad up wraps RESUME up to QUIT TO TITLE, and the
+# resume that follows drops no piece
+pad start down
+wait 2
+pad start up
+wait 2
+check paused
+wait 1
+pad up down
+wait 2
+pad up up
+wait 2
+check paused-at-quit
+wait 1
+pad down down
+wait 2
+pad down up
+wait 2
+check paused-at-resume
+wait 1
+pad a down
+wait 2
+pad a up
+wait 2
+check resumed
+wait 10
+check resumed-no-drop
+wait 1
+# the desktop keyboard defaults are unchanged: X rotates, Space hard drops
+key x down
+wait 2
+key x up
+wait 2
+check keyboard-x-rotates
+wait 1
+key space down
+wait 2
+key space up
+wait 2
+check keyboard-space-drops
+wait 2
+# eight hard drops on D-pad up top the round out
+pad up down
+wait 2
+pad up up
+wait 2
+pad up down
+wait 2
+pad up up
+wait 2
+pad up down
+wait 2
+pad up up
+wait 2
+pad up down
+wait 2
+pad up up
+wait 2
+pad up down
+wait 2
+pad up up
+wait 2
+pad up down
+wait 2
+pad up up
+wait 2
+pad up down
+wait 2
+pad up up
+wait 2
+pad up down
+wait 2
+pad up up
+wait 2
+wait 5
+check gameover-first
+wait 2
+# the game-over menu: D-pad up moves the cursor, and Play Again returns to
+# play without dropping the fresh round's first piece
+pad up down
+wait 2
+pad up up
+wait 2
+check gameover-at-title
+wait 1
+pad up down
+wait 2
+pad up up
+wait 2
+check gameover-at-play-again
+wait 1
+pad a down
+wait 2
+pad a up
+wait 2
+check play-again
+wait 10
+check play-again-no-drop
+wait 2
+# back to the title, where a scripted restart changes the scene outside a
+# tick: the queued D-pad-up press reaches a round already in play, and the
+# return-to-play gate spends its gameplay edge, so the fresh round's first
+# piece does not drop
+pad start down
+wait 2
+pad start up
+wait 2
+check paused-before-leave
+wait 1
+pad down down
+wait 2
+pad down up
+wait 2
+pad down down
+wait 2
+pad down up
+wait 2
+pad down down
+wait 2
+pad down up
+wait 2
+check paused-at-quit-title
+wait 1
+pad a down
+wait 2
+pad a up
+wait 2
+check back-at-title
+wait 2
+pad up down
+restart
+pad up up
+wait 2
+check restart-no-drop
+wait 10
+check restart-no-drop-later
+wait 2
+# leave the fresh round and quit from the title menu
+pad start down
+wait 2
+pad start up
+wait 2
+check paused-again
+wait 1
+pad down down
+wait 2
+pad down up
+wait 2
+pad down down
+wait 2
+pad down up
+wait 2
+pad down down
+wait 2
+pad down up
+wait 2
+check paused-at-quit-title-again
+wait 1
+pad a down
+wait 2
+pad a up
+wait 2
+check title-return
+wait 2
+pad up down
+wait 2
+pad up up
+wait 2
+check title-at-quit-again
+wait 1
+# the checkpoint rides the same frame as the confirm, because the quit ends
+# the loop right after that frame's tick, render, and flush
+check quit-confirmed
+pad a down
+wait 2
+pad a up
+wait 2

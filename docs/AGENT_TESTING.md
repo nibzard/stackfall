@@ -52,7 +52,7 @@ tests/harness/run.sh
 ```
 
 It builds `stackfall` and `stackfall_reference`, runs the headless `ctest`
-suites first, then drives nineteen sessions through the real SDL application
+suites first, then drives twenty-four sessions through the real SDL application
 under `SDL_VIDEODRIVER=dummy` with the SDL dummy audio device, a fixed seed,
 an explicit save directory, a frame bound, and a process timeout:
 
@@ -61,6 +61,16 @@ an explicit save directory, a frame bound, and a process timeout:
   restart, game over, play again, game over, title, quit on the keyboard.
 - `scene-cycle-pad`: the same cycle on the developer virtual controller,
   plus a mid-game detach while a direction is held.
+- `harddrop-pad` (T067): the landscape default-hard-drop session on the
+  developer virtual controller. X carries nothing while a press of it stands
+  still, D-pad up hard drops with the section 4.6 arithmetic, the same
+  D-pad-up press moves the cursor up on the title, pause, and game-over
+  menus, and no press that returns a round to play drops a piece - the
+  resume from the pause overlay, Play Again from the game-over menu, and a
+  scripted restart from the title, the one scene change that happens outside
+  a tick, whose queued press the per-tick input log must show spent of its
+  gameplay edge. The desktop keyboard defaults ride the same session: X
+  rotates one clockwise step and Space hard drops.
 - `normal-game-clears`: a planned game from an empty board with rotations,
   taps, hold, soft drop, delayed auto-shift, one line clear, and a pause.
 - `options-ghost`: the options screen round trip. A first round runs with
@@ -95,8 +105,18 @@ an explicit save directory, a frame bound, and a process timeout:
   same shape of round in color.
 - `options-relaunch`, `options-legacy`, `next-count` (T045): the staged
   sessions. See the next paragraph.
-- `portrait-keyboard`, `portrait-pad` (T055): the staged portrait sessions.
-  See the next paragraph.
+- `portrait-keyboard`, `portrait-pad` (T055, T068): the staged portrait
+  sessions. See the next paragraph.
+- `controls-keyboard` (T066): the customization screen on the keyboard -
+  open, capture, reject, cancel, restore, and the way back out through both
+  menus - with the round-level proof that the freed Space settles nothing
+  and the bound D locks the piece.
+- `controls-pad` (T066): the same walk on the developer virtual controller,
+  plus the unplug and replug: a held direction dies with the pad without
+  moving a counter, and the replugged instance answers the custom binding
+  at once.
+- `controls-relaunch`, `controls-invalid` (T066): the staged controls
+  sessions. See the next paragraph.
 - `record-abandon-save` (T052): the mid-round record persistence of
   specification sections 4.7 and 9. A round scores through two hard drops,
   pauses, and leaves through QUIT TO TITLE, so it never reaches a game over;
@@ -127,11 +147,14 @@ developer options proves the hooks change nothing about normal startup.
 A session with a `tests/harness/scripts/<session>.stages.txt` manifest runs
 one game process per listed stage over one shared save directory, in the
 order the manifest lists, and a stage may carry `settings=<name>` to copy a
-file from `tests/harness/settings/` into that directory first. The driver
-snapshots the settings file before and after every stage, the reference
-replays each stage against the settings file it started from, and the checker
-compares every stage's records with its own reference stream. The five
-staged sessions are:
+file from `tests/harness/settings/` into that directory first,
+`controls=<name>` to copy a file from `tests/harness/controls/` the same way
+(T066), or `settings=none` to remove the settings file and require the stage
+to leave none - the marker for a stage that exercises no settings write. The
+driver snapshots the settings and controls files before and after every
+stage, the reference replays each stage against the files it started from,
+and the checker compares every stage's records with its own reference
+stream. The seven staged sessions are:
 
 - `options-relaunch`: four keyboard processes, each selecting one of the four
   new rows once and quitting. The snapshot after every stage is one exact
@@ -153,37 +176,66 @@ staged sessions are:
   stage after the first loads that record - while the checker reads each
   stage's screenshots and requires exactly its count of previews in queue
   order, the first at full color and the rest dim.
-- `portrait-keyboard`, `portrait-pad` (T055): two stages over one save
+- `portrait-keyboard`, `portrait-pad` (T055, T068): two stages over one save
   directory each. Stage one runs landscape, walks to the seventh OPTIONS row,
-  ORIENTATION, and selects it, so the stored preference flips to portrait and
-  the settings file carries the eleven-line canonical form while the running
-  process keeps its landscape layout. Stage two is the relaunch that applied
-  the saved value at startup: the round plays on the rotated table of the
-  session's device - key up or D-pad up moves right, key down or D-pad down
-  moves left, Z or B rotates clockwise, X or A counter-clockwise, Space or X
-  holds, C or Y hard drops - the pause overlay navigates on the rotated menu
-  roles, and the round ends at the game-over screen and the title quit. The
-  reference replays stage two on its own rotated tables, which it picks from
-  the orientation line of the settings file it starts from.
+  ORIENTATION, and selects it with a direction held across the press - key
+  left or D-pad left, which holds move-left in landscape and is the logical
+  up direction that hard drops in portrait. The turn applies inside the tick
+  that consumed the select edge: the same process then navigates the title on
+  the rotated roles, plays a round whose key up or D-pad up moves right, key
+  down or D-pad down moves left, Z or B rotates clockwise, and key left or
+  D-pad left hard drops, walks the pause overlay on the rotated menu roles,
+  turns back to landscape, turns to portrait a second time, and quits through
+  the portrait table, so the stage covers the portrait turn, the landscape
+  turn, and repeated changes in one process and leaves the settings file on
+  portrait. Stage two is the relaunch that reads that saved value at startup:
+  the round plays the full rotated table - X or A rotates counter-clockwise,
+  C or Y holds, and Space or X carries nothing (T067) - through the
+  game-over screen and the title quit. The reference replays both stages on
+  the tables in force at each press: it swaps its own key and pad tables and
+  clears its adapter on the same select edges the game applies.
+- `controls-relaunch` (T066): two stages over one save directory, both marked
+  `settings=none`, so the run also proves the customization path writes no
+  settings file of its own. Stage one walks to the customization screen from
+  the title, binds HARD DROP to D on the keyboard and to X on the pad, meets a
+  rejected capture and a cancelled one on the way, and quits with both custom
+  tables saved; the snapshot after the stage is the exact canonical
+  `controls.dat` with the two overrides. Stage two relaunches on that file -
+  its startup log names custom bindings, Space and D-pad up carry nothing, D
+  and pad X hard drop - and ends on RESTORE DEFAULTS, whose snapshot is the
+  exact section 5 bytes again, played once more in a round before the quit.
+- `controls-invalid` (T066): one stage that starts from
+  `controls=broken-controls.dat`, a file binding Z to both hard drop and
+  rotate counter-clockwise, which no screen could have written. The session
+  recovers every table to the section 5 defaults, keeps every menu reachable
+  through the customization screen and back, plays a round on the defaults -
+  D carries nothing, Space hard drops - and leaves the damaged file
+  byte-identical to how it found it, because nothing customized anything.
 
-The T055 portrait sessions add their own proofs to the checker: the play
-frame read from pixels through the rotation (portrait x=71..472, y=119..920
-is device x=119..920, y=71..472, with both frame edges in the frame color
-for their whole span and the lines one past them background, which pins the
-rotation and the 40 px cell size together), the HUD strip above the board,
-the quiet portrait margins, the pause and game-over panels at their rotated
-device boxes, the quiet rows below the board on every page that clears the
-canvas, the exact settings bytes of the portrait preference with the
-landscape startup line that still names landscape, and the rotated mapping
-itself: the per-tick input log must carry the ordered action bits of the
-rotated table for the keyboard and for the pad - a landscape table fails
-every step of the ordered walk, because key up would raise a clockwise
-rotation before any move-right. Landscape keeps its own proofs unchanged:
-the pixel suite pins the landscape geometry constants, and the observation
-streams and screenshots of every session whose script did not change stay
-byte-identical to the runs before the feature, outside the options page that
-legitimately gained its seventh row with ORIENTATION and its eighth with
-MUSIC (T062).
+The T055 and T068 portrait sessions add their own proofs to the checker: the
+play frame read from pixels through the rotation (portrait x=71..472,
+y=119..920 is device x=119..920, y=71..472, with both frame edges in the
+frame color for their whole span and the lines one past them background,
+which pins the rotation and the 40 px cell size together), the HUD strip
+above the board, the quiet portrait margins, the pause and game-over panels
+at their rotated device boxes, the quiet rows below the board on every page
+that clears the canvas, the portrait options page read in the vertical bands
+the rotation gives its heading, rows, and footer, the exact settings bytes
+of the portrait preference with the landscape startup line that still names
+landscape, the rotated mapping itself - the per-tick input log must carry
+the ordered action bits of the rotated table for the keyboard and for the
+pad, and a landscape table fails every step of the ordered walk, because key
+up would raise a clockwise rotation before any move-right - and the turn's
+own input rule (T068): every orientation save line follows the tick that
+carried the select edge, that tick also carries the probe's held level, and
+the ticks after it carry no bit at all until the script presses again, so
+the select, the held direction, and every pending edge are all spent by the
+turn. No log may carry next-launch wording. Landscape keeps its own proofs
+unchanged: the pixel suite pins the landscape geometry constants, and the
+observation streams and screenshots of every session whose script did not
+change stay byte-identical to the runs before the feature, outside the
+options page that legitimately gained its seventh row with ORIENTATION and
+its eighth with MUSIC (T062).
 
 The T045 sessions add their own pixel and file proofs to the checker: the
 options page itself (heading, one text line per row with the accent marker on
@@ -211,6 +263,22 @@ abandoning a scoring round. The mirror never writes the record file; the
 `m3-highscore` reference of the T015 gate deliberately runs without
 `--high-score`, because it must mirror the first process of the four, whose
 save directory was still fresh.
+
+The T066 controls sessions add the customization proofs. The reference
+mirrors the whole path: it reads the session's controls file (`--controls`,
+the section 5 defaults when the file is absent or damaged) and swaps its own
+binding tables on the same capture edges the game applies, so a session with
+custom tables compares against a reference that drives the same ones. The
+checker pins, per session: the scene walk onto the customization screen and
+back on both inputs; the menu-cursor state at every step of the nine rows;
+the input-log evidence lines of an applied capture, a rejected capture that
+names the action that holds the control, a cancelled capture, and a restore;
+the exact `controls.dat` bytes before and after every staged change; the
+startup log line that names default or custom bindings and how they were
+obtained; the round-level proof that a freed control settles nothing and a
+bound control locks the piece; and, for the pad session, the unplug that
+costs only the held level with no counter moving and the replug that answers
+the custom binding on the new instance at once.
 
 The harness exits nonzero on any failure and keeps the log, the input log,
 both observation streams, and every screenshot in

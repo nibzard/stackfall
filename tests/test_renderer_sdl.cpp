@@ -305,7 +305,7 @@ void playRounds(Game& game, int rounds) {
 constexpr int kLabelScale = 2;
 constexpr int kValueScale = 2;
 constexpr int kHintScale = 2;
-constexpr int kControlRowCount = 10;
+constexpr int kControlRowCount = 11;
 
 // How many cells of the active piece lie inside the visible field.
 int visibleActiveCells(const Game& game) {
@@ -1635,11 +1635,280 @@ void run_controls_screen_checks() {
   SC_CHECK(countColor(canvas, keyboardColumn, kText) > 500);
   SC_CHECK(countColor(canvas, actionColumn, kText) > 500);
 
+  // The hard-drop row names D-pad up in the gamepad column and Space in the
+  // keyboard column (task T067); X appears nowhere on the page. Since task
+  // T066 the page draws one row per action, so hard drop sits at index 5 and
+  // reads from the binding tables the renderer mirrors. The exact glyph count
+  // of each cell pins the strings the way the options rows pin theirs, so
+  // reverting only the table fails all three.
+  const int dropRowY = kControlsFirstRowY + 5 * kControlsRowHeight;
+  const SDL_Rect dropGamepad{kControlsGamepadX, dropRowY,
+                             kControlsKeyboardX - kControlsGamepadX,
+                             kGlyphRows * kLabelScale};
+  const SDL_Rect dropKeyboard{kControlsKeyboardX, dropRowY,
+                              kControlsActionX - kControlsKeyboardX,
+                              kGlyphRows * kLabelScale};
+  const SDL_Rect dropAction{kControlsActionX, dropRowY,
+                            kCanvasWidth - kControlsActionX,
+                            kGlyphRows * kLabelScale};
+  SC_CHECK(countColor(canvas, dropGamepad, kText) ==
+           glyphPixelCount("D-PAD UP") * kLabelScale * kLabelScale);
+  SC_CHECK(countColor(canvas, dropKeyboard, kText) ==
+           glyphPixelCount("SPACE") * kLabelScale * kLabelScale);
+  SC_CHECK(countColor(canvas, dropAction, kText) ==
+           glyphPixelCount("HARD DROP") * kLabelScale * kLabelScale);
+
   // The footer invites the way back, and B takes it.
   const SDL_Rect footer = menuRow(kControlsFooterY, kLabelScale);
   SC_CHECK(countColor(canvas, footer, kText) > 100);
   TickInput back;
   back.menu.backPressed = true;
+  game.tick(back);
+  SC_CHECK(game.scene() == Scene::Title);
+}
+
+// The customization page of task T066, opened from the mappings page: the
+// heading, the eight action rows reading the binding tables the renderer
+// mirrors, the RESTORE DEFAULTS row, the accent capture row, the status
+// line, and the footer that names the capture's rule. The exact glyph count
+// of each cell pins the strings, so a reverted table or a lost mirror fails
+// every pin it touches; the portrait half of the same page draws at the
+// portrait metrics of tasks T055 and T068.
+void run_rebind_screen_checks() {
+  Canvas canvas = makeCanvas(kCanvasWidth, kCanvasHeight);
+  SC_CHECK(canvas.ok);
+  Renderer renderer(canvas.renderer);
+  Game game;
+  game.openTitle(7);
+  menuDown(game);  // CONTROLS
+  TickInput select;
+  select.menu.selectPressed = true;
+  game.tick(select);
+  SC_CHECK(game.scene() == Scene::Controls);
+  game.tick(select);  // A CUSTOMIZE opens the customization page
+  SC_CHECK(game.scene() == Scene::Rebind);
+  SC_CHECK(game.rebindSelection() == 0);
+  SC_CHECK(kRebindItemCount == 9);
+  SC_CHECK(kRebindRestoreRow == 8);
+  renderer.draw(game);
+
+  // The heading and the three column headers.
+  SC_CHECK(sameColor(pixelAt(canvas, 5, 5), kBackground));
+  const SDL_Rect heading{0, kControlsHeadingY, kCanvasWidth,
+                         kGlyphRows * kControlsHeadingScale};
+  SC_CHECK(countColor(canvas, heading, kText) ==
+           glyphPixelCount("SET CONTROLS") * kControlsHeadingScale *
+               kControlsHeadingScale);
+  const SDL_Rect header{kControlsGamepadX, kControlsHeaderY,
+                        kCanvasWidth - kControlsGamepadX,
+                        kGlyphRows * kLabelScale};
+  SC_CHECK(countColor(canvas, header, kTextDim) ==
+           (glyphPixelCount("GAMEPAD") + glyphPixelCount("KEYBOARD") +
+            glyphPixelCount("ACTION")) *
+               kLabelScale * kLabelScale);
+
+  // The eight rows read the mirrored tables. Row by row, each cell holds
+  // exactly its string's glyphs: the pairs still read "Y OR L1" and
+  // "C OR LEFT SHIFT", and an action with one control reads it alone.
+  const char* padRows[kRebindableActionCount] = {
+      "D-PAD LEFT", "D-PAD RIGHT", "D-PAD DOWN", "A", "B", "D-PAD UP",
+      "Y OR L1", "START"};
+  const char* keyRows[kRebindableActionCount] = {
+      "LEFT ARROW", "RIGHT ARROW", "DOWN ARROW", "X OR UP ARROW", "Z",
+      "SPACE", "C OR LEFT SHIFT", "ENTER OR ESC"};
+  const char* actionRows[kRebindableActionCount] = {
+      "MOVE LEFT", "MOVE RIGHT", "SOFT DROP", "ROTATE CW", "ROTATE CCW",
+      "HARD DROP", "HOLD", "PAUSE OR RESUME"};
+  for (int row = 0; row < kRebindableActionCount; ++row) {
+    const int y = kRebindFirstRowY + row * kRebindRowHeight;
+    const SDL_Rect padCell{kControlsGamepadX, y,
+                           kControlsKeyboardX - kControlsGamepadX,
+                           kGlyphRows * kLabelScale};
+    const SDL_Rect keyCell{kControlsKeyboardX, y,
+                           kControlsActionX - kControlsKeyboardX,
+                           kGlyphRows * kLabelScale};
+    const SDL_Rect actionCell{kControlsActionX, y,
+                              kCanvasWidth - kControlsActionX,
+                              kGlyphRows * kLabelScale};
+    SC_CHECK(countColor(canvas, padCell, kText) ==
+             glyphPixelCount(padRows[row]) * kLabelScale * kLabelScale);
+    SC_CHECK(countColor(canvas, keyCell, kText) ==
+             glyphPixelCount(keyRows[row]) * kLabelScale * kLabelScale);
+    // The selected row's action label carries the accent; every other row
+    // reads bright.
+    if (row == game.rebindSelection()) {
+      SC_CHECK(countColor(canvas, actionCell, kAccent) ==
+               glyphPixelCount(actionRows[row]) * kLabelScale * kLabelScale);
+      SC_CHECK(countColor(canvas, actionCell, kText) == 0);
+    } else {
+      SC_CHECK(countColor(canvas, actionCell, kText) ==
+               glyphPixelCount(actionRows[row]) * kLabelScale * kLabelScale);
+    }
+  }
+
+  // The marker sits left of the selected row's gamepad cell.
+  {
+    const int y = kRebindFirstRowY;
+    SC_CHECK(areaIsOnly(canvas,
+                        SDL_Rect{kControlsGamepadX - kMenuMarkerGap -
+                                     kMenuMarkerSize,
+                                 y + (kGlyphRows * kLabelScale - kMenuMarkerSize) /
+                                         2,
+                                 kMenuMarkerSize, kMenuMarkerSize},
+                        kAccent));
+  }
+
+  // RESTORE DEFAULTS sits on its own row below the eight, bright while the
+  // cursor is elsewhere; eight downs move the cursor onto it, turn it
+  // accent, and draw the marker beside it.
+  {
+    const SDL_Rect restoreRow{kControlsGamepadX, kRebindRestoreY,
+                              kCanvasWidth - kControlsGamepadX,
+                              kGlyphRows * kLabelScale};
+    SC_CHECK(countColor(canvas, restoreRow, kText) ==
+             glyphPixelCount("RESTORE DEFAULTS") * kLabelScale * kLabelScale);
+    for (int step = 0; step < kRebindRestoreRow; ++step) {
+      menuDown(game);
+    }
+    SC_CHECK(game.rebindSelection() == kRebindRestoreRow);
+    renderer.draw(game);
+    SC_CHECK(countColor(canvas, restoreRow, kAccent) ==
+             glyphPixelCount("RESTORE DEFAULTS") * kLabelScale * kLabelScale);
+    SC_CHECK(countColor(canvas, restoreRow, kText) == 0);
+  }
+  // The cursor wraps within the nine rows, so the ninth down returns to MOVE
+  // LEFT and the restore row goes bright again.
+  menuDown(game);
+  SC_CHECK(game.rebindSelection() == 0);
+  renderer.draw(game);
+  SC_CHECK(countColor(canvas,
+                      SDL_Rect{kControlsGamepadX, kRebindRestoreY,
+                               kCanvasWidth - kControlsGamepadX,
+                               kGlyphRows * kLabelScale},
+                      kText) ==
+           glyphPixelCount("RESTORE DEFAULTS") * kLabelScale * kLabelScale);
+
+  // The ordinary footer names the page's menu rule; arming a capture swaps
+  // it for the capture's own rule and turns the captured row's cells accent.
+  const SDL_Rect footerBand{0, kRebindFooterY, kCanvasWidth,
+                            kGlyphRows * kHintScale};
+  SC_CHECK(countColor(canvas, footerBand, kTextDim) ==
+           glyphPixelCount("UP/DOWN CHOOSE - A CHANGE - B BACK") *
+               kHintScale * kHintScale);
+  renderer.setRebindCaptureRow(5);
+  renderer.draw(game);
+  SC_CHECK(countColor(canvas, footerBand, kTextDim) ==
+           glyphPixelCount("PRESS A CONTROL - SAME ONE CANCELS") *
+               kHintScale * kHintScale);
+  {
+    const int y = kRebindFirstRowY + 5 * kRebindRowHeight;
+    const SDL_Rect padCell{kControlsGamepadX, y,
+                           kControlsKeyboardX - kControlsGamepadX,
+                           kGlyphRows * kLabelScale};
+    const SDL_Rect keyCell{kControlsKeyboardX, y,
+                           kControlsActionX - kControlsKeyboardX,
+                           kGlyphRows * kLabelScale};
+    SC_CHECK(countColor(canvas, padCell, kAccent) ==
+             glyphPixelCount("D-PAD UP") * kLabelScale * kLabelScale);
+    SC_CHECK(countColor(canvas, keyCell, kAccent) ==
+             glyphPixelCount("SPACE") * kLabelScale * kLabelScale);
+    SC_CHECK(countColor(canvas, padCell, kText) == 0);
+    SC_CHECK(countColor(canvas, keyCell, kText) == 0);
+  }
+
+  // The status line names the last outcome in the accent color, exactly the
+  // glyphs of the message and nothing else in its band.
+  renderer.setRebindMessage("BOUND HARD DROP TO D");
+  renderer.draw(game);
+  {
+    const SDL_Rect messageBand{kControlsGamepadX, kRebindMessageY,
+                               kCanvasWidth - kControlsGamepadX,
+                               kGlyphRows * kLabelScale};
+    SC_CHECK(countColor(canvas, messageBand, kAccent) ==
+             glyphPixelCount("BOUND HARD DROP TO D") * kLabelScale *
+                 kLabelScale);
+  }
+
+  // Custom tables reach the page through the same mirror: the drop row reads
+  // the rebound controls and nothing of the defaults survives on it.
+  {
+    ControlBindings custom = defaultControlBindings();
+    custom.table(DeviceKind::Keyboard, Orientation::Landscape)
+        [static_cast<int>(GameAction::HardDrop)][0] = kKeyboardKeyD;
+    custom.table(DeviceKind::Keyboard, Orientation::Landscape)
+        [static_cast<int>(GameAction::HardDrop)][1] = kNoControl;
+    custom.table(DeviceKind::Controller, Orientation::Landscape)
+        [static_cast<int>(GameAction::HardDrop)][0] = kControllerButtonX;
+    custom.table(DeviceKind::Controller, Orientation::Landscape)
+        [static_cast<int>(GameAction::HardDrop)][1] = kNoControl;
+    renderer.setControlBindings(custom);
+    renderer.setRebindCaptureRow(-1);
+    renderer.draw(game);
+    const int y = kRebindFirstRowY + 5 * kRebindRowHeight;
+    const SDL_Rect padCell{kControlsGamepadX, y,
+                           kControlsKeyboardX - kControlsGamepadX,
+                           kGlyphRows * kLabelScale};
+    const SDL_Rect keyCell{kControlsKeyboardX, y,
+                           kControlsActionX - kControlsKeyboardX,
+                           kGlyphRows * kLabelScale};
+    SC_CHECK(countColor(canvas, padCell, kText) ==
+             glyphPixelCount("X") * kLabelScale * kLabelScale);
+    SC_CHECK(countColor(canvas, keyCell, kText) ==
+             glyphPixelCount("D") * kLabelScale * kLabelScale);
+    renderer.setControlBindings(defaultControlBindings());
+  }
+
+  // The portrait half of the page at the portrait metrics: the turned frame
+  // names its own spellings - the drop row's controls are the logical up of
+  // the rotated grip - the capture row stays accent, and RESTORE DEFAULTS
+  // draws on its own row. A portrait band (x, y, w, h) reaches the device
+  // canvas at (y, 543 - x, h, w), the rotation the pixel suite pins.
+  renderer.setOrientation(Orientation::Portrait);
+  renderer.setRebindCaptureRow(5);
+  renderer.setRebindMessage("");
+  renderer.draw(game);
+  {
+    const auto portraitBand = [](int y, int scale) {
+      return SDL_Rect{y, 0, kGlyphRows * scale, kPortraitCanvasWidth};
+    };
+    const SDL_Rect headingBand =
+        portraitBand(kPControlsHeadingY, kControlsHeadingScale);
+    SC_CHECK(countColor(canvas, headingBand, kText) > 300);
+    // The capture row's value line sits under its action label; the band of
+    // that line holds the accent cells of both device columns.
+    const int captureValuesY =
+        kPRebindFirstRowY + 5 * kPRebindRowHeight + kGlyphRows * kLabelScale + 4;
+    SC_CHECK(countColor(canvas, portraitBand(captureValuesY, kLabelScale),
+                        kAccent) > 100);
+    // The default portrait drop controls spell where the turned device
+    // points them (task T067); the band holds both cells' glyphs together.
+    SC_CHECK(countColor(canvas, portraitBand(captureValuesY, kLabelScale),
+                        kAccent) ==
+             (glyphPixelCount("D-PAD LEFT (UP)") +
+              glyphPixelCount("LEFT ARROW (UP)")) *
+                 kLabelScale * kLabelScale);
+    SC_CHECK(countColor(canvas,
+                        portraitBand(kPRebindRestoreY, kLabelScale), kText) ==
+             glyphPixelCount("RESTORE DEFAULTS") * kLabelScale * kLabelScale);
+    SC_CHECK(countColor(canvas, portraitBand(kPRebindFooterY, kHintScale),
+                        kTextDim) ==
+             glyphPixelCount("PRESS A CONTROL - SAME ONE CANCELS") *
+                 kHintScale * kHintScale);
+  }
+
+  // The way back out survives everything: back returns to the mappings page
+  // with its customize footer, and back again returns to the title.
+  renderer.setOrientation(Orientation::Landscape);
+  renderer.setRebindCaptureRow(-1);
+  TickInput back;
+  back.menu.backPressed = true;
+  game.tick(back);
+  SC_CHECK(game.scene() == Scene::Controls);
+  renderer.draw(game);
+  const SDL_Rect controlsFooter = menuRow(kControlsFooterY, kLabelScale);
+  SC_CHECK(countColor(canvas, controlsFooter, kText) ==
+           glyphPixelCount("A CUSTOMIZE - B BACK TO TITLE") * kLabelScale *
+               kLabelScale);
   game.tick(back);
   SC_CHECK(game.scene() == Scene::Title);
 }
@@ -1650,7 +1919,9 @@ void run_controls_screen_checks() {
 // renderer settings, so all 160 combinations of the five toggles and the next
 // count are drawn, and the exact glyph count of the 5x7 table pins each row's
 // string - ON cannot stand in for OFF, and NEXT PIECES 3 cannot stand in for
-// NEXT PIECES 5.
+// NEXT PIECES 5. The ORIENTATION row names the layout the renderer draws, and
+// a mid-page turn moves the page itself, so the portrait half of that row is
+// drawn and pinned at the portrait metrics (task T068).
 void run_options_screen_checks() {
   Canvas canvas = makeCanvas(kCanvasWidth, kCanvasHeight);
   SC_CHECK(canvas.ok);
@@ -1670,7 +1941,6 @@ void run_options_screen_checks() {
   SC_CHECK(renderer.nextPreviews() == kPreviewCount);
   SC_CHECK(renderer.grayscale() == false);
   SC_CHECK(renderer.orientation() == Orientation::Landscape);
-  SC_CHECK(renderer.orientationPreference() == Orientation::Landscape);
   SC_CHECK(renderer.musicMode() == MusicMode::Auto);
   SC_CHECK(renderer.musicVolume() == 6);
   SC_CHECK(renderer.effectsVolume() == 8);
@@ -1697,18 +1967,18 @@ void run_options_screen_checks() {
 
   // Every value combination draws: each row reads its label plus the value of
   // its renderer setting - ON or OFF for the five toggles, the digit for
-  // NEXT PIECES, the frame for ORIENTATION - and nothing else in a row band
-  // is bright or dim, so the exact glyph count pins the string.
-  for (int booleans = 0; booleans < 64; ++booleans) {
+  // NEXT PIECES, the frame the renderer draws for ORIENTATION - and nothing
+  // else in a row band is bright or dim, so the exact glyph count pins the
+  // string. The landscape half of the table runs here; the portrait half
+  // follows the turn below, because one mirror now names the layout and the
+  // row cannot disagree with it (task T068).
+  for (int booleans = 0; booleans < 32; ++booleans) {
     for (int next = 1; next <= kPreviewCount; ++next) {
       renderer.setSoundOn((booleans & 1) != 0);
       renderer.setShowGhost((booleans & 2) != 0);
       renderer.setShowGrid((booleans & 4) != 0);
       renderer.setShowHold((booleans & 8) != 0);
       renderer.setGrayscale((booleans & 16) != 0);
-      renderer.setOrientationPreference((booleans & 32) != 0
-                                             ? Orientation::Portrait
-                                             : Orientation::Landscape);
       renderer.setNextPreviews(next);
       renderer.draw(game);
       char nextRow[24];
@@ -1720,8 +1990,7 @@ void run_options_screen_checks() {
           (booleans & 8) ? "HOLD ON" : "HOLD OFF",
           nextRow,
           (booleans & 16) ? "GRAYSCALE ON" : "GRAYSCALE OFF",
-          (booleans & 32) ? "ORIENTATION PORTRAIT"
-                          : "ORIENTATION LANDSCAPE",
+          "ORIENTATION LANDSCAPE",
           "MUSIC AUTO",
       };
       for (int index = 0; index < kOptionsItemCount; ++index) {
@@ -1740,6 +2009,46 @@ void run_options_screen_checks() {
       }
     }
   }
+
+  // The turn itself, in the middle of the open page: setOrientation() moves
+  // the same page to the portrait metrics at once, the ORIENTATION row reads
+  // PORTRAIT at those metrics, and the landscape row bands go quiet because
+  // the page no longer draws there. This is the draw half of the same-session
+  // application the harness sessions exercise through the event path
+  // (task T068). A portrait rect (x, y, w, h) reaches the device canvas at
+  // (y, 543 - x, h, w), the rotation the pixel suite pins below.
+  renderer.setOrientation(Orientation::Portrait);
+  SC_CHECK(renderer.orientation() == Orientation::Portrait);
+  renderer.draw(game);
+  const auto portraitRow = [](int index) {
+    return SDL_Rect{kPOptionsMenuY + index * kMenuItemHeight, 0,
+                    kGlyphRows * kMenuScale, kPortraitCanvasWidth};
+  };
+  for (int index = 0; index < kOptionsItemCount; ++index) {
+    // Every row draws at the portrait metrics: the selected row bright, every
+    // other row dim, exactly as the landscape loop above pins row by row.
+    if (index == game.optionsSelection()) {
+      SC_CHECK(countColor(canvas, portraitRow(index), kText) > 100);
+      SC_CHECK(countColor(canvas, portraitRow(index), kTextDim) == 0);
+    } else {
+      SC_CHECK(countColor(canvas, portraitRow(index), kTextDim) > 100);
+      SC_CHECK(countColor(canvas, portraitRow(index), kText) == 0);
+    }
+  }
+  // The page turned, it did not draw twice: portrait rows end at portrait
+  // y=551 and the footer starts at 880, so the device columns between them
+  // hold nothing at all while the landscape rows they overlap used to carry
+  // every row's text.
+  SC_CHECK(areaIsOnly(canvas, SDL_Rect{600, 96, 260, 384}, kBackground));
+  SC_CHECK(countColor(canvas, portraitRow(6), kTextDim) ==
+           glyphPixelCount("ORIENTATION PORTRAIT") * kMenuScale * kMenuScale);
+  // The turn back restores the landscape page and its own row string.
+  renderer.setOrientation(Orientation::Landscape);
+  renderer.draw(game);
+  SC_CHECK(countColor(canvas,
+                      menuRow(kOptionsMenuY + 6 * kMenuItemHeight, kMenuScale),
+                      kTextDim) ==
+           glyphPixelCount("ORIENTATION LANDSCAPE") * kMenuScale * kMenuScale);
 
   // Back to the defaults before the marker and navigation checks.
   renderer.setSoundOn(true);
@@ -2108,7 +2417,8 @@ void run_pause_overlay_checks() {
   SC_CHECK(countColor(canvas, rows, kText) > 2000);
   const SDL_Rect pauseControlsFooter = menuRow(kControlsFooterY, kLabelScale);
   SC_CHECK(countColor(canvas, pauseControlsFooter, kText) ==
-           glyphPixelCount("A OR B BACK TO PAUSE") * kLabelScale * kLabelScale);
+           glyphPixelCount("A CUSTOMIZE - B BACK TO PAUSE") * kLabelScale *
+               kLabelScale);
   const std::vector<std::uint8_t> visitBefore = snapshotOf(game);
   menuDown(game);  // the page ignores cursor moves
   InputFrame wild = InputFrame::idle();
@@ -2471,7 +2781,7 @@ void run_portrait_hud_and_screens_checks() {
   // metrics, heading, and footer, all inside the tall canvas.
   Game options;
   options.openTitle(20261103);
-  renderer.setOrientationPreference(Orientation::Portrait);
+  renderer.setOrientation(Orientation::Portrait);
   menuDown(options);
   menuDown(options);
   TickInput select;
@@ -2491,7 +2801,6 @@ void run_portrait_hud_and_screens_checks() {
   SC_CHECK(countColor(canvas, footer, kTextDim) > 30);
   SC_CHECK(kPOptionsFooterY + kGlyphRows * kHintScale <
            kPortraitCanvasHeight);
-  renderer.setOrientationPreference(Orientation::Landscape);
 
   // The controls page: one heading, its two mapping columns, ten rows, and
   // the footer inside the tall canvas.
@@ -2517,6 +2826,30 @@ void run_portrait_hud_and_screens_checks() {
   SC_CHECK(countColor(canvas, controlsFooter, kText) > 30);
   SC_CHECK(kPControlsFooterY + kGlyphRows * kHintScale <
            kPortraitCanvasHeight);
+
+  // The hard-drop row names the physical arm of the turned grip - the
+  // device D-pad's left, which points at the player's ceiling - on the
+  // gamepad side and the left arrow on the keyboard side (task T067). The
+  // exact glyph count of each cell pins both strings and their columns, so
+  // the portrait row cannot drift back to the cluster button.
+  const int dropRowY = kPControlsFirstRowY + 5 * kPControlsRowHeight;
+  const int dropHeading = dropRowY;
+  const int dropMappings = dropRowY + kGlyphRows * kLabelScale + 4;
+  const SDL_Rect dropActionHeading = portraitDeviceRect(
+      kPControlsGamepadX, dropHeading, kPortraitCanvasWidth -
+      kPControlsGamepadX, kGlyphRows * kLabelScale);
+  const SDL_Rect dropGamepadCell = portraitDeviceRect(
+      kPControlsGamepadX, dropMappings,
+      kPControlsKeyboardX - kPControlsGamepadX, kGlyphRows * kLabelScale);
+  const SDL_Rect dropKeyboardCell = portraitDeviceRect(
+      kPControlsKeyboardX, dropMappings,
+      kPortraitCanvasWidth - kPControlsKeyboardX, kGlyphRows * kLabelScale);
+  SC_CHECK(countColor(canvas, dropActionHeading, kTextDim) ==
+           glyphPixelCount("HARD DROP") * kLabelScale * kLabelScale);
+  SC_CHECK(countColor(canvas, dropGamepadCell, kText) ==
+           glyphPixelCount("D-PAD LEFT (UP)") * kLabelScale * kLabelScale);
+  SC_CHECK(countColor(canvas, dropKeyboardCell, kText) ==
+           glyphPixelCount("LEFT ARROW (UP)") * kLabelScale * kLabelScale);
 
   // The pause overlay centers its panel on the board, which owns the canvas
   // alone in portrait; the game-over panel centers on the canvas.
@@ -2602,6 +2935,7 @@ int main() {
   run_letterbox_canvas_checks();
   run_title_screen_checks();
   run_controls_screen_checks();
+  run_rebind_screen_checks();
   run_options_screen_checks();
   run_music_options_screen_checks();
   run_pause_overlay_checks();

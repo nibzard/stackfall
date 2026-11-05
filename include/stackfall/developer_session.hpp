@@ -36,6 +36,7 @@
 //   wait <ticks>          hold the script until that many ticks ran
 //   stall <ms>            delay the frame, forcing a catch-up batch
 //   detach                detach the virtual controller
+//   attach                attach the virtual controller again (task T066)
 //   restart               restart the round with the same seed
 //   fixture <name>        load a board fixture from the fixture directory
 //   check <name>          record one observation and one screenshot
@@ -272,6 +273,7 @@ class DeveloperSession {
       Wait,
       Stall,
       Detach,
+      Attach,
       Restart,
       Fixture,
       Check,

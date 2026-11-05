@@ -30,6 +30,14 @@
 //     next to the script - and from the same options-row select the game
 //     applies, so a relaunch that starts with HOLD off replays identically.
 //
+//   * the orientation mirrors the platform half of the ORIENTATION row (tasks
+//     T055 and T068): the game binary turns the running session on the select
+//     edge itself - the layout, the input tables, and every held level and
+//     pending edge together - so this replay swaps its own key and pad tables
+//     and clears its adapter on the same edge. A session that toggles the row
+//     mid-script therefore replays each half against the table that was in
+//     force when it pressed, which is what makes the turn comparable at all.
+//
 //   * the record persistence mirrors the platform half of the high score
 //     (task T052, specification sections 4.7 and 9): the game binary saves
 //     the running score the moment it passes the stored record and feeds
@@ -62,101 +70,66 @@
 namespace {
 
 // ---------------------------------------------------------------------------
-// The section 5 tables, transcribed from the specification.
+// The section 5 tables (task T066). Before the customization screen these
+// were four transcribed arrays; since it they are data this replay reads from
+// the same controls.dat the game reads and resolves through the shared
+// vocabulary of stackfall/bindings.hpp, so the canonical control names below
+// are the same words the file, the script language, and the screens use.
+//
+// The deliberate independence survives in a different place: the defaults this
+// replay falls back on are the section 5 tables of defaultControlBindings(),
+// and the rotated portrait roles come from the same function the game's SDL
+// layer uses, so a wrong mapping in src/input_sdl.cpp still shows up as a
+// record mismatch while a wrong binding table cannot hide here.
 // ---------------------------------------------------------------------------
-
-struct ScriptBinding {
-  const char* name;
-  stackfall::GameAction primary;
-  stackfall::GameAction secondary;  // kNoGameAction: none
-};
 
 const stackfall::GameAction kNone = stackfall::GameAction::kCount;
 
-// Keyboard: arrows move and soft drop, X or Up rotate clockwise, Z rotates
-// counter-clockwise, Space hard drops, C or left Shift holds, Enter or Esc
-// pauses, plus the menu roles of Enter, Esc, Up, and Down. M switches the
-// sound, which is platform-layer state outside the rules core, so its entry
-// carries no action and the replay accepts the key the way the game's script
-// driver does without changing the round.
-const ScriptBinding kKeyTable[] = {
-    {"left", stackfall::GameAction::Left, kNone},
-    {"right", stackfall::GameAction::Right, kNone},
-    {"down", stackfall::GameAction::Down, stackfall::GameAction::MenuDown},
-    {"up", stackfall::GameAction::RotateCW, stackfall::GameAction::MenuUp},
-    {"x", stackfall::GameAction::RotateCW, kNone},
-    {"z", stackfall::GameAction::RotateCCW, kNone},
-    {"space", stackfall::GameAction::HardDrop, kNone},
-    {"c", stackfall::GameAction::Hold, kNone},
-    {"lshift", stackfall::GameAction::Hold, kNone},
-    {"enter", stackfall::GameAction::Pause, stackfall::GameAction::MenuSelect},
-    {"esc", stackfall::GameAction::Pause, stackfall::GameAction::MenuBack},
-    {"m", kNone, kNone},
-};
+// True when the word names a key the script may press: any rebindable
+// control of the keyboard list, or "m", the fixed sound shortcut of the
+// platform layer, which carries no rules action at all.
+bool scriptKeyKnown(const std::string& name) {
+  return name == "m" ||
+         stackfall::keyboardControlFromName(name.c_str()) !=
+             stackfall::kNoControl;
+}
 
-// Virtual pad: D-pad move and soft drop, A clockwise, B counter-clockwise,
-// X hard drop, Y or left shoulder hold, Start pause, and the menu roles of A,
-// B, and the D-pad.
-const ScriptBinding kPadTable[] = {
-    {"a", stackfall::GameAction::RotateCW, stackfall::GameAction::MenuSelect},
-    {"b", stackfall::GameAction::RotateCCW, stackfall::GameAction::MenuBack},
-    {"x", stackfall::GameAction::HardDrop, kNone},
-    {"y", stackfall::GameAction::Hold, kNone},
-    {"l1", stackfall::GameAction::Hold, kNone},
-    {"start", stackfall::GameAction::Pause, kNone},
-    {"up", stackfall::GameAction::MenuUp, kNone},
-    {"down", stackfall::GameAction::Down, stackfall::GameAction::MenuDown},
-    {"left", stackfall::GameAction::Left, kNone},
-    {"right", stackfall::GameAction::Right, kNone},
-};
-
-// The portrait tables of task T055, transcribed from the rotation
-// notes/design-review.md pins, not from src/input_sdl.cpp, so a wrong or
-// missing rotation in the SDL layer shows up as a record mismatch exactly as
-// a wrong section 5 mapping does. The turned device points every direction
-// at the on-screen direction of the rotated frame: the D-pad's up, down,
-// left, and right become move right, move left, menu up, and soft drop plus
-// menu down. The cluster reverses each pair under the left thumb - B rotates
-// clockwise and confirms, A rotates the other way and goes back, Y hard
-// drops, X holds - while the left shoulder and Start, and the keyboard's
-// Enter and Esc, keep their own roles. The name sets match the landscape
-// tables, so the script parser validates one set for both orientations.
-const ScriptBinding kPortraitKeyTable[] = {
-    {"left", stackfall::GameAction::MenuUp, kNone},
-    {"right", stackfall::GameAction::Down, stackfall::GameAction::MenuDown},
-    {"down", stackfall::GameAction::Left, kNone},
-    {"up", stackfall::GameAction::Right, kNone},
-    {"z", stackfall::GameAction::RotateCW, kNone},
-    {"x", stackfall::GameAction::RotateCCW, kNone},
-    {"c", stackfall::GameAction::HardDrop, kNone},
-    {"lshift", stackfall::GameAction::HardDrop, kNone},
-    {"space", stackfall::GameAction::Hold, kNone},
-    {"enter", stackfall::GameAction::Pause, stackfall::GameAction::MenuSelect},
-    {"esc", stackfall::GameAction::Pause, stackfall::GameAction::MenuBack},
-    {"m", kNone, kNone},
-};
-
-const ScriptBinding kPortraitPadTable[] = {
-    {"a", stackfall::GameAction::RotateCCW, stackfall::GameAction::MenuBack},
-    {"b", stackfall::GameAction::RotateCW, stackfall::GameAction::MenuSelect},
-    {"x", stackfall::GameAction::Hold, kNone},
-    {"y", stackfall::GameAction::HardDrop, kNone},
-    {"l1", stackfall::GameAction::Hold, kNone},
-    {"start", stackfall::GameAction::Pause, kNone},
-    {"up", stackfall::GameAction::Right, kNone},
-    {"down", stackfall::GameAction::Left, kNone},
-    {"left", stackfall::GameAction::MenuUp, kNone},
-    {"right", stackfall::GameAction::Down, stackfall::GameAction::MenuDown},
-};
-
-const ScriptBinding* findBinding(const ScriptBinding* table, std::size_t count,
-                                 const std::string& name) {
-  for (std::size_t i = 0; i < count; ++i) {
-    if (name == table[i].name) {
-      return &table[i];
-    }
+// One keyboard control id, or -1 when the word names none. "m" resolves to no
+// control, so a press of it changes the round nothing, exactly as the game's
+// script driver accepts it.
+int scriptKeyboardControl(const std::string& name) {
+  if (name == "m") {
+    return stackfall::kNoControl;
   }
-  return nullptr;
+  return stackfall::keyboardControlFromName(name.c_str());
+}
+
+// One controller control id, or -1 when the word names none.
+int scriptControllerControl(const std::string& name) {
+  return stackfall::controllerControlFromName(name.c_str());
+}
+
+// Feeds one control press or release of one device into the adapter through
+// the binding tables in force: the gameplay action the control performs, then
+// the fixed menu role it carries, exactly as mapKeyboardScancode() and
+// mapControllerButton() do inside the game's SDL layer.
+void applyScriptControl(stackfall::InputAdapter& adapter, int source,
+                        stackfall::DeviceKind device, int control,
+                        bool pressed, const stackfall::ControlBindings& bindings,
+                        bool portraitTables) {
+  const stackfall::Orientation frame =
+      portraitTables ? stackfall::Orientation::Portrait
+                     : stackfall::Orientation::Landscape;
+  const stackfall::ControlTable& table = bindings.table(device, frame);
+  const int action = stackfall::actionUsingControl(table, control);
+  if (action >= 0) {
+    adapter.setButton(source, stackfall::kRebindableActions[action], pressed);
+  }
+  const stackfall::GameAction role = stackfall::menuRoleOfControl(device,
+                                                                 control, frame);
+  if (role != kNone) {
+    adapter.setButton(source, role, pressed);
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -170,6 +143,7 @@ struct Command {
     Wait,
     Stall,
     Detach,
+    Attach,
     Restart,
     Fixture,
     Check,
@@ -238,14 +212,12 @@ bool parseScriptLine(const std::string& raw, std::vector<Command>* commands,
     command.pressed = state == "down";
     command.name = name;
     if (verb == "key") {
-      if (findBinding(kKeyTable, sizeof(kKeyTable) / sizeof(kKeyTable[0]),
-                      name) == nullptr) {
+      if (!scriptKeyKnown(name)) {
         return fail("unknown key name");
       }
       command.kind = Command::Kind::Key;
     } else {
-      if (findBinding(kPadTable, sizeof(kPadTable) / sizeof(kPadTable[0]),
-                      name) == nullptr) {
+      if (scriptControllerControl(name) == stackfall::kNoControl) {
         return fail("unknown pad button name");
       }
       command.kind = Command::Kind::Pad;
@@ -261,6 +233,8 @@ bool parseScriptLine(const std::string& raw, std::vector<Command>* commands,
     command.kind = verb == "wait" ? Command::Kind::Wait : Command::Kind::Stall;
   } else if (verb == "detach") {
     command.kind = Command::Kind::Detach;
+  } else if (verb == "attach") {
+    command.kind = Command::Kind::Attach;
   } else if (verb == "restart") {
     command.kind = Command::Kind::Restart;
   } else if (verb == "quit") {
@@ -287,14 +261,21 @@ void printUsage() {
   std::printf(
       "Usage: stackfall_reference --seed N --script FILE [--out FILE]\n"
       "                           [--fixture-dir DIR] [--settings FILE]\n"
-      "                           [--high-score FILE]\n"
+      "                           [--controls FILE] [--high-score FILE]\n"
       "  Replays a session script through the rules core and writes one\n"
       "  checkpoint record per `check` command, in the format of the game\n"
       "  binary's --observations file. Headless: no SDL.\n"
       "  --settings FILE reads the session's settings.dat for the hold and\n"
       "  orientation preferences the platform layer owns; a missing file is\n"
       "  the fresh-installation default of every preference, and portrait\n"
-      "  swaps the key and pad tables for the rotated ones of task T055.\n"
+      "  swaps the key and pad tables for the rotated ones of task T055. A\n"
+      "  select on the ORIENTATION row swaps them again inside the replay,\n"
+      "  because the game turns the session at once (task T068).\n"
+      "  --controls FILE reads the session's controls.dat for the custom\n"
+      "  bindings the platform layer owns (task T066); a missing file is the\n"
+      "  section 5 default tables and a damaged one recovers to them under\n"
+      "  the rule the game applies. A capture on the customization screen\n"
+      "  rebinds this replay's own tables on the same edge the game applies.\n"
       "  --high-score FILE reads the session's highscore.dat for the record\n"
       "  the game binary loads, saves mid-round, and feeds back between\n"
       "  rounds (task T052); a missing file is the record 0 of a fresh\n"
@@ -315,6 +296,7 @@ int main(int argc, char** argv) {
   const char* outPath = nullptr;
   const char* fixtureDir = nullptr;
   const char* settingsPath = nullptr;
+  const char* controlsPath = nullptr;
   const char* highScorePath = nullptr;
   for (int i = 1; i < argc; ++i) {
     const char* arg = argv[i];
@@ -323,6 +305,7 @@ int main(int argc, char** argv) {
                             std::strcmp(arg, "--out") == 0 ||
                             std::strcmp(arg, "--fixture-dir") == 0 ||
                             std::strcmp(arg, "--settings") == 0 ||
+                            std::strcmp(arg, "--controls") == 0 ||
                             std::strcmp(arg, "--high-score") == 0;
     if (needsValue) {
       if (i + 1 >= argc) {
@@ -343,6 +326,8 @@ int main(int argc, char** argv) {
         outPath = value;
       } else if (std::strcmp(arg, "--settings") == 0) {
         settingsPath = value;
+      } else if (std::strcmp(arg, "--controls") == 0) {
+        controlsPath = value;
       } else if (std::strcmp(arg, "--high-score") == 0) {
         highScorePath = value;
       } else {
@@ -409,16 +394,17 @@ int main(int argc, char** argv) {
   // at startup, and a select on the HOLD row of the options screen flips it,
   // exactly as src/main.cpp's applyOptionsSelect does on the same edge.
   //
-  // The orientation the platform layer applies once at startup (task T055):
-  // portrait swaps the two script tables below for the rotated ones, exactly
-  // as src/main.cpp's applyOrientation() swaps the tables of SdlInput. The
-  // ORIENTATION row of the options screen flips only the stored preference
-  // and never the tables of the running process, because the game binary
-  // applies the saved value at the next launch; the mirror below tracks that
-  // preference for its log line and changes nothing else.
+  // The orientation the platform layer applies (tasks T055 and T068): portrait
+  // swaps the two script tables below for the rotated ones, exactly as
+  // src/main.cpp's applyOrientation() swaps the tables of SdlInput. The
+  // session opens on the orientation of the settings file, and a select on
+  // the ORIENTATION row turns the running session at once - the same tick
+  // that consumed the select edge swaps these tables and forgets every held
+  // level and pending edge of the adapter, exactly as SdlInput's
+  // setOrientation() does - so a script that plays either side of the turn
+  // replays against the tables that were in force when it pressed.
   bool holdEnabled = true;
   bool portraitTables = false;
-  bool orientationPortrait = false;
   stackfall::SettingsResult loaded;
   if (settingsPath != nullptr) {
     // The harness names the settings file itself; the store wants its
@@ -434,22 +420,36 @@ int main(int argc, char** argv) {
                  stackfall::saveStatusName(loaded.status));
   }
   portraitTables = loaded.orientation == stackfall::Orientation::Portrait;
-  orientationPortrait = portraitTables;
-  const ScriptBinding* keyTable =
-      portraitTables ? kPortraitKeyTable : kKeyTable;
-  const ScriptBinding* padTable =
-      portraitTables ? kPortraitPadTable : kPadTable;
-  const std::size_t keyCount =
-      portraitTables ? sizeof(kPortraitKeyTable) / sizeof(kPortraitKeyTable[0])
-                     : sizeof(kKeyTable) / sizeof(kKeyTable[0]);
-  const std::size_t padCount =
-      portraitTables ? sizeof(kPortraitPadTable) / sizeof(kPortraitPadTable[0])
-                     : sizeof(kPadTable) / sizeof(kPadTable[0]);
   std::fprintf(stderr, "reference: orientation %s at startup (%s)\n",
                portraitTables ? "portrait" : "landscape",
                settingsPath != nullptr
                    ? stackfall::saveStatusName(loaded.status)
                    : "not found");
+
+  // The binding tables the platform layer owns (task T066): the same
+  // controls.dat the game reads, the same recovery to the section 5 defaults,
+  // and the same mid-session edits a capture applies. The frame in force is
+  // `portraitTables` above, exactly as in the game, and the customization
+  // screen below edits the table of that frame alone.
+  stackfall::ControlBindings bindings = stackfall::defaultControlBindings();
+  if (controlsPath != nullptr) {
+    const std::filesystem::path controlsFile(controlsPath);
+    const stackfall::ControlsStore controls(
+        controlsFile.has_parent_path() ? controlsFile.parent_path().string()
+                                       : std::string());
+    const stackfall::ControlsResult loadedControls = controls.load();
+    bindings = loadedControls;
+    std::fprintf(stderr, "reference: %s bindings at startup (%s)\n",
+                 stackfall::controlBindingsAreDefault(bindings) ? "default"
+                                                                : "custom",
+                 stackfall::saveStatusName(loadedControls.status));
+  }
+  // The customization screen's capture state: the row whose capture is armed,
+  // or -1 while none is, and the capture a pump just took.
+  int captureRow = -1;
+  bool captureArrived = false;
+  stackfall::DeviceKind captureDevice = stackfall::DeviceKind::Keyboard;
+  int captureControl = stackfall::kNoControl;
 
   // The record persistence mirror of task T052 (specification sections 4.7
   // and 9): `savedRecord` holds what the game binary's store holds, seeded
@@ -475,6 +475,9 @@ int main(int argc, char** argv) {
   }
   bool roundActive = false;
   std::uint64_t roundTicks = 0;
+  // The scene the previous simulated tick ran on, the state the
+  // return-to-play gate above reads.
+  stackfall::Scene sceneOfPreviousTick = game.scene();
 
   std::size_t index = 0;
   bool waiting = false;
@@ -509,24 +512,40 @@ int main(int argc, char** argv) {
           if (command.kind == Command::Kind::Pad && !padAttached) {
             break;  // the detached pad no longer exists; the game ignores it
           }
-          const ScriptBinding* binding = findBinding(
-              command.kind == Command::Kind::Key ? keyTable : padTable,
-              command.kind == Command::Kind::Key ? keyCount : padCount,
-              command.name);
-          if (binding == nullptr) {
+          const bool keyboard = command.kind == Command::Kind::Key;
+          const int control = keyboard
+                                  ? scriptKeyboardControl(command.name)
+                                  : scriptControllerControl(command.name);
+          if (control == stackfall::kNoControl) {
             break;  // an unmapped control changes nothing, as in the game
           }
-          if (binding->primary == kNone) {
-            break;  // a platform-only key (the sound toggle) has no rule
+          if (!command.pressed) {
+            // A release never captures; it only clears the level the press
+            // raised, which is also what the game's event path does.
+            applyScriptControl(adapter,
+                               keyboard ? stackfall::kKeyboardInputSource
+                                        : kPadSource,
+                               keyboard ? stackfall::DeviceKind::Keyboard
+                                        : stackfall::DeviceKind::Controller,
+                               control, false, bindings, portraitTables);
+            break;
           }
-          const int source =
-              command.kind == Command::Kind::Key
-                  ? stackfall::kKeyboardInputSource
-                  : kPadSource;
-          adapter.setButton(source, binding->primary, command.pressed);
-          if (binding->secondary != kNone) {
-            adapter.setButton(source, binding->secondary, command.pressed);
+          if (captureRow >= 0) {
+            // The customization screen is capturing (task T066): the press
+            // names a control and stops here, never reaching the adapter, so
+            // it can neither move a cursor nor act on the round.
+            captureArrived = true;
+            captureDevice = keyboard ? stackfall::DeviceKind::Keyboard
+                                      : stackfall::DeviceKind::Controller;
+            captureControl = control;
+            break;
           }
+          applyScriptControl(adapter,
+                             keyboard ? stackfall::kKeyboardInputSource
+                                      : kPadSource,
+                             keyboard ? stackfall::DeviceKind::Keyboard
+                                      : stackfall::DeviceKind::Controller,
+                             control, true, bindings, portraitTables);
           break;
         }
         case Command::Kind::Stall:
@@ -534,6 +553,12 @@ int main(int argc, char** argv) {
         case Command::Kind::Detach:
           adapter.dropSource(kPadSource);
           padAttached = false;
+          break;
+        case Command::Kind::Attach:
+          // The replug of task T066: a fresh handle with a fresh instance id,
+          // so the game's adapter opens a new source and this replay simply
+          // accepts pad commands again.
+          padAttached = true;
           break;
         case Command::Kind::Restart:
           game.start(game.seed());
@@ -576,16 +601,60 @@ int main(int argc, char** argv) {
       ++index;
     }
 
+    // A capture that arrived in this frame's pump (task T066): the game binary
+    // applies it right after its event poll and before this frame's ticks, so
+    // this replay does the same. The conflict rule, the same-control
+    // cancellation, and the single-control assignment are the rules of
+    // src/main.cpp's capture handler, restated here so the two cannot drift.
+    if (captureArrived) {
+      captureArrived = false;
+      const int action = captureRow;
+      captureRow = -1;
+      const stackfall::Orientation frame =
+          portraitTables ? stackfall::Orientation::Portrait
+                         : stackfall::Orientation::Landscape;
+      stackfall::ControlTable& table = bindings.table(captureDevice, frame);
+      const int holder = stackfall::actionUsingControl(table, captureControl);
+      if (holder == action) {
+        std::fprintf(stderr, "reference: capture cancelled, binding kept\n");
+      } else if (holder >= 0) {
+        std::fprintf(stderr,
+                     "reference: capture rejected, control already bound\n");
+      } else {
+        table[action][0] = captureControl;
+        table[action][1] = stackfall::kNoControl;
+        adapter.clearHeldAndPending();
+        std::fprintf(stderr, "reference: binding applied\n");
+      }
+    }
+
     // One tick per pump, then the checkpoint records, mirroring the game
     // loop's poll-tick-render-flush order under --tick-per-frame.
     stackfall::TickInput tickInput = adapter.takeTickInput();
-    if (!holdEnabled) {
-      tickInput.game.holdPressed = false;  // the platform's HOLD gate
-    }
     // The scene before the tick owns the select edge, so the press that opens
     // the options screen never toggles a row - the same rule the game binary
     // applies before it reads the highlighted row.
     const stackfall::Scene sceneBeforeTick = game.scene();
+    // The return-to-play gate of the platform layer (task T067): a press a
+    // menu already owns may not act on the round that opens next, because
+    // D-pad up moves the menu cursor and hard drops in one press. The game
+    // binary spends every gameplay edge of the first tick a round owns
+    // before the core sees it; this mirror spends the same edges on the same
+    // tick, so a script that queues a press across a restart - the one
+    // transition that happens outside a tick - replays identically on both
+    // sides.
+    if (sceneBeforeTick == stackfall::Scene::Playing &&
+        sceneOfPreviousTick != stackfall::Scene::Playing) {
+      tickInput.game.rotateCWPressed = false;
+      tickInput.game.rotateCCWPressed = false;
+      tickInput.game.hardDropPressed = false;
+      tickInput.game.holdPressed = false;
+      tickInput.game.pausePressed = false;
+    }
+    sceneOfPreviousTick = sceneBeforeTick;
+    if (!holdEnabled) {
+      tickInput.game.holdPressed = false;  // the platform's HOLD gate
+    }
     game.tick(tickInput);
     if (sceneBeforeTick == stackfall::Scene::Options &&
         tickInput.menu.selectPressed &&
@@ -594,14 +663,48 @@ int main(int argc, char** argv) {
       std::fprintf(stderr, "reference: hold preference %s (options row %d)\n",
                    holdEnabled ? "on" : "off", kOptionsHoldRow);
     }
+    // The customization screen's rows (task T066): a select on one of the
+    // eight action rows arms a capture for the next press, and a select on
+    // RESTORE DEFAULTS returns all four tables to the section 5 defaults.
+    // Both clear the adapter exactly as the game's setControlBindings() does,
+    // because the tables changed under whatever the script was holding.
+    if (sceneBeforeTick == stackfall::Scene::Rebind &&
+        tickInput.menu.selectPressed &&
+        game.scene() == stackfall::Scene::Rebind) {
+      const int row = game.rebindSelection();
+      if (row == stackfall::kRebindRestoreRow) {
+        bindings = stackfall::defaultControlBindings();
+        adapter.clearHeldAndPending();
+        std::fprintf(stderr, "reference: bindings restored to defaults\n");
+      } else if (row >= 0 && row < stackfall::kRebindableActionCount) {
+        captureRow = row;
+        std::fprintf(stderr, "reference: capture armed on row %d\n", row);
+      }
+    }
+    // Leaving the customization screen ends any capture still armed, so a
+    // press on another screen can never change a binding.
+    if (sceneBeforeTick == stackfall::Scene::Rebind &&
+        game.scene() != stackfall::Scene::Rebind && captureRow >= 0) {
+      captureRow = -1;
+      std::fprintf(stderr, "reference: capture cancelled on leaving\n");
+    }
     if (sceneBeforeTick == stackfall::Scene::Options &&
         tickInput.menu.selectPressed &&
         game.optionsSelection() == kOptionsOrientationRow) {
-      orientationPortrait = !orientationPortrait;
+      // The turn the game binary applies on the same edge (task T068): the
+      // tables swap at once and the adapter forgets every held level and
+      // pending edge, so a control the script pressed before the turn cannot
+      // act after it under either table.
+      portraitTables = !portraitTables;
+      if (captureRow >= 0) {
+        captureRow = -1;
+        std::fprintf(stderr, "reference: capture cancelled by the turn\n");
+      }
+      adapter.clearHeldAndPending();
       std::fprintf(stderr,
-                   "reference: orientation preference %s (options row %d, "
-                   "applies at the next launch)\n",
-                   orientationPortrait ? "portrait" : "landscape",
+                   "reference: orientation %s (options row %d, applied in "
+                   "this session)\n",
+                   portraitTables ? "portrait" : "landscape",
                    kOptionsOrientationRow);
     }
     // The persistence mirror, tick by tick: the saved record rises the

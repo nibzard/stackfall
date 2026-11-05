@@ -82,9 +82,10 @@ inline constexpr std::array<PieceId, kPieceCount> kAllPieceIds = {
 
 // ---------------------------------------------------------------------------
 // Screen orientation (task T055). The player picks one on the options screen
-// and the platform layer applies it at the next launch, so the value travels
-// through the settings file the rules core already owns. Landscape is the
-// default and the recovery value of a damaged file.
+// and the platform layer turns the running session on that select (task
+// T068), so the value also travels through the settings file the rules core
+// already owns and a relaunch opens on it. Landscape is the default and the
+// recovery value of a damaged file.
 //
 // Portrait turns the RG503 90 degrees clockwise in the player's hands: the
 // D-pad end moves to the top of the grip, the action cluster to the bottom,

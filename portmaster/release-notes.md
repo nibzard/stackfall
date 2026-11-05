@@ -17,9 +17,9 @@ First release. The binary reports the version `1.0.0` in its startup log.
 - Eight settings on the Options screen: sound, ghost outline, board grid,
   hold preview, Next preview count, grayscale play scene, orientation, and
   music. All ten persisted values survive between sessions.
-- Portrait play: set Options to Portrait and the next launch turns the whole
-  game into a tall 544 x 960 frame with 40-pixel board squares and controls
-  that keep the action they point at.
+- Portrait play: set Options to Portrait and the whole game turns at once into
+  a tall 544 x 960 frame with 40-pixel board squares and controls that keep
+  the action they point at.
 - A generated twelve-track soundtrack in three collections, composed and
   synthesized at run time. The Music settings page selects the collection
   pool, both volumes, and the next track; each track layers more voices as

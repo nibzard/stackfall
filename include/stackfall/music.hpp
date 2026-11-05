@@ -251,6 +251,20 @@ class MusicEngine {
   std::uint32_t voiceHighWater() const;
   void resetVoiceStats();
 
+  // The command traffic of the performance evidence (task T065): how many
+  // commands the main thread pushed and how many the queue rejected, both
+  // read once at shutdown. The director retries a rejected command, so the
+  // rejected count is the queue-pressure signal, not a lost request.
+  unsigned long commandsPushed() const {
+    return commandsPushed_.load(std::memory_order_relaxed);
+  }
+  unsigned long commandsRejected() const {
+    return commandsRejected_.load(std::memory_order_relaxed);
+  }
+  unsigned long commandsDrained() const {
+    return commandsDrained_.load(std::memory_order_relaxed);
+  }
+
   // The explicit perceptual volume table of MUSIC.md: eleven steps, about
   // 2.2 decibels apart, with step 0 exactly silent and step 10 at unity.
   static constexpr std::array<std::uint32_t, 11> kVolumeGainQ16 = {
@@ -311,6 +325,12 @@ class MusicEngine {
   std::array<MusicCommand, kQueueSlots> queue_{};
   std::atomic<std::uint32_t> queueTail_{0};  // producer writes
   std::atomic<std::uint32_t> queueHead_{0};  // consumer writes
+
+  // The traffic counters of the accessors above, one relaxed cell each side
+  // of the queue (task T065).
+  std::atomic<std::uint64_t> commandsPushed_{0};
+  std::atomic<std::uint64_t> commandsRejected_{0};
+  std::atomic<std::uint64_t> commandsDrained_{0};
 
   // Published gain targets (Q16) and the callback-side ramping copies.
   std::atomic<std::uint32_t> musicGainTarget_{65536};

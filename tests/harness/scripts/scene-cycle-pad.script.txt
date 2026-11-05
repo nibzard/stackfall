@@ -65,9 +65,10 @@ pad y up
 wait 2
 check hold-locked
 wait 1
-pad x down
+# D-pad up hard drops (task T067); X carries nothing
+pad up down
 wait 2
-pad x up
+pad up up
 wait 2
 wait 2
 check first-lock

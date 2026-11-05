@@ -1,0 +1,296 @@
+# The controls customization screen on the keyboard (task T066): open it from
+# the CONTROLS screen, capture a new hard-drop key, prove a conflicting capture
+# is rejected and a repeat of the current binding cancels, walk back out to the
+# title, play a round on the custom table, restore the defaults, and play again
+# on the section 5 table. Normal game from an empty board; no fixtures.
+check title-start
+wait 1
+key down down
+wait 2
+key down up
+wait 2
+check title-at-controls
+wait 1
+key enter down
+wait 2
+key enter up
+wait 2
+check controls-open
+wait 1
+# select opens the customization screen on its first row
+key enter down
+wait 2
+key enter up
+wait 2
+check rebind-open
+wait 1
+# five rows down is HARD DROP: move left, move right, soft drop, rotate
+# clockwise, rotate counter-clockwise, hard drop
+key down down
+wait 2
+key down up
+wait 2
+key down down
+wait 2
+key down up
+wait 2
+key down down
+wait 2
+key down up
+wait 2
+key down down
+wait 2
+key down up
+wait 2
+key down down
+wait 2
+key down up
+wait 2
+check rebind-at-harddrop
+wait 1
+# arm the capture and name key D: D is free, so hard drop moves to it and
+# Space stops hard dropping
+key enter down
+wait 2
+key enter up
+wait 2
+check rebind-capture-armed
+wait 1
+key d down
+wait 2
+key d up
+wait 2
+check rebind-harddrop-d
+wait 1
+# two rows up is ROTATE CW; Z still rotates the other way there, so the
+# capture is rejected instead of silently double-booking the key
+key up down
+wait 2
+key up up
+wait 2
+key up down
+wait 2
+key up up
+wait 2
+check rebind-at-rotatecw
+wait 1
+key enter down
+wait 2
+key enter up
+wait 2
+key z down
+wait 2
+key z up
+wait 2
+check rebind-conflict-rejected
+wait 1
+# X is ROTATE CW's own current control, so the same press cancels
+key enter down
+wait 2
+key enter up
+wait 2
+key x down
+wait 2
+key x up
+wait 2
+check rebind-cancelled
+wait 1
+# the way back out: Esc leaves the customization screen, Esc again leaves
+# the mappings page, whose hard-drop row now names D
+key esc down
+wait 2
+key esc up
+wait 2
+check controls-custom
+wait 1
+key esc down
+wait 2
+key esc up
+wait 2
+check title-back
+wait 1
+# start a round; the title cursor is still on CONTROLS, so one up reaches
+# START GAME
+key up down
+wait 2
+key up up
+wait 2
+key enter down
+wait 2
+key enter up
+wait 2
+check playing-start
+wait 1
+# Space carries nothing now: no lock, no score
+key space down
+wait 2
+key space up
+wait 2
+check space-dead
+wait 1
+# D hard drops: the piece locks in the same tick
+key d down
+wait 2
+key d up
+wait 2
+check d-harddrops
+wait 1
+# leave the round: Esc pauses, three downs reach QUIT TO TITLE, Enter takes
+# it, and the title cursor resets to START GAME
+key esc down
+wait 2
+key esc up
+wait 2
+check paused
+wait 1
+key down down
+wait 2
+key down up
+wait 2
+key down down
+wait 2
+key down up
+wait 2
+key down down
+wait 2
+key down up
+wait 2
+check paused-at-quit
+wait 1
+key enter down
+wait 2
+key enter up
+wait 2
+check title-after-round
+wait 1
+# back into the customization screen, whose cursor reopens at row 0
+key down down
+wait 2
+key down up
+wait 2
+key enter down
+wait 2
+key enter up
+wait 2
+check controls-again
+wait 1
+key enter down
+wait 2
+key enter up
+wait 2
+check rebind-again
+wait 1
+# eight downs walk from MOVE LEFT down to RESTORE DEFAULTS
+key down down
+wait 2
+key down up
+wait 2
+key down down
+wait 2
+key down up
+wait 2
+key down down
+wait 2
+key down up
+wait 2
+key down down
+wait 2
+key down up
+wait 2
+key down down
+wait 2
+key down up
+wait 2
+key down down
+wait 2
+key down up
+wait 2
+key down down
+wait 2
+key down up
+wait 2
+key down down
+wait 2
+key down up
+wait 2
+check rebind-at-restore
+wait 1
+key enter down
+wait 2
+key enter up
+wait 2
+check defaults-restored
+wait 1
+# back out and play on the restored table: Space hard drops again
+key esc down
+wait 2
+key esc up
+wait 2
+check controls-restored
+wait 1
+key esc down
+wait 2
+key esc up
+wait 2
+check title-restored
+wait 1
+key up down
+wait 2
+key up up
+wait 2
+key enter down
+wait 2
+key enter up
+wait 2
+check playing-restored
+wait 1
+key space down
+wait 2
+key space up
+wait 2
+check space-harddrops-again
+wait 1
+# quit through the title menu: Esc pauses, three downs reach QUIT TO TITLE,
+# Enter takes it, and three more downs on the title reach QUIT
+key esc down
+wait 2
+key esc up
+wait 2
+key down down
+wait 2
+key down up
+wait 2
+key down down
+wait 2
+key down up
+wait 2
+key down down
+wait 2
+key down up
+wait 2
+check paused-before-quit
+wait 1
+key enter down
+wait 2
+key enter up
+wait 2
+check title-after-leave
+wait 1
+key down down
+wait 2
+key down up
+wait 2
+key down down
+wait 2
+key down up
+wait 2
+key down down
+wait 2
+key down up
+wait 2
+check title-at-quit
+check quit-confirmed
+key enter down
+wait 2
+key enter up
+wait 2

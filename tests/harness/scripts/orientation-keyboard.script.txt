@@ -1,0 +1,199 @@
+# Orientation-keyboard stage one (T068, docs/AGENT_TESTING.md; the staged
+# portrait session of T055 grown into the same-session turn): a landscape
+# session walks to the seventh OPTIONS row, ORIENTATION, and selects it with
+# a key held across the turn - key left, which holds move-left in landscape
+# and is the logical up direction that hard drops in portrait. The turn
+# applies inside the tick that consumed the select edge, so the held level and
+# every pending edge must be gone before the next tick: no later tick may
+# carry a gameplay bit until the script presses again, and the release that
+# follows maps through the portrait table and changes nothing.
+#
+# The rest of the stage plays the turned session on the rotated keyboard
+# table - the title walk, a round whose key up moves right and key down moves
+# left, Z clockwise, the logical up of key left hard dropping, and the pause
+# overlay on the rotated menu roles - then turns back to landscape, turns to
+# portrait a second time, and quits through the portrait table, so the saved
+# preference the relaunch of stage two reads is portrait. A `wait` follows
+# every check, so no record carries the tick of the input that comes after
+# it.
+check title-start
+wait 1
+# landscape roles: key down moves the title cursor to OPTIONS
+key down down
+wait 2
+key down up
+wait 2
+key down down
+wait 2
+key down up
+wait 2
+check title-at-options
+wait 1
+key enter down
+wait 2
+key enter up
+wait 2
+check options-sound-row
+wait 1
+# six downs walk SOUND -> GHOST -> GRID -> HOLD -> NEXT PIECES -> GRAYSCALE
+# -> ORIENTATION
+key down down
+wait 2
+key down up
+wait 2
+key down down
+wait 2
+key down up
+wait 2
+key down down
+wait 2
+key down up
+wait 2
+key down down
+wait 2
+key down up
+wait 2
+key down down
+wait 2
+key down up
+wait 2
+key down down
+wait 2
+key down up
+wait 2
+check options-orientation-row
+wait 1
+# the turn, with key left held across it: both presses land on one frame, the
+# tick consumes the select, and the session turns inside that tick
+key left down
+key enter down
+wait 2
+key enter up
+key left up
+wait 2
+check orientation-portrait-live
+wait 1
+# back to the title on the portrait table; Esc keeps its back role
+key esc down
+wait 2
+key esc up
+wait 2
+check title-portrait
+wait 1
+# key left is the logical up direction, so it walks the title cursor up to
+# START GAME
+key left down
+wait 2
+key left up
+wait 2
+key left down
+wait 2
+key left up
+wait 2
+check title-at-start
+wait 1
+key enter down
+wait 2
+key enter up
+wait 2
+check playing-portrait
+wait 1
+# the rotated directions: key up is move right, key down move left
+key up down
+wait 2
+key up up
+wait 2
+check moved-right
+wait 1
+key down down
+wait 2
+key down up
+wait 2
+check moved-left
+wait 1
+# the reversed cluster: Z rotates clockwise
+key z down
+wait 2
+key z up
+wait 2
+check rotated-cw
+wait 1
+# key left is the logical up direction, so it hard drops and locks
+key left down
+wait 2
+key left up
+wait 2
+check first-lock
+wait 5
+# the pause overlay on the rotated menu roles: key left wraps the cursor up
+# to QUIT TO TITLE and Enter confirms it
+key esc down
+wait 2
+key esc up
+wait 2
+check paused-portrait
+wait 1
+key left down
+wait 2
+key left up
+wait 2
+check paused-at-quit
+wait 1
+key enter down
+wait 2
+key enter up
+wait 2
+check title-after-round
+wait 1
+# the turn back to landscape, portrait -> landscape. The session still plays
+# the portrait table, so key right carries the menu-down role that walks the
+# title cursor to OPTIONS
+key right down
+wait 2
+key right up
+wait 2
+key right down
+wait 2
+key right up
+wait 2
+check title-at-options-again
+wait 1
+key enter down
+wait 2
+key enter up
+wait 2
+check options-row-again
+wait 1
+key enter down
+wait 2
+key enter up
+wait 2
+check orientation-landscape-live
+wait 2
+# a second select turns portrait again, so the session has turned three times
+# and the saved preference the relaunch reads is portrait
+key enter down
+wait 2
+key enter up
+wait 2
+check orientation-portrait-again
+wait 2
+# the quit through the portrait table: key right is the logical down
+# direction, so it walks the title cursor to QUIT, and Enter confirms it
+key esc down
+wait 2
+key esc up
+wait 2
+check title-final
+wait 1
+key right down
+wait 2
+key right up
+wait 2
+check title-at-quit
+wait 1
+check quit-confirmed
+key enter down
+wait 2
+key enter up
+wait 2

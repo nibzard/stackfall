@@ -55,11 +55,11 @@ pad right up
 wait 2
 check o-moved-right
 wait 1
-pad x down
+pad up down
 check i-spawn-frame
 wait 1
 wait 2
-pad x up
+pad up up
 wait 2
 pad a down
 wait 2
@@ -91,11 +91,11 @@ pad a up
 wait 2
 check i-wall-kick
 wait 1
-pad x down
+pad up down
 check s-spawn-frame
 wait 1
 wait 2
-pad x up
+pad up up
 wait 2
 pad a down
 wait 2
@@ -137,11 +137,11 @@ pad down up
 wait 2
 check s-soft-dropped
 wait 1
-pad x down
+pad up down
 check l-spawn-frame
 wait 1
 wait 2
-pad x up
+pad up up
 wait 2
 pad right down
 wait 2
@@ -173,11 +173,11 @@ pad a up
 wait 2
 check l-stack-kick
 wait 1
-pad x down
+pad up down
 check z-spawn-frame
 wait 1
 wait 2
-pad x up
+pad up up
 wait 2
 pad a down
 wait 2
@@ -201,11 +201,11 @@ pad left up
 wait 2
 check z-centered
 wait 1
-pad x down
+pad up down
 check t-spawn-frame
 wait 1
 wait 2
-pad x up
+pad up up
 wait 2
 pad y down
 check hold-swap-first-frame
@@ -221,11 +221,11 @@ pad y up
 wait 2
 check hold-locked-noop
 wait 1
-pad x down
+pad up down
 check after-hold-piece-lock
 wait 1
 wait 2
-pad x up
+pad up up
 wait 2
 check hold-free-after-lock
 wait 1
@@ -235,11 +235,11 @@ wait 1
 wait 2
 pad y up
 wait 2
-pad x down
+pad up down
 check after-return-lock
 wait 1
 wait 2
-pad x up
+pad up up
 wait 2
 pad right down
 wait 12

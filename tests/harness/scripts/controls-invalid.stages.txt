@@ -1,0 +1,5 @@
+# The damaged-controls session of task T066: one stage that starts from a
+# binding file binding one key to two gameplay actions, recovers to the
+# section 5 defaults, and leaves the file untouched. The recovery touches no
+# preference, so the stage writes no settings file either.
+script=controls-invalid-recover.script.txt controls=broken-controls.dat settings=none

@@ -1,0 +1,239 @@
+# Stage two of the controls relaunch session (task T066): the relaunch that
+# reads the controls file stage one wrote. Both custom tables hold - D and
+# the pad's X hard drop, Space and D-pad up carry nothing - and RESTORE
+# DEFAULTS rewrites the file back to the section 5 tables.
+check title-start
+wait 1
+key down down
+wait 2
+key down up
+wait 2
+check title-at-controls
+wait 1
+key enter down
+wait 2
+key enter up
+wait 2
+check controls-open
+wait 1
+# the mappings page names the loaded custom tables before anything changes
+check controls-custom-loaded
+wait 1
+key enter down
+wait 2
+key enter up
+wait 2
+check rebind-open
+wait 1
+key esc down
+wait 2
+key esc up
+wait 2
+check controls-back
+wait 1
+key esc down
+wait 2
+key esc up
+wait 2
+check title-back
+wait 1
+# the title cursor sits on CONTROLS, so one up reaches START GAME
+key up down
+wait 2
+key up up
+wait 2
+key enter down
+wait 2
+key enter up
+wait 2
+check playing-start
+wait 1
+# Space carries nothing on the loaded table
+key space down
+wait 2
+key space up
+wait 2
+check space-dead
+wait 1
+# D hard drops
+key d down
+wait 2
+key d up
+wait 2
+check d-harddrops
+wait 1
+# the pad's X hard drops on the same loaded table
+pad x down
+wait 2
+pad x up
+wait 2
+check pad-x-harddrops
+wait 1
+# D-pad up carries nothing on the loaded pad table
+pad up down
+wait 2
+pad up up
+wait 2
+check pad-up-dead
+wait 1
+# leave the round for the restore
+key esc down
+wait 2
+key esc up
+wait 2
+check paused
+wait 1
+key down down
+wait 2
+key down up
+wait 2
+key down down
+wait 2
+key down up
+wait 2
+key down down
+wait 2
+key down up
+wait 2
+check paused-at-quit
+wait 1
+key enter down
+wait 2
+key enter up
+wait 2
+check title-after-round
+wait 1
+# back into the customization screen
+key down down
+wait 2
+key down up
+wait 2
+key enter down
+wait 2
+key enter up
+wait 2
+check controls-again
+wait 1
+key enter down
+wait 2
+key enter up
+wait 2
+check rebind-again
+wait 1
+# eight downs walk from MOVE LEFT down to RESTORE DEFAULTS
+key down down
+wait 2
+key down up
+wait 2
+key down down
+wait 2
+key down up
+wait 2
+key down down
+wait 2
+key down up
+wait 2
+key down down
+wait 2
+key down up
+wait 2
+key down down
+wait 2
+key down up
+wait 2
+key down down
+wait 2
+key down up
+wait 2
+key down down
+wait 2
+key down up
+wait 2
+key down down
+wait 2
+key down up
+wait 2
+check rebind-at-restore
+wait 1
+key enter down
+wait 2
+key enter up
+wait 2
+check defaults-restored
+wait 1
+# back out and play on the restored table
+key esc down
+wait 2
+key esc up
+wait 2
+check controls-restored
+wait 1
+key esc down
+wait 2
+key esc up
+wait 2
+check title-restored
+wait 1
+# the title cursor sits on CONTROLS, so one up reaches START GAME
+key up down
+wait 2
+key up up
+wait 2
+key enter down
+wait 2
+key enter up
+wait 2
+check playing-restored
+wait 1
+key space down
+wait 2
+key space up
+wait 2
+check space-harddrops-again
+wait 1
+# quit through the title menu: leave the round through the pause overlay,
+# then walk the title cursor down to QUIT
+key esc down
+wait 2
+key esc up
+wait 2
+check paused-before-quit
+wait 1
+key down down
+wait 2
+key down up
+wait 2
+key down down
+wait 2
+key down up
+wait 2
+key down down
+wait 2
+key down up
+wait 2
+check paused-at-quit
+wait 1
+key enter down
+wait 2
+key enter up
+wait 2
+check title-after-leave
+wait 1
+key down down
+wait 2
+key down up
+wait 2
+key down down
+wait 2
+key down up
+wait 2
+key down down
+wait 2
+key down up
+wait 2
+check title-at-quit
+check quit-confirmed
+key enter down
+wait 2
+key enter up
+wait 2

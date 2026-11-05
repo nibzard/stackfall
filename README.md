@@ -2,7 +2,7 @@
 
 An offline block-stacking game for the Anbernic RG503, with procedural graphics and synthesized sound.
 
-![STACKFALL gameplay: a yellow square piece in flight above a settled piece, with Hold and the statistics on the left and five Next previews on the right.](docs/images/gameplay.png)
+![STACKFALL gameplay: a yellow square piece falls with its ghost outline over a settled stack, Hold and the statistics sit on the left, and five Next previews sit on the right.](docs/images/gameplay.png)
 
 Clear lines, keep room for the next piece, and chase your high score as the game gets faster.
 Hold a piece for later, plan around five previews, and use the ghost outline to place each drop.
@@ -30,8 +30,9 @@ Install the development files for Simple DirectMedia Layer (SDL) 2.
    ./build/stackfall
    ```
 
-3. Select **Start Game**. Open **Controls** from the title screen to see the bindings.
-   Open **Options** to change the sound, ghost outline, board grid, hold
+3. Select **Start Game**. Open **Controls** from the title screen to see the
+   bindings, and press **Enter** or **A** there to change them. Open
+   **Options** to change the sound, ghost outline, board grid, hold
    preview, Next preview count, grayscale play scene, and screen
    orientation, and open **Music** from there for the soundtrack settings.
 
@@ -43,19 +44,46 @@ Install the development files for Simple DirectMedia Layer (SDL) 2.
 | Soft drop | Down | D-pad down |
 | Rotate clockwise | X / Up | A |
 | Rotate counterclockwise | Z | B |
-| Hard drop | Space | X |
+| Hard drop | Space | D-pad up |
 | Hold | C / Left Shift | Y / Left shoulder |
 | Pause or resume | Enter / Esc | Start |
 | Mute or unmute | M | Select |
 
 Use Up / Down to navigate menus, Enter to select, and Esc to go back.
-On a controller, use the D-pad, A, and B.
+On a controller, use the D-pad, A, and B. D-pad up also hard drops during
+play, and the press that leaves a menu never drops the next piece.
+
+In portrait mode you hold the device sideways, so the controls follow the
+turned grip: D-pad up and down move right and left, D-pad right soft drops,
+and hard drop sits on the D-pad arm that points at the ceiling - the arm
+marked left on the device. B rotates clockwise, A rotates
+counterclockwise, and Y or the left shoulder holds.
+
+### Changing the controls
+
+Open **Controls** from the title screen or the pause menu and press
+**Enter** or **A** to open the customization screen. Select a row, then
+press any key or button to bind it to that action. Your changes apply to
+the orientation you are playing, save automatically, and survive a
+relaunch.
+
+- Press the control an action already uses to leave it unchanged.
+- A key or button can hold one gameplay action at a time. The screen tells
+  you when a press belongs to another action, and nothing changes.
+- **Restore defaults** returns every action of both orientations to the
+  table above.
+- Menu navigation, select, and back never rebind, so you can always find
+  your way back out of a menu.
+
+A damaged settings file for the controls is ignored: the game falls back to
+the default table and keeps playing.
 
 ### Your progress
 
-The game saves your high score and all ten options settings between sessions.
-A round you quit, close, or interrupt keeps every point it scored, so an
-abandoned run still counts toward the high score.
+The game saves your high score, all ten options settings, and your custom
+controls between sessions. A round you quit, close, or interrupt keeps
+every point it scored, so an abandoned run still counts toward the high
+score.
 On Linux, saves normally go in `~/.local/share/stackfall`.
 Set `STACKFALL_SAVE_DIR` or pass `--save-dir DIR` to use another directory.
 
@@ -69,10 +97,10 @@ Clearing rows earns points. Soft and hard drops add points for the distance trav
 The game advances one level every ten cleared lines, up to level 20.
 A round ends when a new piece cannot enter or a piece locks above the visible board.
 
-You can also play in portrait. Set **Options** to Portrait, and the next
-launch rotates the whole scene into a 544 × 960 frame with 40-pixel board
-squares. Hold the device sideways, and each control keeps the on-screen
-action it points at in the turned frame.
+You can also play in portrait. Set **Options** to Portrait and the whole
+scene turns at once into a 544 × 960 frame with 40-pixel board squares, in
+the session you are playing. Hold the device sideways, and each control
+keeps the on-screen action it points at in the turned frame.
 
 ### The soundtrack
 
@@ -192,15 +220,22 @@ submenu selects the track pool, both volumes, and the next track; all ten
 preferences persist between sessions.
 Desktop stability checks, performance work, the 27-pixel board layout, the
 focused gameplay HUD (statistics left, Next right, no gameplay legend,
-pause route to the controls screen), and portrait play with its rotated
-controls have landed.
-The unattended harness (`tests/harness/run.sh`) drives nineteen sessions
-through the real application, covering both inputs on every options row, the
+pause route to the controls screen), portrait play with its rotated
+controls, the controls customization screen, the D-pad-up default for hard
+drop, and the orientation switch that applies in the running session have
+landed.
+The unattended harness (`tests/harness/run.sh`) drives twenty-four sessions
+through the real application, covering the scene cycle on both inputs, a
+planned game from an empty board, both inputs on every options row, the
 music settings page and its saved mode and volumes, the settings file after
 each change and across relaunches and legacy files, the hold-off rules, the
 five Next preview counts at one seed, the grayscale play scene, the record
-saved when a round is abandoned mid-game, and a portrait round played on the
-rotated controls, each against a headless reference replay and pixel checks.
+saved when a round is abandoned mid-game, a portrait round played on the
+rotated controls after a mid-session orientation turn, the landscape
+default hard drop on D-pad up with X carrying nothing, the controls
+customization screen on both inputs with the custom table kept across a
+relaunch and a damaged file recovered to the defaults, and three labeled
+board fixtures, each against a headless reference replay and pixel checks.
 The full desktop regression (`tests/harness/t015.sh`) covers the input
 repeat tuning, lock delay, the seven-bag randomizer, restart paths, and
 high-score persistence in Debug and Release, with deterministic hashes
@@ -218,6 +253,9 @@ and reproducible build instructions.
 The release version is 1.0.0, one value in the version constants, the CMake
 project version, the sanity pin, the state-hash pins, the startup banner,
 and the package release notes; `tests/harness/t035.sh` holds them together.
+The assembled archive predates the performance fixes, the controls
+customization screen, the D-pad-up default, and the same-session
+orientation switch; the refresh that carries them is pending.
 Testing on the RG503 and public publication follow. The panel research in
 `notes/anbernic-resolutions.md` covers every Anbernic device class and the
 letterbox result on each; the owner's choice of a strategy per class sets

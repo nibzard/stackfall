@@ -1,2 +1,2 @@
-script=orientation-portrait.script.txt
+script=orientation-pad.script.txt
 script=portrait-pad.script.txt

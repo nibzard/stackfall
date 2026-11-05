@@ -37,13 +37,18 @@ Reads one harness run directory and decides pass or fail from evidence:
     carries each mid-round save with a tick that precedes the abandon, and
     the title after the abandon shows the persisted record while the
     abandoned round's own counters reset;
-  * the staged portrait sessions of task T055 prove the turned mode end to
-    end: a landscape stage selects the ORIENTATION row and leaves the exact
-    portrait settings bytes, the portrait relaunch applies the 544x960 canvas
-    with 40 px cells, and from pixels the rotated board frame, the HUD strip,
-    and the quiet margins prove the composition while the ordered action bits
-    of the per-tick input log pin the rotated mapping for the keyboard and
-    for the pad;
+  * the staged portrait sessions of tasks T055 and T068 prove the turned mode
+    end to end: a landscape stage selects the ORIENTATION row with a
+    direction held across the press and the session turns at once, so the
+    same process draws the portrait options page, plays a round on the
+    rotated table, turns back to landscape and to portrait again, and leaves
+    the exact portrait settings bytes; the per-tick input log proves the turn
+    spent the select edge, the held level of the probe, and every pending
+    edge, and neither log carries next-launch wording any more; the portrait
+    relaunch applies the 544x960 canvas with 40 px cells, and from pixels the
+    rotated board frame, the HUD strip, and the quiet margins prove the
+    composition while the ordered action bits of the per-tick input log pin
+    the rotated mapping for the keyboard and for the pad;
   * the music sessions of task T062 prove the music settings page behind
     the eighth options row: the page opens on its MUSIC row, one select per
     row changes the value and never the row, back returns to the options
@@ -196,6 +201,17 @@ PORTRAIT_GAMEOVER_PANEL = (200, 32, 440, 480)
 # there, so the box staying background proves the tall composition clipped
 # nothing (task T055).
 PORTRAIT_BELOW_BOARD_BOX = (921, 0, 39, 544)
+# The portrait options page of the same-session turn (task T068), in device
+# pixels: the heading, the eight rows at the shared menu metrics, and the
+# footer hint all turn into vertical bands, because a portrait rect (x, y, w,
+# h) reaches the device canvas at (y, 543 - x, h, w). Row 6 is ORIENTATION,
+# so its band carries the bright text and the accent marker exactly while the
+# turned session has that row selected.
+PORTRAIT_OPTIONS_HEADING_BOX = (64, 0, 28, 544)    # kPOptionsHeadingY, scale 4
+PORTRAIT_OPTIONS_FOOTER_BOX = (880, 0, 14, 544)    # kPOptionsFooterY, hint
+PORTRAIT_OPTIONS_MENU_X = 200                      # kPOptionsMenuY in portrait
+PORTRAIT_OPTIONS_ROW_HEIGHT = 44                   # kMenuItemHeight
+PORTRAIT_OPTIONS_ROW_TEXT_HEIGHT = 21              # kGlyphRows * kMenuScale
 
 # The seven piece fills of the color palette and of the grayscale palette, in
 # PieceId order I, O, T, S, Z, J, L (renderer_sdl.hpp). The checker derives
@@ -1336,8 +1352,11 @@ def check_rotated_mapping(session, input_log_path, device, rule):
     if device == "keyboard":
         # The presses of the portrait-keyboard script, in order: key up moves
         # right, key down moves left, Z rotates clockwise, X
-        # counter-clockwise, Space holds, C hard drops; later key left is
-        # menu-up and key right is soft drop plus menu-down.
+        # counter-clockwise, C holds, key left is the logical up direction so
+        # it hard drops and moves the menu cursor up in one press, and key
+        # right is soft drop plus menu-down. Space carries nothing since the
+        # hard drop left the cluster (T067), so no step names it and the
+        # ctest input suite pins the empty slot instead.
         steps = [
             ("key up -> move right", lambda line: field(line, "R") == "1"),
             ("key down -> move left", lambda line: field(line, "L") == "1"),
@@ -1345,11 +1364,11 @@ def check_rotated_mapping(session, input_log_path, device, rule):
              lambda line: field(line, "cw") == "1"),
             ("key x -> rotate counter-clockwise",
              lambda line: field(line, "ccw") == "1"),
-            ("key space -> hold", lambda line: field(line, "hold") == "1"),
-            ("key c -> hard drop", lambda line: field(line, "drop") == "1"),
+            ("key c -> hold", lambda line: field(line, "hold") == "1"),
+            ("key left -> hard drop plus menu up",
+             lambda line: field(line, "drop") == "1" and
+             field(line, "menu") == "1000"),
             ("key esc -> pause", lambda line: field(line, "pause") == "1"),
-            ("key left -> menu up",
-             lambda line: field(line, "menu") == "1000"),
             ("key right -> soft drop plus menu down",
              lambda line: field(line, "D") == "1" and
              field(line, "menu") == "0100"),
@@ -1359,9 +1378,11 @@ def check_rotated_mapping(session, input_log_path, device, rule):
     else:
         # The presses of the portrait-pad script, in order: D-pad up moves
         # right, D-pad down moves left, B rotates clockwise and selects, A
-        # rotates counter-clockwise and goes back, X holds, Y hard drops;
-        # later D-pad left is menu-up and D-pad right soft drop plus
-        # menu-down.
+        # rotates counter-clockwise and goes back, Y holds, D-pad left is the
+        # logical up direction so it hard drops and moves the menu cursor up
+        # in one press, and D-pad right is soft drop plus menu-down. X
+        # carries nothing since the hard drop left the cluster (T067), so no
+        # step names it and the ctest input suite pins the empty slot.
         steps = [
             ("pad up -> move right", lambda line: field(line, "R") == "1"),
             ("pad down -> move left", lambda line: field(line, "L") == "1"),
@@ -1371,11 +1392,11 @@ def check_rotated_mapping(session, input_log_path, device, rule):
             ("pad a -> rotate counter-clockwise and back",
              lambda line: field(line, "ccw") == "1" and
              field(line, "menu") == "0001"),
-            ("pad x -> hold", lambda line: field(line, "hold") == "1"),
-            ("pad y -> hard drop", lambda line: field(line, "drop") == "1"),
+            ("pad y -> hold", lambda line: field(line, "hold") == "1"),
+            ("pad left -> hard drop plus menu up",
+             lambda line: field(line, "drop") == "1" and
+             field(line, "menu") == "1000"),
             ("pad start -> pause", lambda line: field(line, "pause") == "1"),
-            ("pad left -> menu up",
-             lambda line: field(line, "menu") == "1000"),
             ("pad right -> soft drop plus menu down",
              lambda line: field(line, "D") == "1" and
              field(line, "menu") == "0100"),
@@ -1394,6 +1415,221 @@ def check_rotated_mapping(session, input_log_path, device, rule):
         position = found + 1
     good(rule, "%d ordered rotated-%s actions pinned from %d tick lines" %
          (len(steps), device, len(ticks)))
+
+
+def check_portrait_options_layout(session, record, rule):
+    """The portrait options page of the same-session turn, from pixels (task
+    T068): the heading, the eight rows, and the footer hint sit in the
+    vertical bands the rotation gives them, with the highlighted row's text
+    bright and its accent marker beside it. A landscape page draws nothing in
+    the heading and footer bands at all, so the two boxes together prove the
+    page the same process drew after the select really turned."""
+    loaded = load_shot(record, rule)
+    if loaded is None:
+        return
+    _, _, pixel = loaded
+    selected = record["menu"].split(":")
+    if len(selected) != 2 or not selected[1].isdigit():
+        fail(rule, "record %s is not on the options screen: menu=%s" %
+             (record["check"], record.get("menu")))
+        return
+    selected = int(selected[1])
+    heading, _ = scan_box(pixel, PORTRAIT_OPTIONS_HEADING_BOX,
+                          (BACKGROUND_COLOR,))
+    if TEXT_COLOR not in heading:
+        fail(rule, "the portrait options heading band draws no bright glyph "
+             "at %s" % record["check"])
+        return
+    footer, _ = scan_box(pixel, PORTRAIT_OPTIONS_FOOTER_BOX,
+                         (BACKGROUND_COLOR,))
+    if TEXT_DIM_COLOR not in footer:
+        fail(rule, "the portrait options footer band draws no hint at %s" %
+             record["check"])
+        return
+    for index in range(8):
+        band = (PORTRAIT_OPTIONS_MENU_X + index * PORTRAIT_OPTIONS_ROW_HEIGHT,
+                0, PORTRAIT_OPTIONS_ROW_TEXT_HEIGHT, 544)
+        counts, _ = scan_box(pixel, band, (BACKGROUND_COLOR,))
+        if index == selected:
+            if TEXT_COLOR not in counts or ACCENT_COLOR not in counts:
+                fail(rule, "the highlighted portrait options row %d draws no "
+                     "bright text and marker at %s" % (index, record["check"]))
+                return
+        elif TEXT_DIM_COLOR not in counts:
+            fail(rule, "portrait options row %d draws no text at %s" %
+                 (index, record["check"]))
+            return
+    good(rule, "turned heading, eight rows with row %d marked, footer, at %s"
+         % (selected, record["check"]))
+
+
+def check_turn_spends_input(session, input_log_path, rule, probe_bit=None):
+    """The same-session orientation turn of task T068 spends the input that
+    crossed it. Every `orientation ... status=ok` line of the per-tick input
+    log follows the tick that consumed the select edge, so that tick must
+    carry the select bit, the ticks after it must carry nothing at all - no
+    held level, no pending edge - until the script presses again, and, when
+    the turn is the probed one, the tick that carried the select must also
+    carry the probe's held level, which proves a control really was down
+    across the turn and still cannot act after it."""
+    if not os.path.isfile(input_log_path):
+        fail(rule, "missing %s" % input_log_path)
+        return
+    with open(input_log_path) as handle:
+        lines = handle.read().splitlines()
+
+    def fields(line):
+        bits = {}
+        for token in line.split():
+            if "=" in token:
+                key, value = token.split("=", 1)
+                bits[key] = value
+        return bits
+
+    turns = [i for i, line in enumerate(lines)
+             if re.match(r"^orientation (portrait|landscape) status=", line)]
+    if not turns:
+        fail(rule, "%s holds no orientation save line" % input_log_path)
+        return
+    for position, index in enumerate(turns):
+        if index == 0 or not lines[index - 1].startswith("tick="):
+            fail(rule, "the orientation save at line %d follows no tick" % index)
+            return
+        select_tick = fields(lines[index - 1])
+        if select_tick.get("menu") != "0010":
+            fail(rule, "the tick before the orientation save carries "
+                 "menu=%s, expected the select edge 0010" %
+                 select_tick.get("menu"))
+            return
+        if probe_bit is not None and position == 0 and \
+                select_tick.get(probe_bit) != "1":
+            fail(rule, "the tick that turned the session carries %s=%s, "
+                 "expected the probe level 1, so no control was held across "
+                 "the turn" % (probe_bit, select_tick.get(probe_bit)))
+            return
+        # Every tick from the turn to the next tick that carries any bit must
+        # be empty, and there must be at least three of them: a held level or
+        # a pending edge that survived the turn would fill them.
+        quiet = 0
+        for line in lines[index + 1:]:
+            if not line.startswith("tick="):
+                continue
+            bits = fields(line)
+            if any(bits.get(key, "0") != "0" for key in
+                   ("L", "R", "D", "cw", "ccw", "drop", "hold", "pause")) or \
+                    bits.get("menu", "0000") != "0000":
+                break
+            quiet += 1
+        if quiet < 3:
+            fail(rule, "only %d tick(s) after the orientation save at line "
+                 "%d are empty, so the turn leaked input into them" %
+                 (quiet, index))
+            return
+    good(rule, "%d turn(s) spent the select edge and every held level and "
+         "pending edge that crossed them" % len(turns))
+
+
+# ---------------------------------------------------------------------------
+# The controls file of the customization screen (task T066). The canonical
+# form is rebuilt here from the specification's section 5 tables, never read
+# back from the game's own formatter, so a wrong default in the source fails
+# the harness instead of moving the pin. `overrides` replaces whole lines by
+# key.
+# ---------------------------------------------------------------------------
+
+CONTROLS_ACTION_ORDER = ["left", "right", "down", "rotatecw", "rotateccw",
+                         "harddrop", "hold", "pause"]
+
+CONTROLS_DEFAULTS = {
+    ("landscape", "pad"): {
+        "left": "left", "right": "right", "down": "down", "rotatecw": "a",
+        "rotateccw": "b", "harddrop": "up", "hold": "y+l1", "pause": "start"},
+    ("landscape", "key"): {
+        "left": "left", "right": "right", "down": "down", "rotatecw": "x+up",
+        "rotateccw": "z", "harddrop": "space", "hold": "c+lshift",
+        "pause": "enter+esc"},
+    ("portrait", "pad"): {
+        "left": "down", "right": "up", "down": "right", "rotatecw": "b",
+        "rotateccw": "a", "harddrop": "left", "hold": "y+l1", "pause": "start"},
+    ("portrait", "key"): {
+        "left": "down", "right": "up", "down": "right", "rotatecw": "z",
+        "rotateccw": "x", "harddrop": "left", "hold": "c+lshift",
+        "pause": "enter+esc"},
+}
+
+
+def controls_file_bytes(overrides=None):
+    """The canonical controls.dat, with `overrides` replacing whole values."""
+    tables = {}
+    for block, values in CONTROLS_DEFAULTS.items():
+        tables[block] = dict(values)
+    for (frame, device), values in (overrides or {}).items():
+        tables[(frame, device)] = dict(tables.get((frame, device), {}))
+        tables[(frame, device)].update(values)
+    lines = ["version=1"]
+    for frame, device in (("landscape", "pad"), ("landscape", "key"),
+                          ("portrait", "pad"), ("portrait", "key")):
+        for action in CONTROLS_ACTION_ORDER:
+            lines.append("%s.%s.%s=%s" % (frame, device, action,
+                                          tables[(frame, device)][action]))
+    return "\n".join(lines) + "\n"
+
+
+def check_controls_path(session, path, overrides, rule):
+    """A controls file holds exactly the canonical bytes of `overrides`."""
+    if path is None or not os.path.isfile(path):
+        fail(rule, "missing controls file %s" % path)
+        return
+    with open(path) as handle:
+        have = handle.read()
+    want = controls_file_bytes(overrides)
+    if have != want:
+        differing = [line for line in want.split("\n") if line not in have.split("\n")]
+        extra = [line for line in have.split("\n") if line not in want.split("\n")]
+        fail(rule, "controls file differs (missing %s, extra %s)" %
+             (differing[:3], extra[:3]))
+    else:
+        good(rule, "exact canonical controls bytes")
+
+
+def check_rebind_flow(session, by_name, input_log, device_word):
+    """The customization walk every controls session shares: the screen opens
+    on its first row, the cursor lands on HARD DROP, the capture applies, a
+    conflicting capture is rejected, a repeat of the current control cancels,
+    and RESTORE DEFAULTS lands on its own row."""
+    check_field(by_name["rebind-open"], "scene", "rebind",
+                session + "/rebind-opens")
+    check_field(by_name["rebind-open"], "menu", "rebind:0",
+                session + "/rebind-first-row")
+    check_field(by_name["rebind-at-harddrop"], "menu", "rebind:5",
+                session + "/rebind-harddrop-row")
+    check_field(by_name["rebind-at-rotatecw"], "menu", "rebind:3",
+                session + "/rebind-rotatecw-row")
+    check_field(by_name["rebind-at-restore"], "menu", "rebind:8",
+                session + "/rebind-restore-row")
+    check_field(by_name["defaults-restored"], "scene", "rebind",
+                session + "/restore-stays-on-screen")
+    # The custom binding reaches the round: the freed control does nothing and
+    # the new one locks the piece.
+    check_field(by_name["playing-start"], "scene", "playing",
+                session + "/round-starts")
+    if "settled" in by_name.get("space-dead", {}):
+        check_field(by_name["space-dead"], "settled", "0",
+                    session + "/freed-control-dead")
+    check_field(by_name["d-harddrops"] if "d-harddrops" in by_name
+                else by_name["x-harddrops"], "settled", "4",
+                session + "/bound-control-drops")
+    # The evidence lines of the capture path, in order.
+    check_log(session, input_log, [
+        "controls capture action=harddrop device=%s control=%s result=applied"
+        % (device_word, "d" if device_word == "key" else "x"),
+        "controls capture action=rotatecw device=%s control=%s "
+        "result=rejected holds=rotateccw"
+        % (device_word, "z" if device_word == "key" else "b"),
+        "controls capture action=rotatecw device=%s control=%s result=cancelled"
+        % (device_word, "x" if device_word == "key" else "a"),
+        "controls restore result=defaults",
+    ], name="%s/input-log" % session)
 
 
 # ---------------------------------------------------------------------------
@@ -1468,6 +1704,10 @@ def session_stages(run_dir, session):
             "save": os.path.join(session_dir, "save"),
             "before": os.path.join(session_dir, "settings-before-%s.dat" % label),
             "after": os.path.join(session_dir, "settings-after-%s.dat" % label),
+            "controls_before": os.path.join(session_dir,
+                                            "controls-before-%s.dat" % label),
+            "controls_after": os.path.join(session_dir,
+                                           "controls-after-%s.dat" % label),
         })
         index += 1
     if stages:
@@ -1482,6 +1722,8 @@ def session_stages(run_dir, session):
         "save": os.path.join(session_dir, "save"),
         "before": None,
         "after": None,
+        "controls_before": None,
+        "controls_after": None,
     }]
 
 
@@ -1501,6 +1743,109 @@ def check_stage_streams(session, stage):
     compare_streams(name, run_records, read_records(stage["ref"]))
     check_screenshots(name, run_records, stage["shots"])
     return run_records
+
+
+# ---------------------------------------------------------------------------
+# The controls file of the customization screen (task T066). The canonical
+# form is rebuilt here from the specification's section 5 tables, never read
+# back from the game's own formatter, so a wrong default in the source fails
+# the harness instead of moving the pin. `overrides` replaces whole lines by
+# key.
+# ---------------------------------------------------------------------------
+
+CONTROLS_ACTION_ORDER = ["left", "right", "down", "rotatecw", "rotateccw",
+                         "harddrop", "hold", "pause"]
+
+CONTROLS_DEFAULTS = {
+    ("landscape", "pad"): {
+        "left": "left", "right": "right", "down": "down", "rotatecw": "a",
+        "rotateccw": "b", "harddrop": "up", "hold": "y+l1", "pause": "start"},
+    ("landscape", "key"): {
+        "left": "left", "right": "right", "down": "down", "rotatecw": "x+up",
+        "rotateccw": "z", "harddrop": "space", "hold": "c+lshift",
+        "pause": "enter+esc"},
+    ("portrait", "pad"): {
+        "left": "down", "right": "up", "down": "right", "rotatecw": "b",
+        "rotateccw": "a", "harddrop": "left", "hold": "y+l1", "pause": "start"},
+    ("portrait", "key"): {
+        "left": "down", "right": "up", "down": "right", "rotatecw": "z",
+        "rotateccw": "x", "harddrop": "left", "hold": "c+lshift",
+        "pause": "enter+esc"},
+}
+
+
+def controls_file_bytes(overrides=None):
+    """The canonical controls.dat, with `overrides` replacing whole values."""
+    tables = {}
+    for block, values in CONTROLS_DEFAULTS.items():
+        tables[block] = dict(values)
+    for (frame, device), values in (overrides or {}).items():
+        tables[(frame, device)] = dict(tables.get((frame, device), {}))
+        tables[(frame, device)].update(values)
+    lines = ["version=1"]
+    for frame, device in (("landscape", "pad"), ("landscape", "key"),
+                          ("portrait", "pad"), ("portrait", "key")):
+        for action in CONTROLS_ACTION_ORDER:
+            lines.append("%s.%s.%s=%s" % (frame, device, action,
+                                          tables[(frame, device)][action]))
+    return "\n".join(lines) + "\n"
+
+
+def check_controls_path(session, path, overrides, rule):
+    """A controls file holds exactly the canonical bytes of `overrides`."""
+    if path is None or not os.path.isfile(path):
+        fail(rule, "missing controls file %s" % path)
+        return
+    with open(path) as handle:
+        have = handle.read()
+    want = controls_file_bytes(overrides)
+    if have != want:
+        differing = [line for line in want.split("\n") if line not in have.split("\n")]
+        extra = [line for line in have.split("\n") if line not in want.split("\n")]
+        fail(rule, "controls file differs (missing %s, extra %s)" %
+             (differing[:3], extra[:3]))
+    else:
+        good(rule, "exact canonical controls bytes")
+
+
+def check_rebind_flow(session, by_name, input_log, device_word):
+    """The customization walk every controls session shares: the screen opens
+    on its first row, the cursor lands on HARD DROP, the capture applies, a
+    conflicting capture is rejected, a repeat of the current control cancels,
+    and RESTORE DEFAULTS lands on its own row."""
+    check_field(by_name["rebind-open"], "scene", "rebind",
+                session + "/rebind-opens")
+    check_field(by_name["rebind-open"], "menu", "rebind:0",
+                session + "/rebind-first-row")
+    check_field(by_name["rebind-at-harddrop"], "menu", "rebind:5",
+                session + "/rebind-harddrop-row")
+    check_field(by_name["rebind-at-rotatecw"], "menu", "rebind:3",
+                session + "/rebind-rotatecw-row")
+    check_field(by_name["rebind-at-restore"], "menu", "rebind:8",
+                session + "/rebind-restore-row")
+    check_field(by_name["defaults-restored"], "scene", "rebind",
+                session + "/restore-stays-on-screen")
+    # The custom binding reaches the round: the freed control does nothing and
+    # the new one locks the piece.
+    check_field(by_name["playing-start"], "scene", "playing",
+                session + "/round-starts")
+    if "settled" in by_name.get("space-dead", {}):
+        check_field(by_name["space-dead"], "settled", "0",
+                    session + "/freed-control-dead")
+    check_field(by_name["d-harddrops"] if "d-harddrops" in by_name
+                else by_name["x-harddrops"], "settled", "4",
+                session + "/bound-control-drops")
+    # The evidence lines of the capture path, in order.
+    check_log(session, input_log, [
+        "controls capture action=harddrop device=%s control=%s result=applied"
+        % (device_word, "d" if device_word == "key" else "x"),
+        "controls capture action=rotatecw device=%s control=%s "
+        "result=rejected holds=rotateccw"
+        % (device_word, "z" if device_word == "key" else "b"),
+        "controls capture action=rotatecw device=%s control=%s result=cancelled"
+        % (device_word, "x" if device_word == "key" else "a"),
+        "controls restore result=defaults",
+    ], name="%s/input-log" % session)
 
 
 # ---------------------------------------------------------------------------
@@ -1608,6 +1953,129 @@ def check_session(run_dir, session):
         ])
         check_high_score_file(session, save_dir, 198,
                               session + "/saved-record")
+    elif session == "harddrop-pad":
+        # The landscape default of task T067: D-pad up hard drops, X carries
+        # nothing, the menu role of D-pad up survives on every screen it
+        # serves, and no press that returns a round to play drops a piece -
+        # not the resume from the pause overlay, not Play Again, and not the
+        # one scene change that happens outside a tick, the scripted restart.
+        # The desktop keyboard defaults ride the same session: X rotates and
+        # Space hard drops, unchanged by the controller change.
+        check_scene_sequence(run_records, [
+            "title", "title", "title", "playing", "playing", "playing",
+            "paused", "paused", "paused", "playing", "playing", "playing",
+            "playing", "gameover", "gameover", "gameover",
+            "playing", "playing", "paused", "paused", "title", "playing",
+            "playing", "paused", "paused", "title", "title", "title"],
+            session + "/scene-sequence")
+        # D-pad up still moves the cursor up on every menu it serves: the
+        # title cursor wraps up to QUIT, the pause cursor to QUIT TO TITLE,
+        # and the game-over cursor to TITLE (section 4.7).
+        check_field(by_name["title-at-quit"], "menu", "title:3",
+                    session + "/title-menu-up")
+        check_field(by_name["paused-at-quit"], "menu", "pause:3",
+                    session + "/pause-menu-up")
+        check_field(by_name["gameover-at-title"], "menu", "over:1",
+                    session + "/over-menu-up")
+        # X carries nothing: the piece, the board, and the score all stand
+        # exactly where the round's first record left them.
+        idle_fields = ["active", "ghost", "hold", "queue", "board", "settled",
+                       "score"]
+        moved = [k for k in idle_fields
+                 if by_name["x-carries-nothing"].get(k) !=
+                 by_name["playing-start"].get(k)]
+        if moved:
+            fail(session + "/x-carries-nothing",
+                 "the X press moved %s" % moved)
+        else:
+            good(session + "/x-carries-nothing",
+                 "the piece, the board, and the score all stand still")
+        # D-pad up hard drops: the piece locks and the SPEC's 4.6 arithmetic
+        # holds for the drop.
+        delta_check("settled", by_name["x-carries-nothing"],
+                    by_name["up-hard-drops"], 4, session + "/up-drops-locks")
+        hard_drop_arithmetic(session, run_records, "x-carries-nothing",
+                             "up-hard-drops", session + "/up-drop-arithmetic")
+        # The press that returns to play drops no piece: the resume leaves
+        # the board, the score, and the piece exactly as the overlay froze
+        # them, ten ticks after the round resumed.
+        resumed_fields = ["active", "ghost", "hold", "queue", "board",
+                          "settled", "score"]
+        moved = [k for k in resumed_fields
+                 if by_name["resumed-no-drop"].get(k) !=
+                 by_name["up-hard-drops"].get(k)]
+        if moved:
+            fail(session + "/resume-drops-no-piece", "the resume moved %s"
+                 % moved)
+        else:
+            good(session + "/resume-drops-no-piece",
+                 "the board, the score, and the piece held through the resume")
+        # The desktop keyboard defaults are unchanged: X rotates the piece
+        # one clockwise step and Space hard drops it.
+        before_rot = piece_cells(by_name["resumed-no-drop"], "active")[1]
+        after_rot = piece_cells(by_name["keyboard-x-rotates"], "active")[1]
+        if (after_rot - before_rot) % 4 != 1:
+            fail(session + "/keyboard-x-rotates",
+                 "rotation %d -> %d, expected one clockwise step" %
+                 (before_rot, after_rot))
+        else:
+            good(session + "/keyboard-x-rotates",
+                 "rotation %d -> %d" % (before_rot, after_rot))
+        delta_check("settled", by_name["keyboard-x-rotates"],
+                    by_name["keyboard-space-drops"], 4,
+                    session + "/keyboard-space-drops")
+        hard_drop_arithmetic(session, run_records, "keyboard-x-rotates",
+                             "keyboard-space-drops",
+                             session + "/keyboard-drop-arithmetic")
+        # Play Again returns to play without dropping the fresh round's
+        # first piece: nothing settles and no score accrues ten ticks in.
+        check_field(by_name["play-again-no-drop"], "settled", "0",
+                    session + "/play-again-no-drop")
+        check_field(by_name["play-again-no-drop"], "score", "0",
+                    session + "/play-again-no-score")
+        # The scripted restart is the one scene change that happens outside a
+        # tick, so the queued D-pad-up press reaches a round already in play:
+        # the return-to-play gate spends its gameplay edge and the fresh
+        # round's first piece does not drop.
+        check_field(by_name["restart-no-drop"], "settled", "0",
+                    session + "/restart-no-drop")
+        check_field(by_name["restart-no-drop-later"], "settled", "0",
+                    session + "/restart-no-drop-later")
+        check_field(by_name["restart-no-drop-later"], "score", "0",
+                    session + "/restart-no-score")
+        # The same proof from the per-tick input log: the tick that follows
+        # the restart marker carries the menu edge of the queued press and no
+        # gameplay edge at all, because the platform layer spent it before
+        # the round saw the frame.
+        rule = session + "/restart-edge-spent"
+        if not os.path.isfile(input_log):
+            fail(rule, "missing %s" % input_log)
+        else:
+            with open(input_log) as handle:
+                lines = handle.read().splitlines()
+            marker = next((i for i, line in enumerate(lines)
+                           if line == "script restart"), None)
+            ticks_after = [line for line in lines[marker + 1:]
+                           if line.startswith("tick=")] if marker is not None \
+                else []
+            if marker is None or not ticks_after:
+                fail(rule, "no tick follows the script restart marker")
+            else:
+                first = ticks_after[0]
+                match = re.search(r"drop=(\d)", first)
+                menu = re.search(r"menu=(\d{4})", first)
+                if match is None or menu is None:
+                    fail(rule, "the tick line %s names no drop or menu" % first)
+                elif match.group(1) != "0" or menu.group(1) != "1000":
+                    fail(rule, "the tick after the restart is drop=%s menu=%s,"
+                         " expected drop=0 menu=1000" %
+                         (match.group(1), menu.group(1)))
+                else:
+                    good(rule, "the first tick after the restart carries the"
+                         " menu edge alone")
+        check_field(by_name["quit-confirmed"], "quit", "1",
+                    session + "/quit-confirmed")
+        check_log(session, log_path, ["Clean shutdown", "Scene title -> playing"])
     elif session == "normal-game-clears":
         # A play-only session: the title appears only before the round starts
         # and every later record is playing or paused, ending resumed.
@@ -2309,36 +2777,95 @@ def check_session(run_dir, session):
         check_settings_path(session, stages[-1]["after"], True, True, True,
                             True, 5, False, rule=session + "/final-settings")
     elif session in ("portrait-keyboard", "portrait-pad"):
-        # The staged portrait sessions of task T055. Stage one runs landscape,
-        # walks to the seventh OPTIONS row, and selects it: the preference
-        # flips to portrait, the settings file carries it, and the running
-        # process keeps its landscape layout because the saved value applies
-        # at the next launch. Stage two is that launch: the orientation line
-        # it restores names portrait, the startup applies the turned canvas,
-        # and a whole round plays on the rotated table of the session's
-        # device - keyboard or pad - through the pause overlay and the
-        # game-over screen, with the reference replaying the same script on
-        # the same rotated tables (the stage stream comparison above). The
-        # pins below add what the stream cannot name: the rotated pixels and
-        # the rotated mapping of the device.
+        # The staged portrait sessions of tasks T055 and T068. Stage one runs
+        # landscape, walks to the seventh OPTIONS row, and selects it with a
+        # direction held across the press: the session turns at once, inside
+        # the tick that consumed the select edge, and the rest of the stage
+        # plays the turned session on the rotated table of the session's
+        # device - the title walk, a round, the pause overlay - then turns
+        # back to landscape and to portrait again, so the stage proves the
+        # portrait turn, the landscape turn, and repeated changes in one
+        # process, and it leaves the settings file on portrait for the
+        # relaunch. Stage two is that relaunch: the orientation line it
+        # restores names portrait, and a whole round plays on the rotated
+        # table through the pause overlay and the game-over screen, with the
+        # reference replaying the same script on the same rotated tables (the
+        # stage stream comparison above). The pins below add what the stream
+        # cannot name: the turned pixels, the rotated mapping of the device,
+        # and the input the turn spent.
         device = "keyboard" if session == "portrait-keyboard" else "pad"
         stage = stages[0]
-        stage_records = records["stage1"]
-        stage_by_name = {r["check"]: r for r in stage_records}
+        stage_by_name = {r["check"]: r for r in records["stage1"]}
         check_field(stage_by_name["title-at-options"], "menu", "title:2",
                     "%s/stage1-options-item" % session)
         check_field(stage_by_name["options-orientation-row"], "menu",
                     "options:6", "%s/stage1-orientation-row" % session)
-        check_field(stage_by_name["orientation-toggled"], "menu", "options:6",
-                    "%s/stage1-select-keeps-the-row" % session)
+        check_field(stage_by_name["orientation-portrait-live"], "menu",
+                    "options:6", "%s/stage1-select-keeps-the-row" % session)
+        check_field(stage_by_name["title-at-start"], "menu", "title:0",
+                    "%s/stage1-title-walks-up" % session)
+        check_field(stage_by_name["paused-portrait"], "scene", "paused",
+                    "%s/stage1-pause" % session)
+        check_field(stage_by_name["paused-portrait"], "menu", "pause:0",
+                    "%s/stage1-pause-opens-on-resume" % session)
+        check_field(stage_by_name["paused-at-quit"], "menu", "pause:3",
+                    "%s/stage1-rotated-menu-up-wraps" % session)
+        check_field(stage_by_name["title-after-round"], "scene", "title",
+                    "%s/stage1-round-abandoned" % session)
+        check_field(stage_by_name["orientation-landscape-live"], "menu",
+                    "options:6", "%s/stage1-second-select-keeps-the-row"
+                    % session)
+        check_field(stage_by_name["orientation-portrait-again"], "menu",
+                    "options:6", "%s/stage1-third-select-keeps-the-row"
+                    % session)
+        check_field(stage_by_name["title-at-quit"], "menu", "title:3",
+                    "%s/stage1-rotated-title-walks-down" % session)
         check_field(stage_by_name["quit-confirmed"], "quit", "1",
                     "%s/stage1-quit" % session)
+        # The round between the first and second turn plays the rotated
+        # frame: the logical right of the turned grip moves the piece right,
+        # the logical left moves it back, the clockwise rotation of the
+        # reversed cluster turns it once, and the logical up hard drops and
+        # locks four cells.
+        check_field(stage_by_name["playing-portrait"], "scene", "playing",
+                    "%s/stage1-round-started" % session)
+        check_field(stage_by_name["playing-portrait"], "active", "T,0,3,0",
+                    "%s/stage1-spawn" % session)
+        check_field(stage_by_name["moved-right"], "active", "T,0,4,0",
+                    "%s/stage1-rotated-right" % session)
+        check_field(stage_by_name["moved-left"], "active", "T,0,3,0",
+                    "%s/stage1-rotated-left" % session)
+        check_field(stage_by_name["rotated-cw"], "active", "T,1,3,0",
+                    "%s/stage1-rotated-clockwise" % session)
+        delta_check("settled", stage_by_name["rotated-cw"],
+                    stage_by_name["first-lock"], 4,
+                    "%s/stage1-rotated-hard-drop" % session)
+        # The geometry of both frames from pixels of one process: the
+        # landscape page before the first select, the portrait options page
+        # and the portrait play scene after it, the portrait page the session
+        # still draws when it reopens the screen before the second select, and
+        # the landscape page again after the turn back.
         for name in ("options-sound-row", "options-orientation-row",
-                     "orientation-toggled"):
+                     "orientation-landscape-live"):
             check_options_screen_layout(session, stage_by_name[name],
                                         "%s/stage1-layout-%s" % (session,
                                                                  name))
-        # The stored preference flipped and nothing else moved.
+        for name in ("options-row-again", "orientation-portrait-live",
+                     "orientation-portrait-again"):
+            check_portrait_options_layout(session, stage_by_name[name],
+                                          "%s/stage1-turned-layout-%s" %
+                                          (session, name))
+        check_portrait_play_frame(session, stage_by_name["playing-portrait"],
+                                  "%s/stage1-turned-play-frame" % session)
+        for name in ("title-portrait", "title-final"):
+            check_portrait_page_quiet(session, stage_by_name[name],
+                                      "%s/stage1-quiet-%s" % (session, name))
+        # The turn spends the input that crossed it: the select edge, the
+        # held direction of the probe press, and every pending edge.
+        check_turn_spends_input(session, stage["input_log"],
+                                "%s/stage1-turn-spends-input" % session,
+                                probe_bit="L")
+        # The stored preference ended on portrait and nothing else moved.
         check_settings_path(session, stage["after"], True, True, True, True,
                             5, False, rule="%s/stage1-settings" % session,
                             orientation="portrait")
@@ -2347,12 +2874,27 @@ def check_session(run_dir, session):
             settings_log_line(True, True, True, True, 5, False, "not found",
                               "landscape"),
             "Orientation: landscape (960 x 544 canvas, 27 px cells)",
-            "Orientation preference portrait; it applies at the next launch",
+            "Orientation: portrait (544 x 960 canvas, 40 px cells)",
             "Scene title -> options", "Scene options -> title",
+            "Scene title -> playing", "Scene playing -> paused",
+            "Scene paused -> title",
         ])
         check_log(session, stage["input_log"], [
             "orientation start=landscape", "orientation portrait status=ok",
+            "orientation landscape status=ok",
+            "orientation portrait status=ok",
         ], name="%s/stage1-input-log" % session)
+        # The next-launch-only wording is gone: the row applies at once, so
+        # neither log may promise a relaunch any more (task T068).
+        for path, label in ((stage["log"], "log"),
+                            (stage["input_log"], "input-log")):
+            with open(path) as handle:
+                if "next launch" in handle.read():
+                    fail("%s/stage1-no-next-launch-%s" % (session, label),
+                         "%s still promises the next launch" % path)
+                else:
+                    good("%s/stage1-no-next-launch-%s" % (session, label),
+                         "no next-launch wording")
 
         stage = stages[1]
         stage_records = records["stage2"]
@@ -2428,6 +2970,151 @@ def check_session(run_dir, session):
         else:
             check_high_score_file(session, stage["save"], int(gameover["high"]),
                                   "%s/stage2-saved-record" % session)
+    elif session == "controls-keyboard":
+        # The customization session on the keyboard (task T066): the screen
+        # opens from CONTROLS, a capture applies, a conflict is rejected, a
+        # repeat cancels, the way back out works, the round follows the new
+        # table, and RESTORE DEFAULTS returns the file to the section 5 bytes.
+        check_scene_sequence(run_records, [
+            "title", "title", "controls", "rebind", "rebind", "rebind", "rebind", "rebind", "rebind", "rebind", "controls", "title", "playing", "playing", "playing", "paused", "paused", "title", "controls", "rebind", "rebind", "rebind", "controls", "title", "playing", "playing", "paused", "title", "title", "title"],
+            session + "/scene-sequence")
+        check_rebind_flow(session, by_name, input_log, "key")
+        # Menu egress by keyboard: Esc leaves the customization screen, Esc
+        # again leaves the mappings page, and the title cursor survives both.
+        check_field(by_name["controls-custom"], "scene", "controls",
+                    session + "/egress-to-mappings")
+        check_field(by_name["title-back"], "menu", "title:1",
+                    session + "/egress-to-title")
+        check_field(by_name["title-restored"], "menu", "title:1",
+                    session + "/egress-after-restore")
+        check_field(by_name["quit-confirmed"], "quit", "1",
+                    session + "/quit")
+        check_log(session, log_path, [
+            "Clean shutdown",
+            "Controls: default bindings (not found)",
+            "Binding ROTATE CW to z rejected: that control already performs "
+            "ROTATE CCW",
+            "Scene rebind -> controls",
+            "Scene controls -> rebind",
+        ])
+        check_controls_path(session, os.path.join(save_dir, "controls.dat"),
+                            None, session + "/restored-file")
+    elif session == "controls-pad":
+        # The same walk on the developer virtual controller, plus the unplug
+        # and replug: a held direction dies with the pad, the replug opens a
+        # new source on the same table, and the custom binding still answers.
+        check_scene_sequence(run_records, [
+            "title", "title", "controls", "rebind", "rebind", "rebind", "rebind", "rebind", "rebind", "rebind", "controls", "title", "playing", "playing", "playing", "playing", "playing", "paused", "paused", "title", "controls", "rebind", "rebind", "rebind", "controls", "title", "playing", "playing", "paused", "paused", "title", "title", "title"],
+            session + "/scene-sequence")
+        check_rebind_flow(session, by_name, input_log, "pad")
+        check_field(by_name["dpad-up-dead"], "settled", "0",
+                    session + "/freed-control-dead")
+        # The unplug itself changed nothing the player did not ask for: the
+        # one held-left press moved the piece a single column before the pad
+        # vanished, and across the detach the piece keeps its identity,
+        # rotation, and row, nothing settles, no score moves, and no DAS
+        # repeat ever fires from a dead source.
+        detach_before = piece_cells(by_name["x-harddrops"], "active")
+        detach_after = piece_cells(by_name["detached-mid-hold"], "active")
+        if (detach_before is None or detach_after is None or
+                detach_after[0] != detach_before[0] or
+                detach_after[1] != detach_before[1] or
+                detach_after[2] != detach_before[2] - 1 or
+                detach_after[3] != detach_before[3] or
+                by_name["detached-mid-hold"].get("settled") !=
+                by_name["x-harddrops"].get("settled") or
+                by_name["detached-mid-hold"].get("score") !=
+                by_name["x-harddrops"].get("score")):
+            fail(session + "/detach-keeps-round",
+                 "state moved across the unplug: %s then %s" %
+                 (by_name["x-harddrops"].get("active"),
+                  by_name["detached-mid-hold"].get("active")))
+        else:
+            good(session + "/detach-keeps-round",
+                 "the unplug kept every counter and cost only the held level")
+        # The replug drop settles the spawned piece beside the first: eight
+        # cells, and the custom binding answers on the new source.
+        check_field(by_name["replugged-x-harddrops"], "settled", "8",
+                    session + "/replug-keeps-binding")
+        check_field(by_name["quit-confirmed"], "quit", "1",
+                    session + "/quit")
+        check_log(session, log_path, [
+            "Clean shutdown",
+            "Controls: default bindings (not found)",
+            "Game controller \"STACKFALL Virtual Pad\" (instance",
+            "removed",
+            "Virtual controller attached as device",
+        ])
+        check_controls_path(session, os.path.join(save_dir, "controls.dat"),
+                            None, session + "/restored-file")
+    elif session == "controls-relaunch":
+        # The staged relaunch: stage one writes both custom tables, stage two
+        # reads them back at startup, plays on them, and restores the
+        # defaults, so the file ends on the section 5 bytes.
+        stage = stages[0]
+        stage_by_name = {r["check"]: r for r in records["stage1"]}
+        check_field(stage_by_name["rebind-harddrop-d"], "menu", "rebind:5",
+                    session + "/stage1-keyboard-row")
+        check_log(session, stage["log"], [
+            "Clean shutdown",
+            "Controls: default bindings (not found)",
+        ], name="%s/stage1-log" % session)
+        custom = {("landscape", "key"): {"harddrop": "d"},
+                  ("landscape", "pad"): {"harddrop": "x"}}
+        check_controls_path(session, stage["controls_after"], custom,
+                            session + "/stage1-wrote-custom-file")
+        stage = stages[1]
+        stage_by_name = {r["check"]: r for r in records["stage2"]}
+        check_controls_path(session, stage["controls_before"], custom,
+                            session + "/stage2-read-custom-file")
+        check_field(stage_by_name["space-dead"], "settled", "0",
+                    session + "/stage2-space-dead")
+        check_field(stage_by_name["d-harddrops"], "settled", "4",
+                    session + "/stage2-d-drops")
+        check_field(stage_by_name["pad-x-harddrops"], "settled", "8",
+                    session + "/stage2-pad-x-drops")
+        check_field(stage_by_name["pad-up-dead"], "settled", "8",
+                    session + "/stage2-pad-up-dead")
+        check_field(stage_by_name["space-harddrops-again"], "settled", "4",
+                    session + "/stage2-space-drops-again")
+        check_log(session, stage["log"], [
+            "Clean shutdown",
+            "Controls: custom bindings (ok)",
+        ], name="%s/stage2-log" % session)
+        check_log(session, stage["input_log"], [
+            "controls start=custom status=ok",
+            "controls restore result=defaults",
+        ], name="%s/stage2-input-log" % session)
+        check_controls_path(session, stage["controls_after"], None,
+                            session + "/stage2-restored-file")
+    elif session == "controls-invalid":
+        # The damaged binding file: one key bound to two gameplay actions.
+        # The session recovers every table to the section 5 defaults, keeps
+        # every menu reachable, and leaves the file exactly as it found it.
+        stage = stages[0]
+        stage_by_name = {r["check"]: r for r in records["stage1"]}
+        broken = {("landscape", "key"): {"harddrop": "z"}}
+        check_controls_path(session, stage["controls_before"], broken,
+                            session + "/damaged-file-staged")
+        check_controls_path(session, stage["controls_after"], broken,
+                            session + "/damaged-file-untouched")
+        check_field(stage_by_name["controls-recovered"], "scene", "controls",
+                    session + "/menus-reachable")
+        check_field(stage_by_name["rebind-open"], "menu", "rebind:0",
+                    session + "/rebind-reachable")
+        check_field(stage_by_name["d-dead"], "settled", "0",
+                    session + "/d-carries-nothing")
+        check_field(stage_by_name["space-harddrops"], "settled", "4",
+                    session + "/space-hard-drops")
+        check_field(stage_by_name["quit-confirmed"], "quit", "1",
+                    session + "/quit")
+        check_log(session, stage["log"], [
+            "Clean shutdown",
+            "Controls: default bindings (invalid)",
+        ], name="%s/stage1-log" % session)
+        check_log(session, stage["input_log"], [
+            "controls start=default status=invalid",
+        ], name="%s/stage1-input-log" % session)
     else:
         fail("%s/unknown" % session, "no expectations defined")
 

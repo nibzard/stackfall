@@ -27,6 +27,7 @@
 
 #include <array>
 
+#include "stackfall/bindings.hpp"
 #include "stackfall/game.hpp"
 #include "stackfall/music.hpp"
 #include "stackfall/types.hpp"
@@ -264,16 +265,33 @@ constexpr SDL_Rect titlePreviewBox(int index) {
                   kTitlePreviewBoxWidth, kTitlePreviewBoxHeight};
 }
 
-// The controls page: three left-aligned columns under one heading.
+// The controls page: three left-aligned columns under one heading. Since
+// task T066 the eight gameplay rows read the binding tables the renderer
+// mirrors, so the page shows whatever the player bound; the last three rows
+// name the fixed menu roles, which no binding moves. Eleven rows at the
+// 26 px height span y = 142..427, so the footer keeps its place.
 inline constexpr int kControlsHeadingY = 44;
 inline constexpr int kControlsHeadingScale = 4;
 inline constexpr int kControlsHeaderY = 112;
 inline constexpr int kControlsFirstRowY = 142;
 inline constexpr int kControlsRowHeight = 26;
+inline constexpr int kControlsRowCount = 11;
 inline constexpr int kControlsFooterY = 452;
 inline constexpr int kControlsGamepadX = 110;
 inline constexpr int kControlsKeyboardX = 410;
 inline constexpr int kControlsActionX = 710;
+
+// The controls customization page of task T066, behind the mappings page: the
+// same three columns, eight action rows the player can rebind, one RESTORE
+// DEFAULTS row, one status line for the outcome of the last capture or
+// restore, and the footer that names the capture's rules. Landscape fits the
+// nine rows at 30 px - y = 142..409 - with the restore row at 382, the status
+// line under it, and the footer above the canvas edge.
+inline constexpr int kRebindFirstRowY = 142;
+inline constexpr int kRebindRowHeight = 30;
+inline constexpr int kRebindRestoreY = 382;
+inline constexpr int kRebindMessageY = 428;
+inline constexpr int kRebindFooterY = 464;
 
 // The options page (tasks T040, T044, and T062): one heading, the eight
 // setting rows at the shared menu metrics, one footer. The rows read their
@@ -337,7 +355,17 @@ inline constexpr int kPControlsFirstRowY = 176;
 inline constexpr int kPControlsRowHeight = 44;
 inline constexpr int kPControlsGamepadX = 64;
 inline constexpr int kPControlsKeyboardX = 278;
-inline constexpr int kPControlsFooterY = 640;
+inline constexpr int kPControlsFooterY = 700;
+
+// The portrait customization page: the same stacked rows as the portrait
+// mappings page - one action heading over its two mappings - eight of them
+// plus the restore row, the status line, and the footer, all inside the tall
+// canvas with room below for the quiet rows.
+inline constexpr int kPRebindFirstRowY = 176;
+inline constexpr int kPRebindRowHeight = 56;
+inline constexpr int kPRebindRestoreY = 632;
+inline constexpr int kPRebindMessageY = 700;
+inline constexpr int kPRebindFooterY = 748;
 
 inline constexpr int kPOptionsHeadingY = 64;
 inline constexpr int kPOptionsMenuY = 200;
@@ -586,19 +614,14 @@ class Renderer {
   int nextPreviews() const noexcept;
   void setGrayscale(bool on) noexcept;
   bool grayscale() const noexcept;
-  // The orientation this renderer draws (task T055). The platform layer sets
-  // it once at startup from the persisted preference and never mid-session,
-  // because the layout, not just a color, depends on it: portrait turns the
-  // scene a quarter and moves to the portrait geometry above. Defaults to
+  // The orientation this renderer draws (tasks T055 and T068). The platform
+  // layer sets it at startup from the persisted preference and again on every
+  // ORIENTATION select, which turns the running session at once: the layout,
+  // not just a color, depends on it, so portrait turns the scene a quarter
+  // and moves to the portrait geometry above in the same frame. Defaults to
   // landscape, the recovery value of the settings file.
   void setOrientation(Orientation orientation) noexcept;
   Orientation orientation() const noexcept;
-  // The ORIENTATION row's own value, which the options screen shows and the
-  // settings file keeps. Selecting the row changes this mirror at once while
-  // the layout above stays until the next launch, so the row always names
-  // what the next launch draws (task T055).
-  void setOrientationPreference(Orientation orientation) noexcept;
-  Orientation orientationPreference() const noexcept;
   // The music settings this renderer mirrors for the MUSIC row and the music
   // settings page (task T062): the pool mode, both volume steps of the
   // eleven-step table, and the title of the track the director is playing,
@@ -612,6 +635,20 @@ class Renderer {
   int effectsVolume() const noexcept;
   void setMusicTrackTitle(const char* title) noexcept;
   const char* musicTrackTitle() const noexcept;
+  // The binding tables the controls page and the customization page draw
+  // (task T066). The platform layer owns the tables - the controls file at
+  // startup, the capture and RESTORE DEFAULTS afterwards - and pushes them
+  // here, exactly as it pushes the preference values of the options rows.
+  void setControlBindings(const ControlBindings& bindings) noexcept;
+  const ControlBindings& controlBindings() const noexcept;
+  // The customization page's own state, which the rules core never holds: the
+  // row whose capture is running (-1 while none is) and the status line of the
+  // last capture, rejection, cancellation, or restore. An empty message draws
+  // nothing, so a page that just opened is quiet.
+  void setRebindCaptureRow(int row) noexcept;
+  int rebindCaptureRow() const noexcept;
+  void setRebindMessage(const char* text) noexcept;
+  const char* rebindMessage() const noexcept;
 
   // The glyph scale one statistics value draws at: the full value scale while
   // the number fits the statistics column, one step smaller when it does not,
@@ -636,6 +673,7 @@ class Renderer {
   void drawPlayScene(const Game& game) const;
   void drawTitleScreen(const Game& game) const;
   void drawControlsScreen(const char* footer) const;
+  void drawRebindScreen(const Game& game) const;
   void drawOptionsScreen(const Game& game) const;
   void drawMusicOptionsScreen(const Game& game) const;
   void drawPauseOverlay(const Game& game) const;
@@ -726,6 +764,17 @@ class Renderer {
   const char* pauseHintText() const noexcept {
     return portrait() ? "B CONFIRM - A RESUME" : "A CONFIRM - B RESUME";
   }
+  // The customization page's two footers (task T066): the ordinary menu hint
+  // while no capture runs, and the capture's own rule while one does. A
+  // capture ends without change on the control the action already uses, so
+  // the hint names that.
+  const char* rebindHintText() const noexcept {
+    return portrait() ? "LEFT/RIGHT CHOOSE - B CHANGE - A BACK"
+                      : "UP/DOWN CHOOSE - A CHANGE - B BACK";
+  }
+  const char* rebindCaptureHintText() const noexcept {
+    return "PRESS A CONTROL - SAME ONE CANCELS";
+  }
 
   // The palette of one piece under the current settings: grayscale on swaps
   // the color palettes for the gray ones everywhere the play scene draws a
@@ -741,11 +790,13 @@ class Renderer {
   int nextPreviews_ = kPreviewCount;
   bool grayscale_ = false;
   Orientation orientation_ = Orientation::Landscape;
-  Orientation orientationPreference_ = Orientation::Landscape;
   MusicMode musicMode_ = MusicMode::Auto;
   int musicVolume_ = 6;
   int effectsVolume_ = 8;
   const char* musicTrackTitle_ = "";
+  ControlBindings bindings_ = defaultControlBindings();
+  int rebindCaptureRow_ = -1;
+  const char* rebindMessage_ = "";
 };
 
 }  // namespace stackfall

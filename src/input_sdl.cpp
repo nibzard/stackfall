@@ -1,17 +1,23 @@
 // SDL input translation for STACKFALL (specification section 5, task T009).
 //
-// This file holds the two mapping tables of section 5 and nothing else knows
-// a scancode or a controller button:
+// This file holds the two SDL device tables and nothing else knows a scancode
+// or a controller button:
 //
-//   * kControllerBindings maps SDL game controller buttons. If the physical
-//     RG503 markings disagree with the SDL button letters across layouts,
-//     change this table only (specification section 5).
-//   * kKeyboardBindings maps keyboard scancodes for desktop play and tests.
+//   * kKeyboardScancodes maps the rebindable keyboard controls of
+//     stackfall/bindings.hpp onto SDL scancodes for desktop play and tests.
+//   * kControllerButtons maps the ten rebindable controller controls onto SDL
+//     game controller buttons. If the physical RG503 markings disagree with
+//     the SDL button letters across layouts, change this table only
+//     (specification section 5).
 //
-// Everything the tables produce is a GameAction for the SDL-free InputAdapter
-// in stackfall/input.hpp, which owns the once-per-tick edge semantics. Events
-// arrive here only after the main loop polled them, and always before the
-// simulation ticks of the same frame (specification section 5).
+// The gameplay actions those controls perform live in the ControlBindings the
+// session owns - the section 5 defaults, the controls file, or whatever the
+// customization screen bound - and the fixed menu roles sit beside them in
+// stackfall/bindings.cpp. Everything the two halves produce is a GameAction
+// for the SDL-free InputAdapter in stackfall/input.hpp, which owns the
+// once-per-tick edge semantics. Events arrive here only after the main loop
+// polled them, and always before the simulation ticks of the same frame
+// (specification section 5).
 
 #include "stackfall/input_sdl.hpp"
 
@@ -24,120 +30,62 @@
 namespace stackfall {
 namespace {
 
-// One mapped device control and the up-to-two actions it performs. Several
-// controls serve two roles: A rotates and confirms a menu item, B rotates the
-// other way and leaves a menu, Enter pauses and confirms, Esc pauses and goes
-// back, Up rotates and moves the menu cursor (specification section 5).
-// kNoGameAction marks an unused secondary slot.
-struct ControllerBinding {
-  SDL_GameControllerButton button;
-  GameAction primary;
-  GameAction secondary;
+// The keyboard half of the device tables, in KeyboardControl order. Scancodes,
+// not keycodes, keep the layout physical: Z stays the bottom-left key whatever
+// the operating system prints on it.
+constexpr SDL_Scancode kKeyboardScancodes[kKeyboardControlCount] = {
+    SDL_SCANCODE_LEFT,      // kKeyboardKeyLeft
+    SDL_SCANCODE_RIGHT,     // kKeyboardKeyRight
+    SDL_SCANCODE_UP,        // kKeyboardKeyUp
+    SDL_SCANCODE_DOWN,      // kKeyboardKeyDown
+    SDL_SCANCODE_SPACE,     // kKeyboardKeySpace
+    SDL_SCANCODE_RETURN,    // kKeyboardKeyEnter
+    SDL_SCANCODE_ESCAPE,    // kKeyboardKeyEscape
+    SDL_SCANCODE_LSHIFT,    // kKeyboardKeyLeftShift
+    SDL_SCANCODE_RSHIFT,    // kKeyboardKeyRightShift
+    SDL_SCANCODE_LCTRL,     // kKeyboardKeyLeftCtrl
+    SDL_SCANCODE_TAB,       // kKeyboardKeyTab
+    SDL_SCANCODE_BACKSPACE, // kKeyboardKeyBackspace
+    SDL_SCANCODE_A,         // kKeyboardKeyA
+    SDL_SCANCODE_B,         // kKeyboardKeyB
+    SDL_SCANCODE_C,         // kKeyboardKeyC
+    SDL_SCANCODE_D,         // kKeyboardKeyD
+    SDL_SCANCODE_E,         // kKeyboardKeyE
+    SDL_SCANCODE_F,         // kKeyboardKeyF
+    SDL_SCANCODE_G,         // kKeyboardKeyG
+    SDL_SCANCODE_H,         // kKeyboardKeyH
+    SDL_SCANCODE_I,         // kKeyboardKeyI
+    SDL_SCANCODE_J,         // kKeyboardKeyJ
+    SDL_SCANCODE_K,         // kKeyboardKeyK
+    SDL_SCANCODE_L,         // kKeyboardKeyL
+    SDL_SCANCODE_N,         // kKeyboardKeyN
+    SDL_SCANCODE_O,         // kKeyboardKeyO
+    SDL_SCANCODE_P,         // kKeyboardKeyP
+    SDL_SCANCODE_R,         // kKeyboardKeyR
+    SDL_SCANCODE_S,         // kKeyboardKeyS
+    SDL_SCANCODE_T,         // kKeyboardKeyT
+    SDL_SCANCODE_U,         // kKeyboardKeyU
+    SDL_SCANCODE_V,         // kKeyboardKeyV
+    SDL_SCANCODE_W,         // kKeyboardKeyW
+    SDL_SCANCODE_X,         // kKeyboardKeyX
+    SDL_SCANCODE_Y,         // kKeyboardKeyY
+    SDL_SCANCODE_Z,         // kKeyboardKeyZ
 };
 
-struct KeyboardBinding {
-  SDL_Scancode scancode;
-  GameAction primary;
-  GameAction secondary;
+// The controller half, in ControllerControl order: the ABXY cluster, the left
+// shoulder, Start, and the four D-pad arms of the RG503 layout.
+constexpr SDL_GameControllerButton kControllerButtons[kControllerControlCount] = {
+    SDL_CONTROLLER_BUTTON_A,             // kControllerButtonA
+    SDL_CONTROLLER_BUTTON_B,             // kControllerButtonB
+    SDL_CONTROLLER_BUTTON_X,             // kControllerButtonX
+    SDL_CONTROLLER_BUTTON_Y,             // kControllerButtonY
+    SDL_CONTROLLER_BUTTON_LEFTSHOULDER,  // kControllerButtonL1
+    SDL_CONTROLLER_BUTTON_START,         // kControllerButtonStart
+    SDL_CONTROLLER_BUTTON_DPAD_UP,       // kControllerButtonUp
+    SDL_CONTROLLER_BUTTON_DPAD_DOWN,     // kControllerButtonDown
+    SDL_CONTROLLER_BUTTON_DPAD_LEFT,     // kControllerButtonLeft
+    SDL_CONTROLLER_BUTTON_DPAD_RIGHT,    // kControllerButtonRight
 };
-
-// The section 5 RG503 table: D-pad move and soft drop, A clockwise, B
-// counter-clockwise, X hard drop, Y or left shoulder hold, Start pause, and
-// the menu roles of A, B, and the D-pad: D-pad up and down move the menu
-// cursor, so both carry their menu action next to any gameplay action.
-constexpr ControllerBinding kControllerBindings[] = {
-    {SDL_CONTROLLER_BUTTON_DPAD_LEFT, GameAction::Left, kNoGameAction},
-    {SDL_CONTROLLER_BUTTON_DPAD_RIGHT, GameAction::Right, kNoGameAction},
-    {SDL_CONTROLLER_BUTTON_DPAD_DOWN, GameAction::Down, GameAction::MenuDown},
-    {SDL_CONTROLLER_BUTTON_DPAD_UP, GameAction::MenuUp, kNoGameAction},
-    {SDL_CONTROLLER_BUTTON_A, GameAction::RotateCW, GameAction::MenuSelect},
-    {SDL_CONTROLLER_BUTTON_B, GameAction::RotateCCW, GameAction::MenuBack},
-    {SDL_CONTROLLER_BUTTON_X, GameAction::HardDrop, kNoGameAction},
-    {SDL_CONTROLLER_BUTTON_Y, GameAction::Hold, kNoGameAction},
-    {SDL_CONTROLLER_BUTTON_LEFTSHOULDER, GameAction::Hold, kNoGameAction},
-    {SDL_CONTROLLER_BUTTON_START, GameAction::Pause, kNoGameAction},
-};
-constexpr int kControllerBindingCount =
-    static_cast<int>(sizeof(kControllerBindings) /
-                     sizeof(kControllerBindings[0]));
-
-// The section 5 desktop table: arrows move and soft drop, X or Up rotate
-// clockwise, Z rotates counter-clockwise, Space hard drops, C or left Shift
-// holds, Enter or Esc pauses, plus the menu roles of Enter, Esc, Up, and
-// Down. Scancodes, not keycodes, keep the layout physical: Z stays the
-// bottom-left key whatever the operating system prints on it.
-constexpr KeyboardBinding kKeyboardBindings[] = {
-    {SDL_SCANCODE_LEFT, GameAction::Left, kNoGameAction},
-    {SDL_SCANCODE_RIGHT, GameAction::Right, kNoGameAction},
-    {SDL_SCANCODE_DOWN, GameAction::Down, GameAction::MenuDown},
-    {SDL_SCANCODE_UP, GameAction::RotateCW, GameAction::MenuUp},
-    {SDL_SCANCODE_X, GameAction::RotateCW, kNoGameAction},
-    {SDL_SCANCODE_Z, GameAction::RotateCCW, kNoGameAction},
-    {SDL_SCANCODE_SPACE, GameAction::HardDrop, kNoGameAction},
-    {SDL_SCANCODE_C, GameAction::Hold, kNoGameAction},
-    {SDL_SCANCODE_LSHIFT, GameAction::Hold, kNoGameAction},
-    {SDL_SCANCODE_RETURN, GameAction::Pause, GameAction::MenuSelect},
-    {SDL_SCANCODE_ESCAPE, GameAction::Pause, GameAction::MenuBack},
-};
-constexpr int kKeyboardBindingCount =
-    static_cast<int>(sizeof(kKeyboardBindings) / sizeof(kKeyboardBindings[0]));
-
-// Writes the actions of `binding` into `actions` and returns how many: zero
-// for an unmapped control, one or two otherwise.
-template <typename Binding>
-int bindingActions(const Binding& binding, GameAction* actions) {
-  int count = 0;
-  if (binding.primary != kNoGameAction) {
-    actions[count++] = binding.primary;
-  }
-  if (binding.secondary != kNoGameAction) {
-    actions[count++] = binding.secondary;
-  }
-  return count;
-}
-
-// The portrait tables of task T055, the rotated mapping
-// notes/design-review.md pins. Every direction keeps its device identity and
-// takes the action whose on-screen direction in the rotated frame matches the
-// direction that press points to: the device D-pad's up, down, left, and right
-// become move right, move left, menu up, and soft drop plus menu down, because
-// the turned device points them there. The cluster reverses each pair under
-// the left thumb: B rotates clockwise and confirms, A rotates the other way
-// and goes back, Y hard drops, and X holds. Start and the left shoulder are
-// their own controls, not cluster buttons, so they keep their roles, and so do
-// the keyboard's Enter and Esc.
-constexpr ControllerBinding kPortraitControllerBindings[] = {
-    {SDL_CONTROLLER_BUTTON_DPAD_LEFT, GameAction::MenuUp, kNoGameAction},
-    {SDL_CONTROLLER_BUTTON_DPAD_RIGHT, GameAction::Down, GameAction::MenuDown},
-    {SDL_CONTROLLER_BUTTON_DPAD_DOWN, GameAction::Left, kNoGameAction},
-    {SDL_CONTROLLER_BUTTON_DPAD_UP, GameAction::Right, kNoGameAction},
-    {SDL_CONTROLLER_BUTTON_B, GameAction::RotateCW, GameAction::MenuSelect},
-    {SDL_CONTROLLER_BUTTON_A, GameAction::RotateCCW, GameAction::MenuBack},
-    {SDL_CONTROLLER_BUTTON_Y, GameAction::HardDrop, kNoGameAction},
-    {SDL_CONTROLLER_BUTTON_X, GameAction::Hold, kNoGameAction},
-    {SDL_CONTROLLER_BUTTON_LEFTSHOULDER, GameAction::Hold, kNoGameAction},
-    {SDL_CONTROLLER_BUTTON_START, GameAction::Pause, kNoGameAction},
-};
-
-constexpr KeyboardBinding kPortraitKeyboardBindings[] = {
-    {SDL_SCANCODE_LEFT, GameAction::MenuUp, kNoGameAction},
-    {SDL_SCANCODE_RIGHT, GameAction::Down, GameAction::MenuDown},
-    {SDL_SCANCODE_DOWN, GameAction::Left, kNoGameAction},
-    {SDL_SCANCODE_UP, GameAction::Right, kNoGameAction},
-    {SDL_SCANCODE_Z, GameAction::RotateCW, kNoGameAction},
-    {SDL_SCANCODE_X, GameAction::RotateCCW, kNoGameAction},
-    {SDL_SCANCODE_C, GameAction::HardDrop, kNoGameAction},
-    {SDL_SCANCODE_LSHIFT, GameAction::HardDrop, kNoGameAction},
-    {SDL_SCANCODE_SPACE, GameAction::Hold, kNoGameAction},
-    {SDL_SCANCODE_RETURN, GameAction::Pause, GameAction::MenuSelect},
-    {SDL_SCANCODE_ESCAPE, GameAction::Pause, GameAction::MenuBack},
-};
-constexpr int kPortraitControllerBindingCount =
-    static_cast<int>(sizeof(kPortraitControllerBindings) /
-                     sizeof(kPortraitControllerBindings[0]));
-constexpr int kPortraitKeyboardBindingCount =
-    static_cast<int>(sizeof(kPortraitKeyboardBindings) /
-                     sizeof(kPortraitKeyboardBindings[0]));
 
 // The name of the virtual pad, stable storage for the SDL descriptor.
 constexpr char kVirtualPadName[] = "STACKFALL Virtual Pad";
@@ -156,47 +104,86 @@ constexpr Uint16 kVirtualPadProductId = 0xFA11;
 }  // namespace
 
 // ---------------------------------------------------------------------------
+// The device translations. Both live here so no other translation exists
+// anywhere.
+// ---------------------------------------------------------------------------
+
+SDL_Scancode scancodeOfKeyboardControl(int control) {
+  if (control < 0 || control >= kKeyboardControlCount) {
+    return SDL_SCANCODE_UNKNOWN;
+  }
+  return kKeyboardScancodes[control];
+}
+
+int keyboardControlOfScancode(SDL_Scancode scancode) {
+  for (int control = 0; control < kKeyboardControlCount; ++control) {
+    if (kKeyboardScancodes[control] == scancode) {
+      return control;
+    }
+  }
+  return kNoControl;
+}
+
+SDL_GameControllerButton controllerButtonOfControl(int control) {
+  if (control < 0 || control >= kControllerControlCount) {
+    return SDL_CONTROLLER_BUTTON_INVALID;
+  }
+  return kControllerButtons[control];
+}
+
+int controllerControlOfButton(SDL_GameControllerButton button) {
+  for (int control = 0; control < kControllerControlCount; ++control) {
+    if (kControllerButtons[control] == button) {
+      return control;
+    }
+  }
+  return kNoControl;
+}
+
+// ---------------------------------------------------------------------------
 // Mapping lookups. Both live here so no other translation exists anywhere.
 // ---------------------------------------------------------------------------
 
-int mapControllerButton(SDL_GameControllerButton button, GameAction* actions) {
-  return mapControllerButton(button, Orientation::Landscape, actions);
-}
-
-int mapKeyboardScancode(SDL_Scancode scancode, GameAction* actions) {
-  return mapKeyboardScancode(scancode, Orientation::Landscape, actions);
-}
-
 int mapControllerButton(SDL_GameControllerButton button,
-                        Orientation orientation, GameAction* actions) {
-  const ControllerBinding* table = kControllerBindings;
-  int count = kControllerBindingCount;
-  if (orientation == Orientation::Portrait) {
-    table = kPortraitControllerBindings;
-    count = kPortraitControllerBindingCount;
+                        Orientation orientation, const ControlBindings& bindings,
+                        GameAction* actions) {
+  const int control = controllerControlOfButton(button);
+  if (control == kNoControl) {
+    return 0;
   }
-  for (int index = 0; index < count; ++index) {
-    if (table[index].button == button) {
-      return bindingActions(table[index], actions);
-    }
+  const ControlTable& table =
+      bindings.table(DeviceKind::Controller, orientation);
+  int count = 0;
+  const int action = actionUsingControl(table, control);
+  if (action >= 0) {
+    actions[count++] = kRebindableActions[action];
   }
-  return 0;
+  const GameAction role = menuRoleOfControl(DeviceKind::Controller, control,
+                                            orientation);
+  if (role != kNoGameAction) {
+    actions[count++] = role;
+  }
+  return count;
 }
 
 int mapKeyboardScancode(SDL_Scancode scancode, Orientation orientation,
-                        GameAction* actions) {
-  const KeyboardBinding* table = kKeyboardBindings;
-  int count = kKeyboardBindingCount;
-  if (orientation == Orientation::Portrait) {
-    table = kPortraitKeyboardBindings;
-    count = kPortraitKeyboardBindingCount;
+                        const ControlBindings& bindings, GameAction* actions) {
+  const int control = keyboardControlOfScancode(scancode);
+  if (control == kNoControl) {
+    return 0;
   }
-  for (int index = 0; index < count; ++index) {
-    if (table[index].scancode == scancode) {
-      return bindingActions(table[index], actions);
-    }
+  const ControlTable& table = bindings.table(DeviceKind::Keyboard, orientation);
+  int count = 0;
+  const int action = actionUsingControl(table, control);
+  if (action >= 0) {
+    actions[count++] = kRebindableActions[action];
   }
-  return 0;
+  const GameAction role =
+      menuRoleOfControl(DeviceKind::Keyboard, control, orientation);
+  if (role != kNoGameAction) {
+    actions[count++] = role;
+  }
+  return count;
 }
 
 // ---------------------------------------------------------------------------
@@ -242,14 +229,26 @@ void SdlInput::handleEvent(const SDL_Event& event) {
     case SDL_KEYDOWN:
     case SDL_KEYUP: {
       // An auto-repeated key down carries no fresh edge, and the level is
-      // already held, so repeats change nothing.
+      // already held, so repeats change nothing. A capture waits for a real
+      // press the same way (task T066).
       if (event.type == SDL_KEYDOWN && event.key.repeat != 0) {
+        break;
+      }
+      const int control = keyboardControlOfScancode(event.key.keysym.scancode);
+      const bool pressed = event.type == SDL_KEYDOWN;
+      if (pressed && control != kNoControl && capturing_) {
+        // The customization screen wants the control itself, not its action:
+        // the press that names a new binding never reaches the adapter, so it
+        // cannot rotate a piece or move a cursor on its way in. A release is
+        // never a capture; it only clears the level the press raised, which a
+        // captured press never did.
+        capture_ = InputCapture{true, DeviceKind::Keyboard, control};
+        capturing_ = false;
         break;
       }
       GameAction actions[2];
       const int count = mapKeyboardScancode(event.key.keysym.scancode,
-                                            orientation_, actions);
-      const bool pressed = event.type == SDL_KEYDOWN;
+                                            orientation_, bindings_, actions);
       for (int i = 0; i < count; ++i) {
         onButton(kKeyboardInputSource, actions[i], pressed);
       }
@@ -257,10 +256,18 @@ void SdlInput::handleEvent(const SDL_Event& event) {
     }
     case SDL_CONTROLLERBUTTONDOWN:
     case SDL_CONTROLLERBUTTONUP: {
+      const auto button =
+          static_cast<SDL_GameControllerButton>(event.cbutton.button);
+      const int control = controllerControlOfButton(button);
+      if (control != kNoControl && capturing_ &&
+          event.type == SDL_CONTROLLERBUTTONDOWN) {
+        capture_ = InputCapture{true, DeviceKind::Controller, control};
+        capturing_ = false;
+        break;
+      }
       GameAction actions[2];
-      const int count = mapControllerButton(
-          static_cast<SDL_GameControllerButton>(event.cbutton.button),
-          orientation_, actions);
+      const int count =
+          mapControllerButton(button, orientation_, bindings_, actions);
       const bool pressed = event.type == SDL_CONTROLLERBUTTONDOWN;
       const int source = static_cast<int>(event.cbutton.which);
       for (int i = 0; i < count; ++i) {
@@ -271,7 +278,8 @@ void SdlInput::handleEvent(const SDL_Event& event) {
     case SDL_CONTROLLERDEVICEREMOVED:
       // The disconnected pad stops contributing: its held buttons cannot
       // stick and its unconsumed press edges cannot fire later
-      // (specification section 5).
+      // (specification section 5). A capture in flight survives the loss:
+      // the next press of whichever pad is attached names the control.
       adapter_.dropSource(static_cast<int>(event.cdevice.which));
       break;
     case SDL_WINDOWEVENT:

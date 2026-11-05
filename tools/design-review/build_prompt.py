@@ -41,8 +41,10 @@ The following decisions are approved. Do not report them as defects.
   cleared lines, scoring 100/300/500/800 times level for one to four
   cleared lines.
 - Controls: D-pad moves and soft drops, A rotates clockwise, B rotates
-  counter-clockwise, X hard drops, Y or L1 holds, Start pauses. The
-  keyboard mirrors them.
+  counter-clockwise, D-pad up hard drops, Y or L1 holds, Start pauses, and
+  X carries nothing (approved 2026-11-05, task T067). Do not report the
+  idle X button as a defect. The keyboard keeps its own desktop defaults:
+  X or Up rotate, Space hard drops.
 - Pieces spawn with their topmost cells at visible row 0 (approved
   2026-11-03, task T029), so every piece is on screen the tick it
   appears. Cells above row 0 exist only for rotations and are never

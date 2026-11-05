@@ -6,6 +6,19 @@
 // InputAdapter button transitions, and loads extra controller mappings from
 // the SDL_GAMECONTROLLERCONFIG string that the PortMaster launcher exports.
 //
+// Since task T066 those two tables are the rebindable ControlBindings of
+// stackfall/bindings.hpp: the section 5 defaults arrive from
+// defaultControlBindings(), the controls file of specification section 9
+// replaces them at startup, and the controls customization screen rebinds a
+// gameplay action mid-session through setControlBindings(). The fixed menu
+// roles of bindings.hpp ride along beside the gameplay actions, so whatever
+// the tables hold, every menu stays navigable.
+//
+// The same class owns the capture half of the customization screen: while a
+// capture runs, the next real press of a rebindable control stops at the raw
+// control id instead of becoming adapter state, so the press that names a new
+// binding can never also rotate a piece or move a cursor.
+//
 // Keep every SDL type inside this header and src/input_sdl.cpp: the rules
 // core, including InputAdapter in stackfall/input.hpp, stays SDL-free, so the
 // headless suites never link SDL (specification section 7).
@@ -16,22 +29,82 @@
 
 #include <SDL.h>
 
+#include "stackfall/bindings.hpp"
 #include "stackfall/input.hpp"
 #include "stackfall/types.hpp"
 
 namespace stackfall {
 
+// The result of one capture: which control of which device the player pressed
+// while SdlInput was capturing, or `happened == false` when nothing did.
+struct InputCapture {
+  bool happened = false;
+  DeviceKind device = DeviceKind::Keyboard;
+  int control = kNoControl;
+};
+
 class SdlInput {
  public:
+  SdlInput() = default;
+
   // The orientation the tables translate into (task T055). Portrait remaps
   // every direction into the rotated frame and reverses the two cluster
   // pairs, exactly as notes/design-review.md pins it; landscape keeps the
-  // section 5 table. The platform layer sets this once at startup from the
-  // persisted preference, and the default is landscape.
+  // section 5 table. Both tables put hard drop on the logical up direction
+  // of their own frame (task T067). The platform layer sets this at startup
+  // from the persisted preference and again on every ORIENTATION select,
+  // because the selection turns the running session at once (task T068); the
+  // default is landscape.
+  //
+  // The change also forgets every held level and pending press edge: a
+  // control held across the turn keeps the action the old table gave it, and
+  // its release then arrives through the new table, where it maps to a
+  // different action and cannot clear the stuck level (task T068). The press
+  // that selected the row has already spent its edge on the tick that carried
+  // it, so this cannot cost an input the player made.
   void setOrientation(Orientation orientation) noexcept {
     orientation_ = orientation;
+    adapter_.clearHeldAndPending();
   }
   Orientation orientation() const noexcept { return orientation_; }
+
+  // The binding tables in force (task T066). The session starts on the
+  // section 5 defaults, the platform layer replaces them once at startup from
+  // the controls file, and the customization screen replaces them again on
+  // every applied capture and every RESTORE DEFAULTS. The change forgets
+  // every held level and pending edge for the same reason the orientation
+  // turn does: a control held across the change keeps the action the old
+  // table gave it, and its release cannot clear a level the new table never
+  // raised. A capture never changes the tables here; the platform layer
+  // validates the conflict rule of bindings.hpp first.
+  void setControlBindings(const ControlBindings& bindings) {
+    bindings_ = bindings;
+    adapter_.clearHeldAndPending();
+  }
+  const ControlBindings& controlBindings() const noexcept { return bindings_; }
+
+  // The capture half of the customization screen (task T066). beginCapture()
+  // arms one capture; the next non-repeated press of a rebindable control of
+  // either device stops at takeCapture() instead of reaching the adapter, so
+  // a capture press never becomes gameplay or menu input. An auto-repeated
+  // key event is not a press (specification section 5): the capture waits for
+  // a fresh one, exactly as the adapter does. A control outside the
+  // rebindable lists changes nothing and the capture stays armed. Cancelling
+  // leaves the binding tables untouched.
+  void beginCapture() noexcept { capture_.happened = false; capturing_ = true; }
+  void cancelCapture() noexcept {
+    capturing_ = false;
+    capture_ = InputCapture{};
+  }
+  bool capturing() const noexcept { return capturing_; }
+
+  // Returns and clears the capture that arrived since the last call. A second
+  // call before another capture reports `happened == false`.
+  InputCapture takeCapture() noexcept {
+    const InputCapture result = capture_;
+    capture_ = InputCapture{};
+    return result;
+  }
 
   // Adds every mapping line of the SDL_GAMECONTROLLERCONFIG environment
   // variable through SDL_GameControllerAddMapping and returns how many lines
@@ -64,7 +137,10 @@ class SdlInput {
   }
 
   InputAdapter adapter_;
+  ControlBindings bindings_ = defaultControlBindings();
   Orientation orientation_ = Orientation::Landscape;
+  bool capturing_ = false;
+  InputCapture capture_;
 };
 
 // ---------------------------------------------------------------------------
@@ -115,18 +191,41 @@ bool detachVirtualController(int deviceIndex);
 // right.
 int virtualPadButtonFromName(const char* name);
 
+// ---------------------------------------------------------------------------
+// The device translations (task T066). One table per device turns a control
+// id of stackfall/bindings.hpp into the SDL enum the event carries, and back.
+// These are the only places in the source that name an SDL scancode or an SDL
+// controller button, so the rebindable lists and the SDL events cannot drift
+// apart.
+// ---------------------------------------------------------------------------
+
+// The scancode of `control`, or SDL_SCANCODE_UNKNOWN when the id is out of
+// range.
+SDL_Scancode scancodeOfKeyboardControl(int control);
+
+// The control of `scancode`, or kNoControl when no rebindable control sits on
+// that key. Every other key - including the M and Q the platform layer keeps
+// as fixed shortcuts - is no control at all.
+int keyboardControlOfScancode(SDL_Scancode scancode);
+
+// The controller button of `control`, or SDL_CONTROLLER_BUTTON_INVALID.
+SDL_GameControllerButton controllerButtonOfControl(int control);
+
+// The control of `button`, or kNoControl when the button sits outside the
+// ten-button RG503 layout.
+int controllerControlOfButton(SDL_GameControllerButton button);
+
 // Resolves one mapped control to its actions, straight from the tables this
-// header's class uses. Writes at most two actions and returns how many; zero
-// means the control is unmapped. Tests and the controls screen read the same
-// translation the event path applies. The orientation argument selects the
-// table: landscape is the section 5 mapping, portrait the rotated one of
-// notes/design-review.md (task T055); the two-argument forms are the landscape
-// table, which every pre-portrait caller used.
-int mapControllerButton(SDL_GameControllerButton button, GameAction* actions);
-int mapKeyboardScancode(SDL_Scancode scancode, GameAction* actions);
+// header's class uses. Writes at most two actions - the gameplay action the
+// control performs, then the menu role it carries - and returns how many;
+// zero means the control is unmapped. Tests and the controls screen read the
+// same translation the event path applies. The orientation argument selects
+// the table: landscape is the section 5 mapping with D-pad up hard drop (task
+// T067), portrait the rotated one of notes/design-review.md (tasks T055 and
+// T067).
 int mapControllerButton(SDL_GameControllerButton button, Orientation orientation,
-                        GameAction* actions);
+                        const ControlBindings& bindings, GameAction* actions);
 int mapKeyboardScancode(SDL_Scancode scancode, Orientation orientation,
-                        GameAction* actions);
+                        const ControlBindings& bindings, GameAction* actions);
 
 }  // namespace stackfall

@@ -70,48 +70,53 @@ constexpr const char* kPauseItems[] = {"RESUME", "RESTART", "CONTROLS",
                                        "QUIT TO TITLE"};
 constexpr const char* kOverItems[] = {"PLAY AGAIN", "TITLE"};
 
-// The controls screen rows: the section 5 gamepad mapping, its keyboard
-// counterpart, and the action. One table per orientation, next to the two
-// mapping tables of src/input_sdl.cpp, so a mapping review reads them
-// together. The portrait rows restate the rotated table of
-// notes/design-review.md: the D-pad's device up and down move the piece
-// right and left in the rotated frame, its right soft drops, and the two
-// cluster pairs reverse (task T055).
-struct ControlRow {
+// The controls screen's fixed rows, the three menu roles no binding moves
+// (task T066): the cursor arms, the confirm button, and the back button, one
+// table per orientation because the turned frame swaps which arms and cluster
+// buttons those are. These sit under the eight rebindable rows the binding
+// tables supply at draw time.
+struct FixedControlRow {
   const char* gamepad;
   const char* keyboard;
   const char* action;
 };
 
-constexpr ControlRow kControlRows[] = {
-    {"D-PAD LEFT/RIGHT", "LEFT/RIGHT ARROWS", "MOVE"},
-    {"D-PAD DOWN", "DOWN ARROW", "SOFT DROP"},
-    {"A", "X OR UP ARROW", "ROTATE CW"},
-    {"B", "Z", "ROTATE CCW"},
-    {"X", "SPACE", "HARD DROP"},
-    {"Y OR L1", "C OR LEFT SHIFT", "HOLD"},
-    {"START", "ENTER OR ESC", "PAUSE OR RESUME"},
+constexpr FixedControlRow kLandscapeFixedRows[3] = {
     {"D-PAD UP/DOWN", "UP/DOWN ARROWS", "MENU CURSOR"},
     {"A", "ENTER", "SELECT"},
     {"B", "ESC", "BACK"},
 };
-constexpr int kControlRowCount =
-    static_cast<int>(sizeof(kControlRows) / sizeof(kControlRows[0]));
 
-constexpr ControlRow kPortraitControlRows[] = {
-    {"D-PAD UP/DOWN", "UP/DOWN ARROWS", "MOVE"},
-    {"D-PAD RIGHT", "RIGHT ARROW", "SOFT DROP"},
-    {"B", "Z", "ROTATE CW"},
-    {"A", "X", "ROTATE CCW"},
-    {"Y", "C OR LEFT SHIFT", "HARD DROP"},
-    {"X OR L1", "SPACE", "HOLD"},
-    {"START", "ENTER OR ESC", "PAUSE OR RESUME"},
+constexpr FixedControlRow kPortraitFixedRows[3] = {
     {"D-PAD LEFT/RIGHT", "LEFT/RIGHT ARROWS", "MENU CURSOR"},
     {"B", "ENTER", "SELECT"},
     {"A", "ESC", "BACK"},
 };
-constexpr int kPortraitControlRowCount =
-    static_cast<int>(sizeof(kPortraitControlRows) / sizeof(kPortraitControlRows[0]));
+
+// One action's controls as the screen spells them: the display name of each
+// control joined by " OR ", so the section 5 pairs still read "Y OR L1" and
+// "C OR LEFT SHIFT" and a rebound single control reads on its own.
+void controlListText(DeviceKind device, const ControlTable& table,
+                     GameAction action, Orientation orientation, char* out,
+                     std::size_t capacity) {
+  int controls[kMaxControlsPerAction];
+  const int count = controlsOfAction(table, action, controls);
+  std::size_t at = 0;
+  out[0] = '\0';
+  for (int index = 0; index < count; ++index) {
+    if (index != 0 && at + 4 < capacity) {
+      std::snprintf(out + at, capacity - at, " OR ");
+      at += 4;
+    }
+    const char* name =
+        device == DeviceKind::Keyboard
+            ? keyboardControlDisplayName(controls[index], orientation)
+            : controllerControlDisplayName(controls[index], orientation);
+    const std::size_t written = std::snprintf(out + at, capacity - at, "%s",
+                                              name != nullptr ? name : "?");
+    at += written < capacity - at ? written : capacity - at - 1;
+  }
+}
 
 // Formats an unsigned 64-bit score in decimal. The buffer always holds a
 // terminated string, and snprintf clamps rather than overruns, so a score of
@@ -205,14 +210,6 @@ void Renderer::setOrientation(Orientation orientation) noexcept {
 
 Orientation Renderer::orientation() const noexcept { return orientation_; }
 
-void Renderer::setOrientationPreference(Orientation orientation) noexcept {
-  orientationPreference_ = orientation;
-}
-
-Orientation Renderer::orientationPreference() const noexcept {
-  return orientationPreference_;
-}
-
 void Renderer::setMusicMode(MusicMode mode) noexcept { musicMode_ = mode; }
 
 MusicMode Renderer::musicMode() const noexcept { return musicMode_; }
@@ -230,6 +227,26 @@ void Renderer::setEffectsVolume(int step) noexcept {
 }
 
 int Renderer::effectsVolume() const noexcept { return effectsVolume_; }
+
+void Renderer::setControlBindings(const ControlBindings& bindings) noexcept {
+  bindings_ = bindings;
+}
+
+void Renderer::setRebindCaptureRow(int row) noexcept {
+  rebindCaptureRow_ = row;
+}
+
+void Renderer::setRebindMessage(const char* text) noexcept {
+  rebindMessage_ = text != nullptr ? text : "";
+}
+
+const ControlBindings& Renderer::controlBindings() const noexcept {
+  return bindings_;
+}
+
+int Renderer::rebindCaptureRow() const noexcept { return rebindCaptureRow_; }
+
+const char* Renderer::rebindMessage() const noexcept { return rebindMessage_; }
 
 void Renderer::setMusicTrackTitle(const char* title) noexcept {
   musicTrackTitle_ = title != nullptr ? title : "";
@@ -400,12 +417,16 @@ void Renderer::draw(const Game& game) {
       drawTitleScreen(game);
       return;
     case Scene::Controls:
-      drawControlsScreen("A OR B BACK TO TITLE");
+      drawControlsScreen("A CUSTOMIZE - B BACK TO TITLE");
       return;
     case Scene::PauseControls:
       // The same mappings page over the frozen round; back returns to the
-      // pause overlay, not the title (task T037).
-      drawControlsScreen("A OR B BACK TO PAUSE");
+      // pause overlay, not the title (task T037), and select opens the
+      // customization screen of task T066 over the same frozen round.
+      drawControlsScreen("A CUSTOMIZE - B BACK TO PAUSE");
+      return;
+    case Scene::Rebind:
+      drawRebindScreen(game);
       return;
     case Scene::Options:
       drawOptionsScreen(game);
@@ -713,31 +734,60 @@ void Renderer::drawTitleScreen(const Game& game) const {
   drawTextCentered(centerX, hintY, kHintScale, kTextDim, menuHintText());
 }
 
-// The controls page: three aligned columns of the section 5 tables plus one
-// footer line. The title opens it with "A OR B BACK TO TITLE"; the pause
-// overlay opens the same page over its frozen round with "A OR B BACK TO
-// PAUSE" (task T037), because ordinary gameplay carries no permanent legend.
-// Portrait cannot hold the three columns side by side - they measure 570 px of
-// a 544 px canvas - so it stacks one action heading over the two mappings of
-// each row (task T055).
+// The controls page: three aligned columns of the current binding tables plus
+// one footer line. The eight gameplay rows read the tables this renderer
+// mirrors (task T066), so the page shows the section 5 defaults on a fresh
+// installation and whatever the player bound afterwards; the last three rows
+// name the fixed menu roles, which no binding moves and which are the reliable
+// way back through every menu. The title opens it with "A CUSTOMIZE - B BACK
+// TO TITLE"; the pause overlay opens the same page over its frozen round with
+// "A CUSTOMIZE - B BACK TO PAUSE" (task T037), because ordinary gameplay
+// carries no permanent legend. Portrait cannot hold the three columns side by
+// side - they measure 570 px of a 544 px canvas - so it stacks one action
+// heading over the two mappings of each row (task T055).
 void Renderer::drawControlsScreen(const char* footer) const {
   clearBackground();
   const int centerX = canvasWidth() / 2;
   drawTextCentered(centerX, portrait() ? kPControlsHeadingY : kControlsHeadingY,
                    kControlsHeadingScale, kText, "CONTROLS");
+  const ControlTable& padTable =
+      bindings_.table(DeviceKind::Controller, orientation_);
+  const ControlTable& keyTable =
+      bindings_.table(DeviceKind::Keyboard, orientation_);
+  char padText[40];
+  char keyText[40];
   if (portrait()) {
     drawText(kPControlsGamepadX, kPControlsHeaderY, kLabelScale, kTextDim,
              "GAMEPAD");
     drawText(kPControlsKeyboardX, kPControlsHeaderY, kLabelScale, kTextDim,
              "KEYBOARD");
     int y = kPControlsFirstRowY;
-    for (int index = 0; index < kPortraitControlRowCount; ++index) {
-      drawText(kPControlsGamepadX, y, kLabelScale, kTextDim,
-               kPortraitControlRows[index].action);
+    for (int row = 0; row < kControlsRowCount; ++row) {
+      const char* action;
+      const char* gamepad;
+      const char* keyboard;
+      const bool dim = row >= kRebindableActionCount;
+      if (dim) {
+        const FixedControlRow& fixed =
+            kPortraitFixedRows[row - kRebindableActionCount];
+        action = fixed.action;
+        gamepad = fixed.gamepad;
+        keyboard = fixed.keyboard;
+      } else {
+        const GameAction actionId = kRebindableActions[row];
+        action = rebindableActionName(actionId);
+        controlListText(DeviceKind::Controller, padTable, actionId,
+                        orientation_, padText, sizeof(padText));
+        controlListText(DeviceKind::Keyboard, keyTable, actionId, orientation_,
+                        keyText, sizeof(keyText));
+        gamepad = padText;
+        keyboard = keyText;
+      }
+      drawText(kPControlsGamepadX, y, kLabelScale, kTextDim, action);
       drawText(kPControlsGamepadX, y + kGlyphRows * kLabelScale + 4, kLabelScale,
-               kText, kPortraitControlRows[index].gamepad);
+               kText, gamepad);
       drawText(kPControlsKeyboardX, y + kGlyphRows * kLabelScale + 4,
-               kLabelScale, kText, kPortraitControlRows[index].keyboard);
+               kLabelScale, kText, keyboard);
       y += kPControlsRowHeight;
     }
     drawTextCentered(centerX, kPControlsFooterY, kLabelScale, kText, footer);
@@ -750,28 +800,143 @@ void Renderer::drawControlsScreen(const char* footer) const {
   drawText(kControlsActionX, kControlsHeaderY, kLabelScale, kTextDim,
            "ACTION");
   int y = kControlsFirstRowY;
-  for (int index = 0; index < kControlRowCount; ++index) {
-    drawText(kControlsGamepadX, y, kLabelScale, kText,
-             kControlRows[index].gamepad);
-    drawText(kControlsKeyboardX, y, kLabelScale, kText,
-             kControlRows[index].keyboard);
-    drawText(kControlsActionX, y, kLabelScale, kText,
-             kControlRows[index].action);
+  for (int row = 0; row < kControlsRowCount; ++row) {
+    const char* gamepad;
+    const char* keyboard;
+    const char* action;
+    if (row >= kRebindableActionCount) {
+      const FixedControlRow& fixed =
+          kLandscapeFixedRows[row - kRebindableActionCount];
+      gamepad = fixed.gamepad;
+      keyboard = fixed.keyboard;
+      action = fixed.action;
+    } else {
+      const GameAction actionId = kRebindableActions[row];
+      controlListText(DeviceKind::Controller, padTable, actionId, orientation_,
+                      padText, sizeof(padText));
+      controlListText(DeviceKind::Keyboard, keyTable, actionId, orientation_,
+                      keyText, sizeof(keyText));
+      gamepad = padText;
+      keyboard = keyText;
+      action = rebindableActionName(actionId);
+    }
+    drawText(kControlsGamepadX, y, kLabelScale, kText, gamepad);
+    drawText(kControlsKeyboardX, y, kLabelScale, kText, keyboard);
+    drawText(kControlsActionX, y, kLabelScale, kText, action);
     y += kControlsRowHeight;
   }
   drawTextCentered(centerX, kControlsFooterY, kLabelScale, kText, footer);
 }
 
-// The options page of tasks T040, T044, T055, and T062: one heading, the
-// eight setting rows at the shared menu metrics, and one footer line. The rows
-// carry their value as ON/OFF, the NEXT PIECES count digit, or the
+// The controls customization page of task T066: the same three columns, one
+// row per rebindable gameplay action showing what each device currently
+// holds, one RESTORE DEFAULTS row that returns every table of both
+// orientations to the section 5 defaults, one status line that names the
+// outcome of the last capture or restore, and a footer that names the
+// capture's rule. The highlighted row draws its marker; the row whose capture
+// is running draws in the accent color, so the player can see which action
+// the next press names. The core moves the cursor alone; the binding tables,
+// the capture row, and the status line are the platform state this renderer
+// mirrors.
+void Renderer::drawRebindScreen(const Game& game) const {
+  clearBackground();
+  const int centerX = canvasWidth() / 2;
+  drawTextCentered(centerX, portrait() ? kPControlsHeadingY : kControlsHeadingY,
+                   kControlsHeadingScale, kText, "SET CONTROLS");
+  const ControlTable& padTable =
+      bindings_.table(DeviceKind::Controller, orientation_);
+  const ControlTable& keyTable =
+      bindings_.table(DeviceKind::Keyboard, orientation_);
+  char padText[40];
+  char keyText[40];
+  const int selected = game.rebindSelection();
+  if (portrait()) {
+    drawText(kPControlsGamepadX, kPControlsHeaderY, kLabelScale, kTextDim,
+             "GAMEPAD");
+    drawText(kPControlsKeyboardX, kPControlsHeaderY, kLabelScale, kTextDim,
+             "KEYBOARD");
+    for (int row = 0; row < kRebindableActionCount; ++row) {
+      const int y = kPRebindFirstRowY + row * kPRebindRowHeight;
+      const bool capturingRow = row == rebindCaptureRow_;
+      const SDL_Color color = capturingRow ? kAccent : kText;
+      const GameAction actionId = kRebindableActions[row];
+      controlListText(DeviceKind::Controller, padTable, actionId, orientation_,
+                      padText, sizeof(padText));
+      controlListText(DeviceKind::Keyboard, keyTable, actionId, orientation_,
+                      keyText, sizeof(keyText));
+      drawText(kPControlsGamepadX, y, kLabelScale,
+               row == selected ? kAccent : kTextDim,
+               rebindableActionName(actionId));
+      drawText(kPControlsGamepadX, y + kGlyphRows * kLabelScale + 4, kLabelScale,
+               color, padText);
+      drawText(kPControlsKeyboardX, y + kGlyphRows * kLabelScale + 4,
+               kLabelScale, color, keyText);
+    }
+    const bool restoreSelected = selected == kRebindRestoreRow;
+    drawText(kPControlsGamepadX, kPRebindRestoreY, kLabelScale,
+             restoreSelected ? kAccent : kText, "RESTORE DEFAULTS");
+    if (rebindMessage_[0] != '\0') {
+      drawText(kPControlsGamepadX, kPRebindMessageY, kLabelScale, kAccent,
+               rebindMessage_);
+    }
+    drawTextCentered(centerX, kPRebindFooterY, kHintScale, kTextDim,
+                     rebindCaptureRow_ >= 0 ? rebindCaptureHintText()
+                                            : rebindHintText());
+    return;
+  }
+  drawText(kControlsGamepadX, kControlsHeaderY, kLabelScale, kTextDim,
+           "GAMEPAD");
+  drawText(kControlsKeyboardX, kControlsHeaderY, kLabelScale, kTextDim,
+           "KEYBOARD");
+  drawText(kControlsActionX, kControlsHeaderY, kLabelScale, kTextDim,
+           "ACTION");
+  for (int row = 0; row < kRebindableActionCount; ++row) {
+    const int y = kRebindFirstRowY + row * kRebindRowHeight;
+    const bool capturingRow = row == rebindCaptureRow_;
+    const SDL_Color color = capturingRow ? kAccent : kText;
+    const GameAction actionId = kRebindableActions[row];
+    controlListText(DeviceKind::Controller, padTable, actionId, orientation_,
+                    padText, sizeof(padText));
+    controlListText(DeviceKind::Keyboard, keyTable, actionId, orientation_,
+                    keyText, sizeof(keyText));
+    drawText(kControlsGamepadX, y, kLabelScale, color, padText);
+    drawText(kControlsKeyboardX, y, kLabelScale, color, keyText);
+    drawText(kControlsActionX, y, kLabelScale,
+             row == selected ? kAccent : kText,
+             rebindableActionName(actionId));
+    if (row == selected) {
+      fillRect(kAccent, kControlsGamepadX - kMenuMarkerGap - kMenuMarkerSize,
+               y + (kGlyphRows * kLabelScale - kMenuMarkerSize) / 2,
+               kMenuMarkerSize, kMenuMarkerSize);
+    }
+  }
+  drawText(kControlsGamepadX, kRebindRestoreY, kLabelScale,
+           selected == kRebindRestoreRow ? kAccent : kText, "RESTORE DEFAULTS");
+  if (selected == kRebindRestoreRow) {
+    fillRect(kAccent, kControlsGamepadX - kMenuMarkerGap - kMenuMarkerSize,
+             kRebindRestoreY + (kGlyphRows * kLabelScale - kMenuMarkerSize) / 2,
+             kMenuMarkerSize, kMenuMarkerSize);
+  }
+  if (rebindMessage_[0] != '\0') {
+    drawText(kControlsGamepadX, kRebindMessageY, kLabelScale, kAccent,
+             rebindMessage_);
+  }
+  drawTextCentered(centerX, kRebindFooterY, kHintScale, kTextDim,
+                   rebindCaptureRow_ >= 0 ? rebindCaptureHintText()
+                                          : rebindHintText());
+}
+
+// The options page of tasks T040, T044, T055, T062, and T068: one heading,
+// the eight setting rows at the shared menu metrics, and one footer line. The
+// rows carry their value as ON/OFF, the NEXT PIECES count digit, or the
 // ORIENTATION or MUSIC name, read from the preferences this renderer mirrors,
 // because the rules core moves the cursor alone and never holds a row value
 // (specification section 7). A changes the highlighted row - and on the MUSIC
 // row opens the music settings page, which the core owns - and B returns to
 // the title; the platform layer owns the value actions. The ORIENTATION row
-// names the preference the next launch draws, not the layout this process
-// already opened (task T055).
+// names the layout this process draws, because the select that changes it
+// turns the session at once (task T068): the row and the layout can no longer
+// disagree, so one mirror serves both.
 void Renderer::drawOptionsScreen(const Game& game) const {
   clearBackground();
   const int centerX = canvasWidth() / 2;
@@ -789,9 +954,8 @@ void Renderer::drawOptionsScreen(const Game& game) const {
       showHold_ ? "HOLD ON" : "HOLD OFF",
       nextText,
       grayscale_ ? "GRAYSCALE ON" : "GRAYSCALE OFF",
-      orientationPreference_ == Orientation::Portrait
-          ? "ORIENTATION PORTRAIT"
-          : "ORIENTATION LANDSCAPE",
+      orientation_ == Orientation::Portrait ? "ORIENTATION PORTRAIT"
+                                            : "ORIENTATION LANDSCAPE",
       musicText,
   };
   const int menuY = portrait() ? kPOptionsMenuY : kOptionsMenuY;

@@ -43,6 +43,13 @@ void run_script_tests();
 // The generated soundtrack of MUSIC.md (task T062): engine, catalogue, and
 // scene policy, all rendered offline with no audio device.
 void run_music_tests();
+// The record file's writer thread (task T065): the T052 mid-round saves
+// moved off the gameplay thread, timed and pinned against an injected sink.
+void run_record_writer_tests();
+// The rebindable control bindings of the customization screen (task T066):
+// the section 5 default tables, the name vocabularies, the conflict rule,
+// and the controls file's canonical, legacy-free format.
+void run_bindings_tests();
 
 namespace {
 
@@ -126,6 +133,8 @@ int main(int argc, char** argv) {
   run_fixture_tests();
   run_script_tests();
   run_music_tests();
+  run_record_writer_tests();
+  run_bindings_tests();
 
   stackfall_test::print_summary();
   return stackfall_test::g_failures == 0 ? EXIT_SUCCESS : EXIT_FAILURE;

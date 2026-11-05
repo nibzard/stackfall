@@ -622,4 +622,231 @@ SaveStatus SettingsStore::save(const SettingsValues& values) const {
                              formatSettingsFile(values));
 }
 
+// ---------------------------------------------------------------------------
+// The controls file of the customization screen (task T066, specification
+// section 5). Same directory, same write sequence, one line per bound action.
+// ---------------------------------------------------------------------------
+
+namespace {
+
+// The four blocks of the file in fixed order: orientation, then device. A
+// block word pair builds each line's key, `landscape.pad`, `landscape.key`,
+// `portrait.pad`, `portrait.key`.
+constexpr const char* kControlsBlockPrefixes[4] = {
+    "landscape.pad", "landscape.key", "portrait.pad", "portrait.key"};
+
+// The device of `block`: the file lists the pad block before the keyboard
+// block of each orientation, so the even blocks are the controller's.
+DeviceKind controlsBlockDevice(int block) {
+  return block % 2 == 0 ? DeviceKind::Controller : DeviceKind::Keyboard;
+}
+
+// Renders one action's value: the canonical control name, or two joined by
+// '+' for the pairs section 5 names.
+std::string controlsValueText(DeviceKind device, const int* controls,
+                              int count) {
+  std::string text;
+  for (int index = 0; index < count; ++index) {
+    if (index != 0) {
+      text += '+';
+    }
+    const char* name = device == DeviceKind::Keyboard
+                           ? keyboardControlName(controls[index])
+                           : controllerControlName(controls[index]);
+    text += name != nullptr ? name : "?";
+  }
+  return text;
+}
+
+// Splits one value at '+' and resolves each word to a control id. False on a
+// word that names no control of `device`, on more than two words, on a word
+// that is empty, and on the same control twice.
+bool controlsValue(DeviceKind device, std::string_view value, int* out,
+                   int* count) {
+  *count = 0;
+  std::size_t at = 0;
+  while (at <= value.size()) {
+    const std::size_t plus = value.find('+', at);
+    const std::size_t end =
+        plus == std::string_view::npos ? value.size() : plus;
+    const std::string_view word = value.substr(at, end - at);
+    if (word.empty() || *count >= kMaxControlsPerAction) {
+      return false;
+    }
+    const std::string text(word);
+    const int control = device == DeviceKind::Keyboard
+                            ? keyboardControlFromName(text.c_str())
+                            : controllerControlFromName(text.c_str());
+    if (control == kNoControl) {
+      return false;
+    }
+    for (int seen = 0; seen < *count; ++seen) {
+      if (out[seen] == control) {
+        return false;  // the same control twice is not a canonical value
+      }
+    }
+    out[(*count)++] = control;
+    if (plus == std::string_view::npos) {
+      break;
+    }
+    at = plus + 1;
+  }
+  return *count > 0;
+}
+
+}  // namespace
+
+std::string formatControlsFile(const ControlBindings& bindings) {
+  std::string bytes = "version=";
+  bytes += std::to_string(kSaveFormatVersion);
+  bytes += "\n";
+  // The prefix array is the single source of block order, so the walk visits
+  // its four entries rather than nesting device and orientation loops: the
+  // pad block of an orientation comes before the keyboard block, and the
+  // parser on the other side reads exactly that order.
+  for (int block = 0; block < 4; ++block) {
+    const auto frame = block < 2 ? Orientation::Landscape : Orientation::Portrait;
+    const DeviceKind kind = controlsBlockDevice(block);
+    const ControlTable& table = bindings.table(kind, frame);
+    for (int action = 0; action < kRebindableActionCount; ++action) {
+      bytes += kControlsBlockPrefixes[block];
+      bytes += '.';
+      bytes += rebindableActionKeyName(kRebindableActions[action]);
+      bytes += '=';
+      int controls[kMaxControlsPerAction];
+      const int count = controlsOfAction(
+          table, kRebindableActions[action], controls);
+      bytes += controlsValueText(kind, controls, count);
+      bytes += '\n';
+    }
+  }
+  return bytes;
+}
+
+bool parseControlsFile(const std::string& bytes, ControlBindings* bindings) {
+  if (bytes.size() > kMaxSaveFileBytes) {
+    return false;
+  }
+  // The same strict walk as the settings file: every line must be the
+  // canonical rendering of the next key in the fixed order, and the file must
+  // end where a whole line ended. The file shipped whole, so anything shorter
+  // or longer is damaged.
+  ControlBindings parsed = defaultControlBindings();
+  std::size_t at = 0;
+  int line = 0;
+  while (at < bytes.size()) {
+    const std::size_t end = bytes.find('\n', at);
+    if (end == std::string::npos) {
+      return false;  // the canonical file ends with a newline
+    }
+    const std::string_view content(bytes.data() + at, end - at);
+    bool ok = false;
+    if (line == 0) {
+      const std::string versionLine =
+          std::string("version=") + std::to_string(kSaveFormatVersion);
+      ok = content == versionLine;
+    } else if (line <= kRebindableActionCount * 4) {
+      // One bound action: `<orientation>.<device>.<action>=<controls>`.
+      const int slot = line - 1;
+      const int block = slot / kRebindableActionCount;
+      const int action = slot % kRebindableActionCount;
+      const std::string_view blockPrefix =
+          kControlsBlockPrefixes[block];
+      const std::string_view actionKey =
+          rebindableActionKeyName(kRebindableActions[action]);
+      const std::size_t prefixSize =
+          blockPrefix.size() + 1 + actionKey.size();
+      if (content.size() > prefixSize + 1 &&
+          content.substr(0, blockPrefix.size()) == blockPrefix &&
+          content[blockPrefix.size()] == '.' &&
+          content.substr(blockPrefix.size() + 1, actionKey.size()) ==
+              actionKey &&
+          content[prefixSize] == '=') {
+        const std::string_view value = content.substr(prefixSize + 1);
+        const auto kind = controlsBlockDevice(block);
+        const auto frame = static_cast<Orientation>(block / 2);
+        ControlTable& table = parsed.table(kind, frame);
+        int controls[kMaxControlsPerAction];
+        int count = 0;
+        if (controlsValue(kind, value, controls, &count)) {
+          for (int index = 0; index < kMaxControlsPerAction; ++index) {
+            table[action][index] =
+                index < count ? controls[index] : kNoControl;
+          }
+          ok = true;
+        }
+      }
+    } else {
+      ok = false;  // past the last binding line
+    }
+    if (!ok) {
+      return false;
+    }
+    ++line;
+    at = end + 1;
+  }
+  if (line != 1 + kRebindableActionCount * 4) {
+    return false;  // the file is whole or damaged, never partial
+  }
+  // A file that binds one control to two gameplay actions is damaged, not a
+  // setting: the screen rejects that capture, so it never wrote one.
+  if (!controlBindingsValid(parsed)) {
+    return false;
+  }
+  if (bindings != nullptr) {
+    *bindings = parsed;
+  }
+  return true;
+}
+
+ControlsStore::ControlsStore(std::string directory)
+    : directory_(std::move(directory)) {}
+
+ControlsStore ControlsStore::fromEnvironment() {
+  return ControlsStore(saveDirectoryFromEnvironment());
+}
+
+std::string ControlsStore::filePath() const {
+  if (directory_.empty()) {
+    return std::string();
+  }
+  return joinPath(directory_, kControlsFileName);
+}
+
+ControlsResult ControlsStore::load() const {
+  // Every failure path hands the section 5 defaults back, so a missing or
+  // damaged file costs the customizations alone (specification section 9).
+  ControlsResult result;
+  result.keyboard[0] = defaultControlBindings().keyboard[0];
+  result.keyboard[1] = defaultControlBindings().keyboard[1];
+  result.controller[0] = defaultControlBindings().controller[0];
+  result.controller[1] = defaultControlBindings().controller[1];
+  const SaveFileBytes file = readSaveFile(directory_, kControlsFileName);
+  if (file.status != SaveStatus::Ok) {
+    result.status = file.status;
+    return result;
+  }
+  try {
+    ControlBindings bindings;
+    if (!parseControlsFile(file.bytes, &bindings)) {
+      result.status = SaveStatus::Invalid;
+      return result;
+    }
+    result.keyboard[0] = bindings.keyboard[0];
+    result.keyboard[1] = bindings.keyboard[1];
+    result.controller[0] = bindings.controller[0];
+    result.controller[1] = bindings.controller[1];
+    result.status = SaveStatus::Ok;
+    return result;
+  } catch (...) {
+    result.status = SaveStatus::Invalid;
+    return result;
+  }
+}
+
+SaveStatus ControlsStore::save(const ControlBindings& bindings) const {
+  return atomicWriteTextFile(directory_, kControlsFileName,
+                             formatControlsFile(bindings));
+}
+
 }  // namespace stackfall

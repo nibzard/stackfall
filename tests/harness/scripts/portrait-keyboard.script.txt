@@ -1,12 +1,13 @@
-# Portrait-keyboard stage two (T055, docs/AGENT_TESTING.md): the relaunch
-# that applied orientation=portrait at startup, seed 20261103. A round on
-# the rotated keyboard table - key up moves right, key down moves left, Z
-# rotates clockwise, X counter-clockwise, Space holds, C hard drops - then
-# the pause overlay navigated on the rotated menu roles (key left and key
-# right move the cursor, Enter confirms, Esc goes back), a hard-drop spam
-# to the game-over screen, and the quit through the title menu. A `wait`
-# follows every check, so no record carries the tick of the input that
-# comes after it.
+# Portrait-keyboard stage two (T055, docs/AGENT_TESTING.md; hard drop moved
+# to the logical up direction by T067): the relaunch that applied
+# orientation=portrait at startup, seed 20261103. A round on the rotated
+# keyboard table - key up moves right, key down moves left, Z rotates
+# clockwise, X counter-clockwise, key left is the logical up direction so it
+# hard drops, C holds and Space carries nothing - then the pause overlay
+# navigated on the rotated menu roles (key left and key right move the
+# cursor, Enter confirms, Esc goes back), a hard-drop spam to the game-over
+# screen, and the quit through the title menu. A `wait` follows every
+# check, so no record carries the tick of the input that comes after it.
 # the title cursor opens on START GAME, and in portrait key up and key down
 # carry no menu role, so no navigation precedes the start
 check title-start
@@ -45,15 +46,15 @@ key x up
 wait 2
 check rotated-ccw
 wait 1
-key space down
-wait 2
-key space up
-wait 2
-check hold-swapped
-wait 1
 key c down
 wait 2
 key c up
+wait 2
+check hold-swapped
+wait 1
+key left down
+wait 2
+key left up
 wait 2
 check first-lock
 wait 1
@@ -63,9 +64,9 @@ key up up
 wait 2
 check moved-right-two
 wait 1
-key c down
+key left down
 wait 2
-key c up
+key left up
 wait 2
 check second-lock
 wait 1
@@ -126,168 +127,44 @@ key enter up
 wait 2
 check resumed
 wait 1
-# hard-drop spam until the round tops out
-key c down
+# nine hard drops on the logical up direction top the round out; the
+# ninth is the press that blocks the next spawn, so the over cursor
+# opens on PLAY AGAIN and no later press moves it
+key left down
 wait 2
-key c up
+key left up
 wait 2
-key c down
+key left down
 wait 2
-key c up
+key left up
 wait 2
-key c down
+key left down
 wait 2
-key c up
+key left up
 wait 2
-key c down
+key left down
 wait 2
-key c up
+key left up
 wait 2
-key c down
+key left down
 wait 2
-key c up
+key left up
 wait 2
-key c down
+key left down
 wait 2
-key c up
+key left up
 wait 2
-key c down
+key left down
 wait 2
-key c up
+key left up
 wait 2
-key c down
+key left down
 wait 2
-key c up
+key left up
 wait 2
-key c down
+key left down
 wait 2
-key c up
-wait 2
-key c down
-wait 2
-key c up
-wait 2
-key c down
-wait 2
-key c up
-wait 2
-key c down
-wait 2
-key c up
-wait 2
-key c down
-wait 2
-key c up
-wait 2
-key c down
-wait 2
-key c up
-wait 2
-key c down
-wait 2
-key c up
-wait 2
-key c down
-wait 2
-key c up
-wait 2
-key c down
-wait 2
-key c up
-wait 2
-key c down
-wait 2
-key c up
-wait 2
-key c down
-wait 2
-key c up
-wait 2
-key c down
-wait 2
-key c up
-wait 2
-check spam-mid
-wait 2
-key c down
-wait 2
-key c up
-wait 2
-key c down
-wait 2
-key c up
-wait 2
-key c down
-wait 2
-key c up
-wait 2
-key c down
-wait 2
-key c up
-wait 2
-key c down
-wait 2
-key c up
-wait 2
-key c down
-wait 2
-key c up
-wait 2
-key c down
-wait 2
-key c up
-wait 2
-key c down
-wait 2
-key c up
-wait 2
-key c down
-wait 2
-key c up
-wait 2
-key c down
-wait 2
-key c up
-wait 2
-key c down
-wait 2
-key c up
-wait 2
-key c down
-wait 2
-key c up
-wait 2
-key c down
-wait 2
-key c up
-wait 2
-key c down
-wait 2
-key c up
-wait 2
-key c down
-wait 2
-key c up
-wait 2
-key c down
-wait 2
-key c up
-wait 2
-key c down
-wait 2
-key c up
-wait 2
-key c down
-wait 2
-key c up
-wait 2
-key c down
-wait 2
-key c up
-wait 2
-key c down
-wait 2
-key c up
+key left up
 wait 2
 wait 5
 check gameover-first

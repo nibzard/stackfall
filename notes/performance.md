@@ -302,3 +302,309 @@ Command:
 cmake --build build --target stackfall_audio_tests &&
 ./build/stackfall_audio_tests 2>&1 | grep "music callback"
 ```
+
+
+## T065: the integrated build profiled and the stutter cause fixed (2026-11-05)
+
+Round post-v1.0, the device-feedback wave. The owner reported the game
+"sometimes stutters after initially smooth play" on the RG503 and named CPU
+load, memory use, and disk writes as hypotheses, not causes. This section
+records what the integrated Release build (the T052 mid-round record saves,
+the T055 portrait layout, and the T062 soundtrack included) measured under
+deterministic, repeated, real SDL input, which of the stated hypotheses the
+measurements confirmed, and the fix that followed. Evidence:
+`build/agent-checks/t065-20261105/` (ignored build output; `host-baseline/`
+holds the measured baseline's source identity, `host-fix1/` the fixed
+build's). Every number below is a desktop-host measurement; nothing here
+certifies RG503 pacing, battery use, or what a player feels.
+
+### Method
+
+The driver `tests/harness/t065.sh` (with `t065_gen.py`, `t065_verify.py`,
+`t065_scenes.py`, `t065_monitor.py`, `t065_pressure.py`,
+`t065_pressure_row.py`, `t065_sustained.py`, `t065_summarize.py`) builds on
+the T026 method and adds this round's own requirements:
+
+- Scenarios (fixed seed 31, all deterministic, all through the real SDL
+  event path): `rotate-move` (rotations both ways, taps, DAS holds, wall
+  rotations), `drops` (held soft drop and hard drop), `clears` (labeled
+  four-line fixture cycles), `pause` (pause and resume over live play), and
+  `pad-mixed` (the same coverage on the developer virtual controller). A
+  `restart` command begins a fresh round on a per-scenario cadence, and the
+  `verify` phase measures the game-over share of every scenario from its
+  own scene transitions and fails any sample that sat mostly at a game over
+  screen: all five held game over at 0.0% of simulated ticks while playing
+  64-100% of them.
+- Save modes, the pair that isolates the write cost inside one workload:
+  `fresh` starts the save directory empty, so the T052 mid-round record
+  saves fire the moment the round scores; `banked` preloads a record no
+  scripted round can reach, so the same session runs without one save.
+  Everything else is identical.
+- Work mode (`--tick-per-frame`, pacing off) measures poll + tick + render
+  + present with no deliberate wait; paced mode (`--frame-times`, real
+  time) measures the whole 16.67 ms slot. Three samples per scenario,
+  renderer, and save mode in both.
+- Renderer modes: `x11-opengl` (Mesa llvmpipe under Xvfb), `x11-software`,
+  and `dummy-software`. As T026 found, the x11 rows present at about the
+  frame slot even with pacing off, so they are supporting evidence; the
+  dummy rows carry the work decision. The x11 work rows run the same
+  scripts truncated to 1200 frames to keep the phase bounded.
+- Memory, write counts, and write bytes come from `/proc/<pid>/status` and
+  `/proc/<pid>/io`, sampled four times a second by `t065_monitor.py` from
+  outside the process, so no timed sample carries instrumentation of its
+  own. Audio callback work and command traffic come from two relaxed
+  counters per side (`Audio: N callbacks, M frames` and
+  `Music commands: P pushed, R rejected, D drained` in every session log);
+  the callback clock pair is opt-in through
+  `STACKFALL_PROFILE_AUDIO_CALLBACK` and runs only in its own session.
+  Callgrind runs in the `profile` phase, never inside a timed sample.
+- One sustained case (180 s paced, memory and writes sampled over time),
+  one bounded pressure case (four kinds - idle, CPU, storage, both - on two
+  renderers; the worker caps itself in time, bytes, and cores, writes only
+  inside the evidence directory, and is registered in the Looper cleanup
+  file before it starts), and the portrait layout row of the hypotheses
+  phase.
+
+Host: the recorded host of the T026 loop (Linux 6.8.0-147 x86_64, 12th Gen
+Intel i9-12900HK, 8 cores, ext4 on `/dev/sda1`, SDL 2.30.0, Release
+`-O3 -DNDEBUG`). Baseline source identity: commit `d7d2783` plus the
+working tree whose hashes `host-baseline/source.sha256` records - that tree
+is HEAD plus this round's measurement instrumentation (the two audio
+counters and the callback clock), nothing else. The fixed build is the same
+tree plus the record writer (`host-fix1/source.sha256`).
+
+Commands (repository root, Release binary at `build-rel/stackfall`):
+
+1. The whole round: `T065_RUN_ID=t065-20261105 tests/harness/t065.sh`
+   (defaults: seed 31, three samples, five scenarios, three work renderers,
+   60 s paced samples, 180 s sustained, 60 s pressured).
+2. The fix samples on the same scripts and seed:
+   `T065_RUN_ID=t065-20261105 T065_TAG=fix1 T065_PHASES="verify bench
+   sustained pressure hypotheses profile summarize"
+   T065_RENDERERS=dummy-software tests/harness/t065.sh`, then the x11 spot
+   check: `T065_RUN_ID=t065-20261105 T065_TAG=fix1 T065_PHASES=bench
+   T065_SCENARIOS=drops T065_RENDERERS=x11-opengl tests/harness/t065.sh`.
+3. Tables from the evidence directory alone:
+   `python3 tests/harness/t065_summarize.py --run-dir
+   build/agent-checks/t065-20261105`.
+4. The durable-save cost probe: `./build-rel/stackfall_save_probe DIR 300`.
+
+### Hypothesis 1: the mid-round record save. Confirmed, and fixed
+
+Task T052 persists the record the moment a running score passes the stored
+best (SPEC sections 4.7 and 9). The save runs the store's atomic write:
+temporary file, write, flush, **fsync**, close, rename. Three measurements
+agree on what that costs and when the game pays it:
+
+1. The probe (`stackfall_save_probe`, the store's own `save()` in a loop on
+   this host's ext4): p50 2.59 ms, p95 3.24 ms, p99 4.77 ms, max 6.20 ms.
+   The same write without the fsync costs p50 43 us - **98% of the save is
+   the fsync**, and the fsync is what the power-loss guarantee is made of,
+   so it cannot simply be dropped.
+2. Inside the workload (work mode, dummy-software, three samples each, the
+   fresh-minus-banked pair): the cost appears exactly where saves fire and
+   in proportion to how many fire. `clears` saved 390 times per sample and
+   paid +207 us per frame (+38%); `drops` saved 127 times and paid +111 us
+   (+27%); `pad-mixed` saved 73 times and paid +41 us (+10%); `rotate-move`
+   never scored, never saved, and paid 0.0 us - the control that rules out
+   "fresh vs banked differ for another reason".
+3. When it fires: from the moment a round's score first passes the stored
+   record, **every further point that round scores pays the same write on
+   the gameplay thread** - a held soft drop awards one point per cell, so a
+   soft-dropping player who is past their record can reach one fsync per
+   tick. That is precisely "initially smooth play, then stutters": the
+   smooth part is the round below the stored record, where no save fires.
+
+Per save, the in-workload cost is 3.2-5.3 ms of frame time (the pair's
+delta times the frames over the save count) - 19-32% of the 16.67 ms slot
+on this host, per scoring tick. The paced percentiles on this host do not
+show it, because the dummy renderer's per-frame work is under 1 ms and the
+deliberate wait absorbs the save; that is a property of this host's 16 ms
+of slack, not of the cause. On the handheld the same events land in a frame
+with several times the work (its CPU is an order of magnitude slower than
+this host's) and an fsync that plausibly costs more on eMMC or a card than
+the 2.6 ms measured here on an SSD. No handheld pacing is inferred from
+these numbers; the tail measurement stays with T036.
+
+**The fix** moves the write off the gameplay thread and changes nothing
+else about it: `include/stackfall/record_writer.hpp` and
+`src/record_writer.cpp` own a writer thread that performs the store's
+identical atomic write. The gameplay thread calls `submit(score, tick)`,
+which moves two integers under a lock the writer never holds across a
+write, and polls the completed writes once per frame for the session-log
+and input-log lines, whose formats are unchanged. Because the file holds
+one number and every later number contains every earlier one, a value that
+arrives while a write is still running replaces the next one: the file
+never lags the round by more than one write, and the writer cannot fall
+behind however fast the score rises. Round boundaries - game over, Quit to
+Title, restart - and clean shutdown flush, so the record is complete on
+disk before the title screen, the game-over screen, or the next round reads
+it back; a power loss costs at most the write in flight, which is task
+T052's own bound ("the points of the piece in play") kept.
+
+Regression tests: `tests/test_record_writer.cpp` (in `stackfall_tests`,
+so it runs headless on every machine) pins the three properties the fix is
+made of - `submit()` returns in a small fraction of an 80 ms injected write,
+the flushed write lands in the store's own file, a session without a save
+directory stays inert, rapid scores coalesce to the newest value in order,
+a failed write reports its status, the per-frame poll empties the queue,
+and sustained submission stays current. The suite also ran clean under
+ThreadSanitizer. The T052 behavior itself is pinned by the existing harness
+sessions, which the fix passes unchanged (`record-abandon-save` still
+requires `record save=36 tick=6 status=ok` and `record save=68 tick=14
+status=ok`, both ticks before the abandon at tick 43, and the file holding
+68 after the round was abandoned).
+
+Measured before and after (work mode, dummy-software, three samples per
+cell, same scripts and seed):
+
+| Scenario, save mode `fresh` | baseline us/frame | fixed us/frame | fixed `banked` us/frame | baseline saves | fixed saves |
+| --- | --- | --- | --- | --- | --- |
+| clears | 751.6 | 544.2 | 544.2 | 390 | 119 |
+| drops | 528.7 | 417.6 | 417.6 | 127 | 33 |
+| pad-mixed | 454.3 | 413.5 | 413.5 | 73 | 18 |
+| pause | 792.8 | 751.4 | 751.4 | 59 | 10 |
+| rotate-move (never scores) | 294.6 | 294.6 | 294.6 | 0 | 0 |
+
+Every fixed `fresh` row sits exactly on its `banked` control: the write no
+longer occupies the gameplay thread, and the +10 to +38% the saves cost are
+gone. The x11 spot check agrees where it can see anything at all: the
+`drops` pair under `x11-opengl` runs at the presentation floor (16,083 us
+per frame, the value every presentation-bound x11 row of both states
+holds), with the baseline's one elevated row (`fresh` at 16,294 us, its
+only x11 row above the floor) gone. The paced percentiles hold at the same time (baseline `fresh` median
+16.75-16.85 ms, p99 17.68-17.69; fixed `fresh` median 16.65-16.82 ms, p99
+17.44-17.71), every mode stays at 60.00 ticks/s, and across all 30 paced
+samples of each state (108,000 frames) the count of frames over 20 ms is 0
+in the baseline and 1 in the fixed set - one scheduler outlier, not a
+regression. The sustained session repeats the same result at 180 s: median
+16.661 ms against the baseline's 16.694 ms, p99 17.693 against 17.694, the
+same 63 record saves, the same 228 log lines, 1.37 against 1.40 MiB
+written, and resident memory flat (13,460 to 13,480 KiB; the writer's own
+pages are the 20 KiB).
+
+In fast-forward work mode the writer also coalesces - 127 score rises can
+land while one 2.6 ms write runs, which is why the fixed samples issue
+fewer writes (33 against 127) - while the round still ends with its final
+score durable, and the paced rows show the same save count as the baseline
+(127 for `drops`, 390 for `clears`), because real-time play raises the
+score at most once per tick.
+
+### Hypothesis 2: music synthesis and callback cost. Not a cause
+
+- The audio suite's own budget print, in this run:
+  `p50 0.009 ms, p99 0.016 ms` against an 11.61 ms buffer (0% of it); the
+  T062 note measured the densest catalogue track at p50 0.047 ms, p99
+  0.084 ms.
+- The instrumented run (`STACKFALL_PROFILE_AUDIO_CALLBACK=1`, its own
+  session): 5367 callbacks, mean 0.017 ms, max 0.214 ms - 1.8% of one
+  buffer at the worst single callback.
+- Command traffic: the director pushes one `SetIntensity` command per
+  simulation tick while playing - 10,343 pushes over the 180 s sustained
+  session, 57.5/s, with **zero rejections** (the 16-slot queue never
+  overflowed in real time; the rejections that appear in fast-forward runs
+  are the producer outrunning the audio thread's real-time clock, a test
+  artifact). Sixty relaxed atomic stores a second on the queue's tail cell
+  is orders of magnitude below the frame budget, and the paced soundtrack
+  pair (off against a playing pool, three samples each) shows no difference
+  beyond run variance: off at median 16.69-16.73 ms / p99 17.67-17.69 ms against a playing arcade pool at median 16.68-16.73 ms / p99 17.66-17.69 ms, three samples each in both states - no difference beyond run variance.
+
+Nothing here is actionable at the frame budget; the traffic is recorded,
+not optimized.
+
+### Hypothesis 3: pacing. Holds, and the fallback limiter is what holds it
+
+Every paced sample of both states holds 60.00 ticks/s, with median frame
+times of 16.65-16.86 ms and p99 at 17.4-17.7 ms. Under the dummy video
+driver, presentation returns early, so the elapsed-time fallback limiter
+carries the 60 Hz simulation; each such session logs its single engage line
+(`Fallback frame limiter engaged: presentation returned early; pacing at
+60 Hz`). Rendering versus waiting, per the work/paced pair: the busiest
+scenario's work is under 1 ms of the 16.67 ms slot on this host (5% at
+worst), so the slot is mostly deliberate wait here. No frame stall above
+the 50 ms warning threshold was logged in any sample of either state.
+
+### Hypothesis 4: resource growth. None measured
+
+The sustained case (180 s, 10,800 frames, nine round restarts, 63 record
+saves, 228 session-log lines): resident memory 13,372 KiB at the first
+sample after bring-up, 13,372 KiB at the last, peak 13,372 KiB - **0 KiB of
+growth over the session**. Writes stayed bounded (586 write syscalls,
+1.34 MiB) and the audio callback count ran at the device rate for the whole
+session. There is no leak to fix.
+
+### Hypothesis 5: diagnostic logging. Not a cause at the rates a session produces
+
+A session logs its startup block, scene transitions, save outcomes, and
+stalls, and each line flushes to `log.txt`: 228 lines in the 180 s
+sustained session and 207 in a 3,000-frame logging pair sample. The logging
+pair (the same workload writing `log.txt` against writing `/dev/null`)
+measured median 16.685 ms and p99 17.676 ms with `log.txt` on disk against median 16.703 ms and p99 17.661 ms with the log on `/dev/null` (93 lines written, 60 s each) - identical within run variance, and the write counters move only by the log's own bytes (328 against 304 KiB for the whole session). At one to two lines per second the per-line flush is
+microseconds and does not reach the frame budget; the lines worth watching
+are the save outcomes, whose cost the record writer now carries.
+
+### Pressure case (bounded)
+
+`T065_PRESSURE_SECONDS=60` on the `drops` scenario, four kinds on two
+renderers, with the durable-save probe measured inside the same window
+(percentiles over the frames after the first second, so Xvfb bring-up
+lands in no kind's numbers):
+
+| kind / renderer | median ms | p95 ms | p99 ms | max ms | save p50 us |
+| --- | --- | --- | --- | --- | --- |
+| idle / dummy | 16.73 | 17.30 | 17.67 | 22.90 | 2454 |
+| cpu / dummy | 16.67 | 17.41 | 17.67 | 23.93 | 2613 |
+| storage / dummy | 16.71 | 17.36 | 17.69 | 17.87 | 2469 |
+| both / dummy | 16.69 | 17.37 | 17.65 | 18.31 | 2627 |
+| idle / x11-opengl | 16.55 | 17.52 | 17.65 | 17.83 | 2321 |
+| cpu / x11-opengl | 16.70 | 17.38 | 17.65 | 19.45 | 2518 |
+| storage / x11-opengl | 16.56 | 17.51 | 17.64 | 17.85 | 2418 |
+| both / x11-opengl | 16.71 | 17.41 | 17.66 | 23.13 | 2649 |
+
+On this host the bounded pressure changes the tails little (eight cores,
+an SSD with headroom): the save probe stays at 2.3-2.6 ms median and the
+percentiles stay inside the idle spread. The case is recorded as the
+procedure the device round reuses, and as the bound that the pressure
+worker never exceeded (256 MiB written, one directory inside the evidence
+tree, cleaned up and registered in the Looper cleanup file).
+
+### Portrait layout
+
+The portrait row of the hypotheses phase (the `drops` scenario paced with
+the stored orientation set to portrait, three samples): median 16.64-16.65 ms, p95 17.56-17.59 ms, p99 17.67-17.71 ms, max 17.86-17.95 ms - the same band as the landscape `drops` row (median 16.72-16.73 ms, p99 17.69 ms)
+The rotated frame draws 40 px cells and a different HUD strip, so its work
+differs from the landscape row; on this host both hold 60.00 ticks/s.
+
+### Regression gate at the fixed source
+
+- `ctest` Debug: 5/5 suites passed (including the pinned replay hashes and
+  the new record-writer suite).
+- `ctest` Release: 5/5 suites passed.
+- The unattended SDL harness `tests/harness/run.sh` (19 sessions through
+  the real SDL application, each replayed against the headless reference
+  and compared field by field; the `record-abandon-save` session of T052,
+  the staged `next-count` relaunches that carry a mid-round record forward,
+  and the portrait sessions of T055 among them): 931 checks passed, 0
+  failed, on the Debug build (`build/agent-checks/t065-regress-debug/`).
+- The same harness on the Release build: 931 checks passed, 0 failed
+  (`build/agent-checks/t065-regress-release/`).
+- The T025 hard-kill phase (SIGKILL inside save writes through a 120 ms
+  fsync delay shim, 24 kills): every resulting record file was canonical -
+  24 canonical, 0 damaged, 0 absent - and the repair-and-load run on the
+  killed directory exited 0 and replaced the record
+  (`build/agent-checks/t065-hardkill/`). The writer thread never leaves a
+  partial file behind, because the store's atomic write is unchanged.
+
+### Device capture procedure, and what stays open
+
+`tools/perf/device-capture.sh` is the repeatable procedure for the RG503:
+it runs the same scenarios at real-time pacing with the frame-time record,
+samples `/proc` from outside the process with the same monitor, enables the
+audio callback clock for its own session, and runs the durable-save probe
+on the device's own storage. Everything lands in one directory with its
+inputs recorded. Copy to the device: the game binary, the same-architecture
+`stackfall_save_probe`, `t065_monitor.py`, and the scenario scripts
+(`tests/harness/t065_gen.py <scenario> 6000` generates them). Actual device
+tail measurements stay open with T036: no RG503 was available to this round,
+and this report's desktop numbers deliberately infer nothing about the
+handheld's blocking vsync, its storage latency, or its battery.

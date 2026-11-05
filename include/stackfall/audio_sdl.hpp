@@ -281,6 +281,28 @@ class AudioDriver {
   // test suite can drive the mixer without a device.
   void mixFrames(std::int16_t* out, std::size_t frames);
 
+  // The callback accounting of the performance evidence (task T065): how
+  // many callbacks ran and how many frames they mixed. Two relaxed atomics
+  // the callback increments, read once at shutdown, so the counters cost
+  // nothing a timed sample can see.
+  unsigned long callbackCount() const {
+    return callbackCount_.load(std::memory_order_relaxed);
+  }
+  unsigned long callbackFrames() const {
+    return callbackFrames_.load(std::memory_order_relaxed);
+  }
+  // The callback work total and maximum, in performance-counter counts.
+  // Zero unless enableCallbackTiming() ran, so the two clock reads per
+  // callback stay out of every sample that did not ask for them.
+  bool callbackTimingEnabled() const { return callbackTiming_; }
+  void enableCallbackTiming();
+  std::uint64_t callbackWorkCounts() const {
+    return callbackWorkCounts_.load(std::memory_order_relaxed);
+  }
+  std::uint64_t callbackWorkMaxCounts() const {
+    return callbackWorkMaxCounts_.load(std::memory_order_relaxed);
+  }
+
  private:
   // The synthesized cues and the counters above are main-thread state; the
   // voice positions and the seen counters below belong to the callback. The
@@ -322,6 +344,15 @@ class AudioDriver {
   // so neither bus clicks when the master switch moves.
   std::uint32_t cueMasterGainQ16_ = 65536;
   std::uint32_t cueMasterStep_ = 1;
+
+  // The callback accounting of the accessors above. `callbackTiming_` is
+  // main-thread state set once before playback starts; the two work cells
+  // are callback-thread state behind relaxed atomics.
+  std::atomic<std::uint64_t> callbackCount_{0};
+  std::atomic<std::uint64_t> callbackFrames_{0};
+  bool callbackTiming_ = false;
+  std::atomic<std::uint64_t> callbackWorkCounts_{0};
+  std::atomic<std::uint64_t> callbackWorkMaxCounts_{0};
 
   void publishMusicGain();
   void updateDuck(std::size_t frames);

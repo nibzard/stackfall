@@ -1,12 +1,14 @@
-# Portrait-pad stage two (T055, docs/AGENT_TESTING.md): the relaunch that
-# applied orientation=portrait at startup, on the developer virtual
-# controller, seed 20261103. A round on the rotated pad table - D-pad up
-# moves right, D-pad down moves left, B rotates clockwise and confirms, A
-# rotates counter-clockwise and goes back, Y hard drops, X holds - then
-# the pause overlay navigated on the reversed cluster's menu roles (D-pad
-# left and right move the cursor), a hard-drop spam to the game-over
-# screen, and the quit through the title menu. A `wait` follows every
-# check, so no record carries the tick of the input that comes after it.
+# Portrait-pad stage two (T055, docs/AGENT_TESTING.md; hard drop moved to
+# the logical up direction by T067): the relaunch that applied
+# orientation=portrait at startup, on the developer virtual controller,
+# seed 20261103. A round on the rotated pad table - D-pad up moves right,
+# D-pad down moves left, B rotates clockwise and confirms, A rotates
+# counter-clockwise and goes back, D-pad left is the logical up direction
+# so it hard drops, Y holds and X carries nothing - then the pause overlay
+# navigated on the rotated menu roles (D-pad left and right move the
+# cursor), a hard-drop spam to the game-over screen, and the quit through
+# the title menu. A `wait` follows every check, so no record carries the
+# tick of the input that comes after it.
 check title-start
 wait 1
 check title-at-start
@@ -43,15 +45,15 @@ pad a up
 wait 2
 check rotated-ccw
 wait 1
-pad x down
-wait 2
-pad x up
-wait 2
-check hold-swapped
-wait 1
 pad y down
 wait 2
 pad y up
+wait 2
+check hold-swapped
+wait 1
+pad left down
+wait 2
+pad left up
 wait 2
 check first-lock
 wait 1
@@ -61,9 +63,9 @@ pad up up
 wait 2
 check moved-right-two
 wait 1
-pad y down
+pad left down
 wait 2
-pad y up
+pad left up
 wait 2
 check second-lock
 wait 1
@@ -124,168 +126,44 @@ pad b up
 wait 2
 check resumed
 wait 1
-# hard-drop spam until the round tops out
-pad y down
+# nine hard drops on the logical up direction top the round out; the
+# ninth is the press that blocks the next spawn, so the over cursor
+# opens on PLAY AGAIN and no later press moves it
+pad left down
 wait 2
-pad y up
+pad left up
 wait 2
-pad y down
+pad left down
 wait 2
-pad y up
+pad left up
 wait 2
-pad y down
+pad left down
 wait 2
-pad y up
+pad left up
 wait 2
-pad y down
+pad left down
 wait 2
-pad y up
+pad left up
 wait 2
-pad y down
+pad left down
 wait 2
-pad y up
+pad left up
 wait 2
-pad y down
+pad left down
 wait 2
-pad y up
+pad left up
 wait 2
-pad y down
+pad left down
 wait 2
-pad y up
+pad left up
 wait 2
-pad y down
+pad left down
 wait 2
-pad y up
+pad left up
 wait 2
-pad y down
+pad left down
 wait 2
-pad y up
-wait 2
-pad y down
-wait 2
-pad y up
-wait 2
-pad y down
-wait 2
-pad y up
-wait 2
-pad y down
-wait 2
-pad y up
-wait 2
-pad y down
-wait 2
-pad y up
-wait 2
-pad y down
-wait 2
-pad y up
-wait 2
-pad y down
-wait 2
-pad y up
-wait 2
-pad y down
-wait 2
-pad y up
-wait 2
-pad y down
-wait 2
-pad y up
-wait 2
-pad y down
-wait 2
-pad y up
-wait 2
-pad y down
-wait 2
-pad y up
-wait 2
-pad y down
-wait 2
-pad y up
-wait 2
-check spam-mid
-wait 2
-pad y down
-wait 2
-pad y up
-wait 2
-pad y down
-wait 2
-pad y up
-wait 2
-pad y down
-wait 2
-pad y up
-wait 2
-pad y down
-wait 2
-pad y up
-wait 2
-pad y down
-wait 2
-pad y up
-wait 2
-pad y down
-wait 2
-pad y up
-wait 2
-pad y down
-wait 2
-pad y up
-wait 2
-pad y down
-wait 2
-pad y up
-wait 2
-pad y down
-wait 2
-pad y up
-wait 2
-pad y down
-wait 2
-pad y up
-wait 2
-pad y down
-wait 2
-pad y up
-wait 2
-pad y down
-wait 2
-pad y up
-wait 2
-pad y down
-wait 2
-pad y up
-wait 2
-pad y down
-wait 2
-pad y up
-wait 2
-pad y down
-wait 2
-pad y up
-wait 2
-pad y down
-wait 2
-pad y up
-wait 2
-pad y down
-wait 2
-pad y up
-wait 2
-pad y down
-wait 2
-pad y up
-wait 2
-pad y down
-wait 2
-pad y up
-wait 2
-pad y down
-wait 2
-pad y up
+pad left up
 wait 2
 wait 5
 check gameover-first

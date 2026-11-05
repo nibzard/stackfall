@@ -457,6 +457,14 @@ bool AudioDriver::open() {
   return true;
 }
 
+// The opt-in callback timing of the T065 evidence (task T065): two
+// performance-counter reads per callback, turned on by the platform layer
+// when the environment asked for them, so the measurement runs a session of
+// its own and no timed sample pays for the clock.
+void AudioDriver::enableCallbackTiming() {
+  callbackTiming_ = true;
+}
+
 void AudioDriver::close() {
   if (device_ != 0) {
     SDL_PauseAudioDevice(device_, 1);
@@ -681,7 +689,25 @@ void SDLCALL AudioDriver::audioCallback(void* userdata, Uint8* stream,
   const std::size_t frames =
       bytesPerFrame > 0 ? static_cast<std::size_t>(len) / bytesPerFrame : 0;
   auto* out = static_cast<std::int16_t*>(static_cast<void*>(stream));
+  // The two counting stores are the callback's whole accounting overhead
+  // (task T065); the clock pair runs only when a session asked for it.
+  driver->callbackCount_.fetch_add(1, std::memory_order_relaxed);
+  driver->callbackFrames_.fetch_add(frames, std::memory_order_relaxed);
+  const Uint64 started = driver->callbackTiming_
+                             ? SDL_GetPerformanceCounter()
+                             : 0;
   driver->mixFrames(out, frames);
+  if (driver->callbackTiming_) {
+    const Uint64 counts =
+        SDL_GetPerformanceCounter() - started;
+    driver->callbackWorkCounts_.fetch_add(counts, std::memory_order_relaxed);
+    std::uint64_t previous =
+        driver->callbackWorkMaxCounts_.load(std::memory_order_relaxed);
+    while (counts > previous &&
+           !driver->callbackWorkMaxCounts_.compare_exchange_weak(
+               previous, counts, std::memory_order_relaxed)) {
+    }
+  }
 }
 
 }  // namespace stackfall

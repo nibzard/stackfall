@@ -155,6 +155,21 @@ class InputAdapter {
     }
   }
 
+  // Forgets every held level and every pending press edge of every source,
+  // keeping the sources themselves. Call this when the mapping tables change
+  // under hands that may already hold a control - the orientation turn of
+  // task T068: a level the old table raised survives into the new one, and
+  // the release that follows arrives through the new table, where the same
+  // control maps to a different action and cannot clear it, so a direction
+  // would stay held forever. A pending edge waits for the same reason: it
+  // holds the action the old table gave its press.
+  void clearHeldAndPending() {
+    for (int i = 0; i < count_; ++i) {
+      sources_[i].held = 0;
+      sources_[i].pending = 0;
+    }
+  }
+
   // True while at least one source holds the action.
   bool isHeld(GameAction action) const {
     const std::uint16_t bit = actionBit(action);

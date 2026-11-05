@@ -37,6 +37,7 @@
 #include <cstdint>
 #include <string>
 
+#include "stackfall/bindings.hpp"
 #include "stackfall/music.hpp"
 #include "stackfall/types.hpp"
 
@@ -182,7 +183,8 @@ class HighScoreStore {
 // hold input and hides the Hold preview, `next=1..5` draws that many Next
 // previews in queue order, `grayscale=on` draws the play scene without color,
 // and `orientation=portrait` turns the scene and the controls a quarter for
-// the sideways grip of task T055, applied at the next launch. Every other
+// the sideways grip of task T055 - at startup here and again on the options
+// row that selects it (task T068). Every other
 // outcome, including a missing, unreadable, or damaged file, starts every
 // preference at its default (sound, ghost, grid, and hold on, five previews,
 // grayscale off, landscape), so a broken settings file can only cost the
@@ -277,6 +279,78 @@ class SettingsStore {
   // record. A save always writes the current canonical form, so a legacy file
   // upgrades on its next save.
   SaveStatus save(const SettingsValues& values) const;
+
+ private:
+  std::string directory_;  // empty: persistence is off
+};
+
+// ---------------------------------------------------------------------------
+// The controls file (task T066, specification section 5). The custom bindings
+// of the controls customization screen persist beside the record and the
+// settings, in the same save directory and through the same atomic write, as
+// one more versioned ASCII file with one line per bound action:
+//
+//   version=1\nlandscape.pad.left=left\n... landscape.key.pause=enter+esc\n
+//   portrait.pad.left=down\n... portrait.key.pause=enter+esc\n
+//
+// Four blocks of eight lines, one block per orientation and device, in the
+// fixed order landscape pad, landscape keyboard, portrait pad, portrait
+// keyboard, each action of stackfall/bindings.hpp order on its own line. The
+// value is the canonical control name, or two of them joined by '+' for the
+// pairs section 5 names - `y+l1`, `enter+esc`. The canonical names are the
+// words of stackfall/bindings.hpp, which the script language and the
+// reference replay use too.
+//
+// The file is new in task T066, so there is no legacy form: a session that
+// finds no file plays the section 5 defaults, and a session that finds a file
+// it cannot read as the exact canonical rendering of all thirty-three lines -
+// a truncated line, an unknown control, a control serving two actions, a
+// padded value - recovers every table to those defaults and carries on, under
+// the same recovery rule as the record and the settings: a damaged file costs
+// the customizations and never the game. The next save rewrites the whole
+// file in the current form.
+// ---------------------------------------------------------------------------
+
+// The controls file's name inside the save directory.
+inline constexpr char kControlsFileName[] = "controls.dat";
+
+// Reads `bytes` as the controls file. Accepts exactly the canonical
+// thirty-three-line rendering described above; a file that stops between
+// whole lines is damaged, because no partial form ever shipped. Returns false
+// and leaves *bindings untouched on anything else.
+bool parseControlsFile(const std::string& bytes, ControlBindings* bindings);
+
+// Renders the canonical controls file of the four tables.
+std::string formatControlsFile(const ControlBindings& bindings);
+
+// The outcome of a controls load: the binding tables to use and how they were
+// obtained. Every status except Ok leaves the tables at the section 5
+// defaults.
+struct ControlsResult : ControlBindings {
+  SaveStatus status = SaveStatus::NotFound;
+
+  bool ok() const { return status == SaveStatus::Ok; }
+};
+
+// One controls location, with the same shape and the same failure rules as
+// HighScoreStore and SettingsStore so the platform layer treats the three
+// files alike.
+class ControlsStore {
+ public:
+  ControlsStore() = default;
+  explicit ControlsStore(std::string directory);
+  static ControlsStore fromEnvironment();
+
+  bool hasDirectory() const { return !directory_.empty(); }
+  const std::string& directory() const { return directory_; }
+  std::string filePath() const;
+
+  // Reads the four binding tables. Each stays at its default unless a valid
+  // file changes it.
+  ControlsResult load() const;
+
+  // Writes the four tables through the same atomic sequence as the record.
+  SaveStatus save(const ControlBindings& bindings) const;
 
  private:
   std::string directory_;  // empty: persistence is off

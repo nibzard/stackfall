@@ -4413,3 +4413,431 @@ Findings and open questions:
 - The blocked gates are otherwise unchanged: T018 (the RG503 checklist),
   T020 (the fresh ROCKNIX install), T021 (publication), and T036 (device
   frame-time percentiles).
+
+
+## T065 profile and stutter fix (2026-11-05)
+
+Round post-v1.0 (device feedback). Status: passed.
+
+- Source identity: commit `d7d2783` plus the working tree of this round;
+  the measured baseline's hashes are in
+  `build/agent-checks/t065-20261105/host-baseline/source.sha256` (HEAD plus
+  the audio measurement counters alone) and the fixed build's in
+  `host-fix1/source.sha256`. Evidence:
+  `build/agent-checks/t065-20261105/`.
+- Commands: `T065_RUN_ID=t065-20261105 tests/harness/t065.sh` (baseline),
+  the same with `T065_TAG=fix1` and `T065_RENDERERS=dummy-software` for the
+  fixed build, plus the x11 spot check listed in `notes/performance.md`.
+  Regression gate: `ctest --test-dir build`, `ctest --test-dir build-rel`,
+  `tests/harness/run.sh` on both builds, and the T025 `hardkill` phase.
+- Scenarios and their verify claims: `rotate-move` (play 100%, 175
+  rotations each way), `drops` (play 100%, 2632 soft-drop ticks, 94 hard
+  drops), `clears` (play 100%, 125 labeled four-line fixture cycles),
+  `pause` (65% play, 35% paused, 41 pause and resume cycles),
+  `pad-mixed` (94.9% play, both rotations, movement, soft drop, hard drop,
+  and pause on the virtual controller). Every scenario held game over at
+  0.0% of its ticks and restarted its round at least three times.
+- Gate outcomes: `ctest` 5/5 suites in Debug and in Release (pinned replay
+  hashes included); `tests/harness/run.sh` passed 931 checks with 0 failures
+  on both builds (`build/agent-checks/t065-regress-debug/`,
+  `t065-regress-release/`); the T025 `hardkill` phase passed 24 kills with
+  every record file canonical (`build/agent-checks/t065-hardkill/`).
+- Result: the T052 mid-round record save is the confirmed stutter cause
+  (2.59 ms median, 6.20 ms max per save on this host, paid on the gameplay
+  thread once the round passes the stored record); it moved to a writer
+  thread with the T052 guarantee kept. Music synthesis, pacing, resource
+  growth, and diagnostic logging measured and found not actionable. The
+  full tables and the fix's before/after evidence are the T065 section of
+  `notes/performance.md`.
+- Open questions: the device tail measurements stay with task T036; the
+  capture procedure `tools/perf/device-capture.sh` is what runs them.
+
+## T067 hard drop on the logical up direction (2026-11-05)
+
+Round post-v1.0 (device feedback). Status: passed.
+
+The default controller hard drop moved from X to D-pad up in landscape, and
+to the logical up direction of the rotated grip in portrait - the device
+D-pad's left arm - so X and the portrait cluster buttons it freed carry
+nothing. The desktop keyboard defaults are unchanged. The pin and its
+rationale are the T067 section of `notes/design-review.md`, which supersedes
+the cluster-role half of the T055 pin.
+
+- Source identity: commit `036616b` plus the working tree of this round; the
+  harness recorded the per-file hashes in
+  `build/agent-checks/t067-harness-final/source.sha256`.
+- What changed: the two controller tables and the two portrait tables of
+  `src/input_sdl.cpp` (the one mapping location of T009), the controls rows
+  of `src/renderer_sdl.cpp`, the return-to-play gate of `src/main.cpp`
+  (below), the mirrored tables and gate of
+  `tests/harness/reference_replay.cpp`, the pad scripts that hard-dropped on
+  X, and the specification, both player READMEs, and this guide.
+- The return-to-play gate. D-pad up now carries MenuUp and HardDrop in one
+  press, so a queued press must not drop the piece of a round that opens
+  next. The rules core already spends the gameplay half of every menu tick,
+  because the tick that changes the scene reads one half only; the one
+  remaining path is a scene change between ticks, and a scripted `restart`
+  is exactly that. The platform layer now spends every gameplay edge of the
+  first tick a round owns before the core sees the frame, exactly like the
+  HOLD gate beside it, and the reference replay mirrors the gate so both
+  streams stay identical. The gate changes nothing when no edge waits, so
+  every pinned replay hash held.
+- Commands and outcomes, all at the same tree:
+  - `ctest --test-dir build` and `ctest --test-dir build-rel`: 5 of 5 suites
+    each, with the pinned replay hashes unchanged (the inputs of the rules
+    core did not move). The input suite grew to 740 checks, the render suite
+    to 16932.
+  - `HARNESS_RUN_ID=t067-harness-final tests/harness/run.sh`: PASS, twenty
+    sessions, 978 of 978 checks (`build/agent-checks/t067-harness-final/`);
+    the same command against the Release build
+    (`HARNESS_BUILD_DIR=build-rel HARNESS_RUN_ID=t067-harness-release`) also
+    passed 978 of 978 (`build/agent-checks/t067-harness-release/`).
+  - `T024_RUN_ID=t067-t024 tests/harness/t024.sh`: PASS, 291 of 291
+    (`build/agent-checks/t067-t024/`).
+  - `T015_RUN_ID=t067-t015-full tests/harness/t015.sh`: PASS, 434 of 434,
+    including the nested harness and T024 reruns and the pinned M3 hashes
+    (`build/agent-checks/t067-t015-full/`).
+- The new session `harddrop-pad` (T023 harness, both inputs of the landscape
+  table) proves the acceptance end to end against the reference stream: an X
+  press leaves the piece, the board, and the score standing still; D-pad up
+  locks with the section 4.6 arithmetic; the same D-pad-up press moves the
+  cursor up on the title, pause, and game-over menus; the resume, Play
+  Again, and a scripted restart from the title each return to play with
+  nothing settled and no score; and the desktop keyboard defaults ride the
+  same session (X rotates one step, Space hard drops). The portrait sessions
+  keep their rotated pins on the new table: the checker's ordered walk now
+  requires `key left`/`pad left` to carry `drop=1 menu=1000` together, which
+  the landscape table cannot produce.
+- The negative control for the gate: a build with the gate disabled
+  hard-drops the fresh round's first piece on the restart (`settled=4`,
+  `score=36`, and the input-log tick after `script restart` reads
+  `drop=1 menu=1000`). Evidence saved under
+  `build/agent-checks/t067-negative/`; the enabled build reads `drop=0
+  menu=1000` and settles nothing. The controls-screen rows have their own
+  negative control inside the render suite: drawing `X` for the hard-drop
+  row fails the exact glyph-count pin.
+- Script retuning: the portrait scripts' hard-drop spam was trimmed from 45
+  presses to the 9 that top the round out, because `pad left`/`key left`
+  now carry MenuUp and the surplus presses moved the game-over cursor
+  instead of vanishing; the ninth press is the one that blocks the next
+  spawn, so the over cursor opens on PLAY AGAIN. The T065 generator's pad
+  scenario hard-drops on D-pad up now; a generated 300-tick `pad-mixed`
+  scenario ran clean with four drops logged.
+- Open questions: none for the desktop half. Physical confirmation that the
+  marked D-pad arm sits where the rotated grip puts it stays with the
+  blocked device task, and the final input regression pass stays with T070.
+
+## T068 the orientation selection applies in the running session (2026-11-05)
+
+Round post-v1.0 (device feedback). Status: passed.
+
+The Landscape and Portrait selection now takes visible effect in the session
+that selected it: the composition, the rotated drawing, both input tables,
+and the ORIENTATION row's own value all turn inside the tick that consumed
+the select edge, so no restart and no relaunch is needed. The turn also
+forgets every held level and pending press edge, because both store the
+action the *old* table gave the control and the release that follows arrives
+through the new table, where it cannot clear the level - without the clear,
+a direction held across the turn stays held for the rest of the session. The
+pin and the safe-boundary rationale are the T068 section of
+`notes/design-review.md`, which replaces the next-launch half of the T055
+pin; T055's own record stands.
+
+- Source identity: the working tree of this round; the harness recorded the
+  per-file hashes in `build/agent-checks/t068-harness/source.sha256`.
+- What changed: `SdlInput::setOrientation()` clears the adapter
+  (`InputAdapter::clearHeldAndPending()`, the new counterpart of the
+  focus-loss `releaseAllHeld()`), `cycleOrientation()` in `src/main.cpp`
+  calls `applyOrientation()` on every select instead of writing the
+  preference alone, the renderer's separate orientation-preference mirror is
+  gone (the row reads the layout the renderer draws, so the two can no longer
+  disagree), and the headless reference of `tests/harness/reference_replay.cpp`
+  swaps its own key and pad tables and clears its adapter on the same select
+  edges. The device canvas never moves: it stays 960x544 in both
+  orientations because the renderer rotates every primitive inside it, so
+  the window, the letterbox, and the screenshot capture needed no change and
+  the game has no pointer input to remap.
+- The staged portrait sessions became the same-session proof. Stage one
+  (`tests/harness/scripts/orientation-keyboard.script.txt` and
+  `orientation-pad.script.txt`, replacing the shared
+  `orientation-portrait.script.txt`) walks to the ORIENTATION row in
+  landscape, holds a direction across the select - key left or D-pad left,
+  which holds move-left in landscape and is the logical up direction that
+  hard drops in portrait - and then plays the turned session: the title walk
+  on the rotated roles, a round whose logical right moves right, logical
+  left moves left, Z or B rotates clockwise, and logical up hard drops, the
+  pause overlay walked on the rotated roles, a turn back to landscape, a
+  second turn to portrait, and the quit through the portrait table. Three
+  turns in one process, and the settings file the stage leaves holds
+  portrait for the relaunch of stage two.
+- The checker's new pins (`tests/harness/check_harness.py`):
+  `check_portrait_options_layout` reads the turned options page in the
+  vertical device bands the rotation gives its heading, eight rows, and
+  footer, with the highlighted row bright and marked, which a landscape page
+  cannot satisfy because its bands are horizontal; and
+  `check_turn_spends_input` reads the per-tick input log: every
+  `orientation ... status=ok` line follows the tick that carried the select
+  edge (`menu=0010`), the first turn's tick also carries the probe's held
+  level (`L=1`), and every tick after each save carries no bit at all until
+  the script presses again. The stage also requires the exact portrait
+  settings bytes, the rotated play frame and quiet title from pixels, and
+  that neither log carries next-launch wording.
+- The negative control: a build with `setOrientation()` reduced to the plain
+  assignment (the clearing removed) fails the same sessions - the held
+  move-left level survives the turn, the piece of the round that follows
+  starts at column 1 instead of 3 and slides while the script presses
+  nothing, the reference streams diverge on the first round record, and
+  `check_turn_spends_input` reports `only 0 tick(s) after the orientation
+  save ... are empty`. Evidence kept under
+  `build/agent-checks/t068-negative-leak/` (12 failures across the two
+  portrait sessions); the passing build reads the turn's ticks empty and the
+  round's spawn at column 3.
+- Runs at the working tree of this round:
+  - `ctest --test-dir build` and `--test-dir build-rel`: 5 suites green in
+    Debug and Release (13,271 render-suite checks, 0 failures), including
+    the new `check_orientation_turn_clears_input` cases of
+    `tests/test_input.cpp` and `tests/test_input_sdl.cpp` and the
+    options-page turn case of `tests/test_renderer_sdl.cpp`.
+  - `HARNESS_RUN_ID=t068-harness tests/harness/run.sh`: PASS, twenty
+    sessions, 1052 of 1052 checks (`build/agent-checks/t068-harness/`);
+    the same command against the Release build
+    (`HARNESS_BUILD_DIR=build-rel HARNESS_RUN_ID=t068-harness-release`)
+    also passed 1052 of 1052 (`build/agent-checks/t068-harness-release/`).
+  - `T015_RUN_ID=t068-t015-hashes T015_PHASES="builds hashes"
+    tests/harness/t015.sh`: M3 GATE PASS, the rules suite byte-identical in
+    Debug and Release and the pinned scenario hashes unchanged
+    (`build/agent-checks/t068-t015-hashes/`).
+- Landscape keeps its bytes. Against the pre-change baseline run
+  (`build/agent-checks/baseline-t068/`, the same twenty sessions at the
+  integrated revision before this change), the observation streams of all 26
+  unaffected stages are byte-identical outside the screenshot path, and the
+  screenshots of the landscape sessions compared (`normal-game-clears`,
+  `options-ghost`, `harddrop-pad`) are byte-identical file for file. The
+  four portrait stages are the only differences: stage one is the new
+  script, and stage two differs in the `high` field alone (34, the record
+  the new stage one's abandoned round persisted mid-round, against 0
+  before) - every tick field, and so every timing pin, is unchanged.
+- Open questions: none for the desktop half. Physical confirmation that a
+  mid-session turn reads well on a real RG503 stays with the blocked device
+  task (T018), and the final performance and input regression pass stays
+  with T070.
+
+## T066 the controls customization screen (2026-11-05)
+
+Round post-v1.0 (device feedback). Status: passed.
+
+Every gameplay action of both orientation tables is now player-editable. The
+CONTROLS screen's confirm opens a customization screen with one row per
+action - the eight of specification section 5 - showing the controls each
+device holds in the orientation in force, plus RESTORE DEFAULTS. Confirm arms
+a capture; the next press of a rebindable control of either device names the
+new binding and never reaches the round or a menu. Pressing a control the
+action already uses cancels, a capture that would give one control two
+gameplay actions in one table is rejected with a message that names the
+conflict, and the menu roles never rebind, so every menu stays reachable
+whatever the tables hold. Custom bindings persist as `controls.dat` beside
+the record through the same atomic write, recover to the section 5 defaults
+under the storage recovery rule when the file is damaged, and the file is new
+so it has no legacy form.
+
+- Source identity: the working tree of this round; the harness recorded the
+  per-file hashes in `build/agent-checks/t066-final/source.sha256`.
+- What changed: the two constexpr mapping tables of `src/input_sdl.cpp`
+  became the `ControlBindings` model of `include/stackfall/bindings.hpp` and
+  `src/bindings.cpp` (four tables - keyboard and controller in landscape and
+  portrait - because the portrait cluster reversal is not a rotation of the
+  landscape table; the defaults reproduce the pinned tables byte for byte),
+  `controls.dat` joined the record and the settings in
+  `include/stackfall/storage.hpp` and `src/storage.cpp`, `SdlInput` grew the
+  binding tables, the capture, and the `setControlBindings` clear, the scene
+  machine gained `Scene::Rebind` appended after `PauseControls` so every
+  pinned numeric scene value kept its meaning, and the renderer, the
+  developer script language (`findKey` resolves every rebindable word), and
+  the reference replay mirror the whole path. The two new bugs the fresh
+  `tests/test_bindings.cpp` caught before any device run: the formatter
+  wrote the keyboard block before the pad block while the parser, the
+  specification, and the staged templates all pin pad first - so a file the
+  game wrote, the game itself rejected on the next launch - and the validity
+  rule accepted one control twice inside one action. Both are fixed and
+  pinned.
+- The harness grew four sessions. `controls-keyboard` and `controls-pad`
+  walk the screen end to end on one input each: open, capture on HARD DROP
+  (D on the keyboard, X on the pad), a rejected capture that names ROTATE
+  CCW as the holder of Z/B, a cancelled capture, the round-level proof that
+  the freed control settles nothing while the bound one locks the piece,
+  egress through both menus, and RESTORE DEFAULTS ending on the exact
+  section 5 bytes. The pad session adds the unplug - a held direction dies
+  with the pad while no counter moves - and the replug, whose new instance
+  answers the custom binding at once. `controls-relaunch` runs two stages
+  over one save directory, both marked `settings=none` (the new manifest
+  field for a stage that must write no settings file; the driver removes the
+  file first and fails the run if the stage grows one), so it also proves
+  the customization path writes no settings file of its own: stage one saves
+  both custom tables, stage two reads them at startup, plays them, and
+  restores the defaults. `controls-invalid` starts one stage from
+  `controls=broken-controls.dat` - Z bound to hard drop and rotate
+  counter-clockwise together - and requires the recovery to the defaults,
+  every menu reachable, and the damaged file byte-identical to how the
+  stage found it. The reference mirrors the path through `--controls` and
+  its own capture state, so all five game streams equal their reference
+  streams field for field.
+- The checker pins the sessions from the specification alone: the canonical
+  `controls.dat` bytes are rebuilt in `check_harness.py` from the section 5
+  tables - never read back from the game's formatter - with the per-session
+  overrides applied, and every stage's before and after snapshot must equal
+  them exactly. The input log must carry the capture evidence lines
+  (`controls capture ... result=applied|rejected|cancelled`,
+  `controls restore result=defaults`), the startup lines name default or
+  custom bindings and how they were obtained, and the scene walks and menu
+  cursors are pinned step by step.
+- The headless suites grew `tests/test_bindings.cpp` (defaults, name
+  vocabularies, menu roles, the conflict rule, the file's canonical,
+  damaged, and store round trips; registered in `stackfall_tests`),
+  `tests/test_input_sdl.cpp` gained six checks (the id-to-SDL translations,
+  custom tables on both devices with the roles intact, capture semantics
+  including auto-repeat and release, the mid-session clear, custom bindings
+  driving a round with held levels and one edge per catch-up frame, two
+  devices at once, unplug and replug), and `tests/test_renderer_sdl.cpp`
+  gained `run_rebind_screen_checks`: every cell of the eight rows, the
+  restore row, the accent capture row, the status line, both footers, and
+  the portrait half of the page at the portrait metrics, pinned by exact
+  glyph counts.
+- Runs at the working tree of this round:
+  - `ctest --test-dir build` and `--test-dir build-rel`: 5 suites green in
+    Debug and Release - 342,915 headless checks, 850 input checks, 13,329
+    render checks, all with 0 failures.
+  - `HARNESS_RUN_ID=t066-final tests/harness/run.sh`: PASS, twenty-four
+    sessions, 1232 of 1232 checks (`build/agent-checks/t066-final/`); the
+    same command against the Release build
+    (`HARNESS_BUILD_DIR=build-rel HARNESS_RUN_ID=t066-final-release`) also
+    passed 1232 of 1232 (`build/agent-checks/t066-final-release/`).
+  - `T015_RUN_ID=t066-t015-hashes T015_PHASES="builds hashes"
+    tests/harness/t015.sh`: M3 GATE PASS - the rules suite is
+    byte-identical in Debug and Release and every pinned scenario hash is
+    unchanged with the default bindings
+    (`build/agent-checks/t066-t015-hashes/`).
+- The pre-change baseline: a detached worktree of the integrated revision
+  (`ec14225`, before this change) ran the same harness
+  (`build/agent-checks/baseline-t066/`, twenty sessions, PASS). All 30
+  observation streams of the sessions and stages that existed before T066
+  are byte-identical to the final run's outside the screenshot path, and
+  the screenshots of every compared session are byte-identical except the
+  three controls-page captures (`controls-screen.bmp` of both scene cycles
+  and `pause-controls-open.bmp`), which differ exactly by the new
+  "A CUSTOMIZE" footer the mappings page gained.
+- Open questions: none for the desktop half. Physical confirmation that the
+  capture reads well on a real RG503 - the timing of a capture against the
+  pad's debounce, and the landscape D-pad-up hard drop staying reachable
+  after players rebind it - stays with the blocked device task (T018), and
+  the final input regression pass stays with T070.
+
+## T022: front pages state the harness state (2026-11-05)
+
+Task T022, the standing documentation repair: the two front pages state the
+actual integrated state and agree with each other. Sources: the task
+contract of T022 and the T066, T067, and T068 records above. Tested in the
+detached worktree of `54f6be3` plus the uncommitted task changes. No
+production source changed.
+
+The repair: `README.md` still said the harness "drives nineteen sessions"
+while `tests/harness/run.sh` and the testing guide drive twenty-four, and
+its coverage list omitted the controls-customization sessions of T066 and
+the default-hard-drop session of T067. The README now counts twenty-four
+sessions and names them: the scene cycle on both inputs, a planned game
+from an empty board, the landscape default hard drop on D-pad up with X
+carrying nothing, the controls customization screen on both inputs with
+the custom table kept across a relaunch and a damaged file recovered to
+the defaults, and the three labeled board fixtures, beside the options,
+music, settings-file, hold-off, Next-count, grayscale, record, and portrait
+sessions it already named. The status paragraph also lists the controls
+customization screen, the D-pad-up default, and the orientation switch
+that applies in the running session, and it states that the assembled
+archive predates them, because the package was last built before T065
+through T068 changed the sources. `docs/SPEC.md` adds the soundtrack
+(T062), the same-session orientation switch (T068), the controls screen
+and the D-pad-up default (T066, T067), and the pending archive refresh
+(T071) to its status line, so both front pages agree again.
+
+Verification, all passed:
+
+- `HARNESS_RUN_ID=t022-readme-check-2026-11-05 tests/harness/run.sh`:
+  PASS, twenty-four sessions, 1232 of 1232 checks, 0 failures, evidence in
+  `build/agent-checks/t022-readme-check-2026-11-05/` (`source.sha256`
+  pins the exact sources). The run proves the rewritten sentence:
+  `sessions.txt` lists the twenty-four names, and the checker pins the
+  claims it makes - `harddrop-pad/x-carries-nothing` and
+  `harddrop-pad/up-hard-drops`, `controls-relaunch/stage2-read-custom-file`
+  beside `stage2-space-dead` and `stage2-d-drops`, and
+  `controls-invalid/damaged-file-staged` with
+  `controls-invalid/d-carries-nothing` after the recovery to defaults.
+- Release `ctest` in `build-rel`: 5 of 5 suites.
+- The session count agrees across `README.md`, `docs/AGENT_TESTING.md`,
+  and the `run.sh` header (twenty-four in each), no "nineteen" remains,
+  every relative link in `README.md` resolves, and the lines the repair
+  touched keep each file's width.
+
+Findings and open questions:
+
+- The release archive still carries the pre-T065 binary, so the README and
+  the specification now say its refresh is pending; that refresh is task
+  T071, and the blocked gates are unchanged: T018 (the RG503 checklist),
+  T021 (publication), T063 and T064 (the soundtrack listening and design
+  passes), and T070 (the final regression pass after the device-feedback
+  features).
+
+## T073: the release scope names no shipped feature excluded (2026-11-05)
+
+Task T073, a documentation repair from the specification review: the
+section 2 exclusion list of `docs/SPEC.md` still ended with "and an
+in-game controller rebinding UI. Can be considered for v1.1+", while
+section 5 (the customization subsection headed "Controls customization
+(task T066)", now lines 263 to 303), the REBIND state of section 4.7,
+and the `controls.dat` paragraph of section 9 specify that same
+customization screen as the shipped task T066 feature. Tested in the
+detached worktree of `ec438a9` plus the uncommitted task changes. No
+production source changed.
+
+The repair: the exclusion sentence drops the rebinding clause and now ends
+at "and touch controls", so it names only features the release does not
+contain. A second paragraph states that the customization screen of
+section 5 (task T066) is in scope for v1.0 and must not be re-added from
+earlier drafts of the list, because the frozen specification snapshot
+`81C99D2E-4C46-4F86-BDA9-D95D758ECE0F.md` still carries the old sentence
+unchanged as the approved proposal of the specification phase, and a later
+sync from it would restore the contradiction. The snapshot stays
+untouched on purpose: it records what was approved before any code
+existed, and the living specification alone states the shipped scope.
+
+Verification, all passed:
+
+- The exclusion paragraph no longer contains the word "rebind", and the
+  fifteen items it still lists were each checked against the
+  specification and the sources: no online play, multiplayer,
+  leaderboard, achievement, custom shape, 180-degree rotation, T-spin,
+  combo, user-facing replay, theme, audio asset, sprite or font asset,
+  particle effect, or touch control ships. The soundtrack of section 6.4
+  is generated code and reads no audio file, and `grep` over `src/` and
+  `include/` finds no touch event, no `Mix_Music`, and no `.wav` or
+  `.ogg` reference.
+- Section 5 still specifies the customization screen, task T066, the
+  rebindable actions, and `controls.dat`; sections 4.7 and 9 are
+  unchanged, and the status block at the top of the specification already
+  names the controls customization screen (T066, T067), so no page of the
+  living specification contradicts another.
+- The controls-keyboard harness session ran at this revision from a clean
+  temporary directory: exit 0, "Clean shutdown" in the log, thirty
+  checkpoints, the scenes `title`, `controls`, `rebind`, `playing`, and
+  `paused` in the observation stream, the full set of rebinding
+  screenshots from `rebind-open` through `defaults-restored`, and the
+  canonical thirty-three-line `controls.dat` in the save directory. The
+  shipped screen the exclusion sentence denied is the screen the session
+  drives.
+- Debug and Release `ctest`: 5 of 5 suites in each configuration, and no
+  test or checker reads the exclusion sentence, so the documentation
+  change touches no pinned expectation.
+
+Findings and open questions:
+
+- None. The exclusion lists of the frozen snapshot and of the
+  specification-phase briefs stay as history; only the living
+  specification states the shipped scope.

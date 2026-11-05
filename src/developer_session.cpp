@@ -406,26 +406,26 @@ void DeveloperSession::pumpScript(std::uint64_t tickCount) {
 }
 
 const DeveloperSession::KeyName* DeveloperSession::findKey(const char* name) {
-  static const KeyName keys[] = {
-      {"left", SDL_SCANCODE_LEFT},
-      {"right", SDL_SCANCODE_RIGHT},
-      {"up", SDL_SCANCODE_UP},
-      {"down", SDL_SCANCODE_DOWN},
-      {"x", SDL_SCANCODE_X},
-      {"z", SDL_SCANCODE_Z},
-      {"space", SDL_SCANCODE_SPACE},
-      {"c", SDL_SCANCODE_C},
-      {"lshift", SDL_SCANCODE_LSHIFT},
-      {"enter", SDL_SCANCODE_RETURN},
-      {"esc", SDL_SCANCODE_ESCAPE},
-      {"m", SDL_SCANCODE_M},
-  };
-  for (const KeyName& key : keys) {
-    if (std::strcmp(key.name, name) == 0) {
-      return &key;
-    }
+  // One table for every rebindable key of the customization screen (task
+  // T066): the canonical names of stackfall/bindings.hpp resolve through the
+  // same vocabulary the controls file writes, so a script can name any key a
+  // capture can. M stays in its own entry because it is the fixed sound
+  // shortcut the platform layer reads, not a control; Q stays out for the
+  // same reason, as it quits.
+  static const KeyName soundToggle = {"m", SDL_SCANCODE_M};
+  static const KeyName unknown = {nullptr, SDL_SCANCODE_UNKNOWN};
+  if (std::strcmp(soundToggle.name, name) == 0) {
+    return &soundToggle;
   }
-  return nullptr;
+  const int control = keyboardControlFromName(name);
+  if (control != kNoControl) {
+    static KeyName resolved[kKeyboardControlCount];
+    const SDL_Scancode scancode = scancodeOfKeyboardControl(control);
+    resolved[control].name = keyboardControlName(control);
+    resolved[control].scancode = scancode;
+    return &resolved[control];
+  }
+  return &unknown;
 }
 
 void DeveloperSession::pushKeyEvent(SDL_Scancode scancode, bool pressed) {
@@ -479,6 +479,13 @@ void DeveloperSession::run(const Command& command) {
       // The owner releases the pad, so the exit path that follows cannot
       // double close it: reset() forgets both handles on the spot.
       pad_.reset();
+      break;
+    case Command::Kind::Attach:
+      // The replug half of task T066's disconnect coverage: the same virtual
+      // pad comes back with a fresh SDL instance id, so discovery opens it as
+      // a new source and the binding tables apply to it unchanged - the
+      // tables name a device kind, never a handle.
+      pad_.attach();
       break;
     case Command::Kind::Restart:
       if (game_ != nullptr) {
@@ -593,7 +600,7 @@ bool DeveloperSession::parseLine(const std::string& raw) {
     }
     if (verb == "key") {
       const KeyName* key = findKey(name.c_str());
-      if (key == nullptr) {
+      if (key == nullptr || key->name == nullptr) {
         return reportSyntax(raw, "unknown key name");
       }
       command.kind = down ? Command::Kind::KeyDown : Command::Kind::KeyUp;
@@ -618,6 +625,8 @@ bool DeveloperSession::parseLine(const std::string& raw) {
         verb == "wait" ? Command::Kind::Wait : Command::Kind::Stall;
   } else if (verb == "detach") {
     command.kind = Command::Kind::Detach;
+  } else if (verb == "attach") {
+    command.kind = Command::Kind::Attach;
   } else if (verb == "restart") {
     command.kind = Command::Kind::Restart;
   } else if (verb == "quit") {

@@ -1,0 +1,110 @@
+# The damaged-controls session of task T066: the save directory holds a
+# controls.dat that binds one key to two gameplay actions, which no screen
+# could have written. The session must recover every table to the section 5
+# defaults, keep every menu reachable, play a round on those defaults, and
+# leave the file exactly as it found it, because nothing customized
+# anything.
+check title-start
+wait 1
+key down down
+wait 2
+key down up
+wait 2
+check title-at-controls
+wait 1
+key enter down
+wait 2
+key enter up
+wait 2
+check controls-open
+wait 1
+# the mappings page shows the recovered defaults, not the damaged pair
+check controls-recovered
+wait 1
+key enter down
+wait 2
+key enter up
+wait 2
+check rebind-open
+wait 1
+# egress still works from the customization screen
+key esc down
+wait 2
+key esc up
+wait 2
+check controls-back
+wait 1
+key esc down
+wait 2
+key esc up
+wait 2
+check title-back
+wait 1
+key up down
+wait 2
+key up up
+wait 2
+key enter down
+wait 2
+key enter up
+wait 2
+check playing-start
+wait 1
+# the defaults hold: D carries nothing and Space hard drops
+key d down
+wait 2
+key d up
+wait 2
+check d-dead
+wait 1
+key space down
+wait 2
+key space up
+wait 2
+check space-harddrops
+wait 1
+# leave the round and quit
+key esc down
+wait 2
+key esc up
+wait 2
+check paused
+wait 1
+key down down
+wait 2
+key down up
+wait 2
+key down down
+wait 2
+key down up
+wait 2
+key down down
+wait 2
+key down up
+wait 2
+check paused-at-quit
+wait 1
+key enter down
+wait 2
+key enter up
+wait 2
+check title-after-round
+wait 1
+key down down
+wait 2
+key down up
+wait 2
+key down down
+wait 2
+key down up
+wait 2
+key down down
+wait 2
+key down up
+wait 2
+check title-at-quit
+check quit-confirmed
+key enter down
+wait 2
+key enter up
+wait 2

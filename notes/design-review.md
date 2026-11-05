@@ -638,6 +638,11 @@ clockwise and select, A takes rotate counter-clockwise and back, Y takes hard
 drop, and X takes hold. The left shoulder stays a second hold, and Start
 stays pause.**
 
+*Superseded 2026-11-05 by the T067 pin below, "Hard drop on the logical up
+direction": hard drop moved to the D-pad arm that points up in the grip, so
+Y and the left shoulder hold and X carries nothing. The rotate pair and
+every direction remap of this section stand.*
+
 The landscape table of specification section 5 orders the cluster by how
 close each button sits to the holding thumb: A rotates clockwise and
 confirms, B rotates the other way and goes back, X hard drops, and Y holds.
@@ -667,6 +672,10 @@ that frame.
 | X / Space | - | hold |
 | Start / Enter or Esc | - | pause and resume |
 
+The last two cluster rows changed with the T067 pin below: hard drop moved
+to the D-pad left row, which now reads "hard drop, menu cursor up", and Y
+with the left shoulder holds while X and Space carry nothing.
+
 Enter and Esc keep the menu roles they already carry: they are keyboard
 controls of their own, not stand-ins for cluster buttons, so the rotation
 does not move them. The keyboard columns of the controls screen and every
@@ -695,6 +704,115 @@ prove both frames are implementation, not design; they follow this pin. The
 physical confirmation - that the marked buttons on a real RG503 sit where
 this rotation puts them, and that the grip reads well in a long session -
 stays with the blocked device task.
+
+## Hard drop on the logical up direction (T067, 2026-11-05)
+
+The owner's device-feedback wave asked for the default controller hard drop
+on D-pad up instead of the right cluster's X (task T067). This section pins
+what that request leaves open in portrait - which physical button carries
+hard drop in the turned grip, and what happens to the cluster roles the
+T055 pin above had assigned. The rotation direction and the direction remap
+of T055 stand unchanged; only the cluster-role half of that pin is replaced
+here.
+
+### Landscape
+
+**Decision: D-pad up hard drops and still moves the menu cursor up; X
+carries nothing.**
+
+D-pad up already carried the menu-up role, so it becomes a two-role control
+like A and Enter: one edge, and the screen in charge picks its half. That
+raises the one hazard the change must close - a D-pad-up press queued while
+a menu owns the screen must not drop the piece of the round that opens
+next. The rules core already spends the gameplay half of every menu tick,
+because the tick that changes the scene reads one half only; the platform
+layer now spends every gameplay edge of the first tick a round owns as
+well, so the guarantee holds for the one transition that happens outside a
+tick (a scripted restart) and stays structural instead of incidental.
+
+### Portrait
+
+**Decision: hard drop sits on the logical up direction of the rotated grip -
+the device D-pad's left arm - and the cluster keeps the reversed rotate pair
+with hold on Y; X carries nothing.**
+
+The portrait table of T055 maps the device D-pad's left arm to menu up,
+because that arm points at the player's ceiling once the device has turned
+clockwise. That arm is therefore the logical up direction, and hard drop
+belongs to it exactly as it belongs to D-pad up in landscape: one rule, two
+frames. On the held device the arm sits under the right thumb at the top of
+the cross, so the physical description the controls screen gives - "D-PAD
+LEFT (UP)" - names both the device marking and the direction it points in
+the grip.
+
+With hard drop off the cluster, the cluster roles simplify to the same
+ordering landscape gives the thumb: B nearest (rotate clockwise, confirm),
+then A (rotate counter-clockwise, back), then Y with the left shoulder
+beside it (hold), and X farthest with nothing. The keyboard mirrors the pad
+as it did in T055, so C and left shift hold, the left arrow is the logical
+up direction and hard drops, and Space carries nothing.
+
+### What this replaces
+
+The cluster-role half of the T055 pin above is superseded: Y no longer hard
+drops and X no longer holds in portrait. The rotation direction, the
+direction remap, and the portrait composition of T055 are untouched, and
+T055's own record stands as the decision of its time. The desktop keyboard
+defaults are untouched too: landscape keeps X or Up rotating, Space hard
+dropping, and C or left shift holding, whatever the orientation of the
+controller tables.
+
+## Applying the orientation in the running session (T068, 2026-11-05)
+
+The owner's device-feedback wave asked for the Landscape and Portrait
+selection to take visible effect without restarting the application (task
+T068). T055 had pinned the next-launch rule as an implementation choice; this
+section replaces that half of the pin. The rotation, the direction remap, and
+the portrait composition of T055 stand unchanged.
+
+**Decision: the turn happens inside the tick that consumed the select edge,
+and it clears every held level and pending edge at the same moment.**
+
+The options screen's select is the one boundary the platform layer already
+owns: the tick that carries it spends the edge, the platform layer reads the
+highlighted row after the tick, and the next tick reads whatever the input
+adapter holds. Applying the orientation inside that window - one
+`applyOrientation` call that reaches the renderer's layout and both input
+tables - means the next tick and the frame that renders it both describe the
+new frame, so no frame is ever half-turned. Nothing else needs to move: the
+device canvas of `applyCanvas()` stays 960x544 in both orientations, because
+the renderer rotates every primitive inside it, so the window, the letterbox,
+and the screenshot capture are orientation-blind by construction, and the
+game has no pointer input to remap.
+
+The clearing is not optional. Held levels and pending edges store the action
+the *old* table gave the control: a direction held across the turn keeps
+moving the piece in the old direction, and the release that follows arrives
+through the new table, where the same control maps to a different action and
+cannot clear the level, so the direction would stay held for the rest of the
+session - a trap for the next round and for every menu. Clearing both halves
+at once costs nothing the player pressed, because the press that selected the
+row has already spent its edge on the tick that carried it. The rule is the
+same one focus loss applies to held levels, extended to pending edges because
+the tables changed under them rather than the window losing them.
+
+**Decision: the ORIENTATION row names the layout on screen, and the stored
+preference is the same value.**
+
+The row's separate "preference" mirror existed only to name what the next
+launch would draw. With the turn applied at once the two can no longer
+disagree, so the row reads the renderer's own orientation and the mirror is
+gone; the settings file still saves on every select, so a relaunch opens on
+the orientation the session ended with and repeated turns in one session
+simply alternate the value.
+
+### What stays outside this decision
+
+The device-side confirmation - that the turned grip reads well when the
+change happens during play on a real RG503 - stays with the blocked device
+task. The harness sessions that pin the turn, the leaked-input rule, and the
+relaunch are recorded in `notes/agent-testing.md` and
+`docs/AGENT_TESTING.md`.
 
 ## Game-over overlay nesting (T043, 2026-11-04)
 

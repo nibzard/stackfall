@@ -82,6 +82,19 @@ checks to its own changes. Never optimize through several unmeasured patches.
   bottleneck and the desktop target is met.
 - Reaching a time or iteration limit does not establish success. Report an
   unmet target as unresolved and keep the desktop gate from claiming a pass.
+
+## Later rounds
+
+Task T065, the post-v1.0 device-feedback round, reuses this method through
+`tests/harness/t065.sh`, which adds the round's own requirements to the T026
+set: scenarios that keep playing across restarts instead of parking at a
+game over screen, keyboard and virtual-controller coverage, a paired save
+mode that runs one workload with the mid-round record saves on and off, a
+sustained case with memory and write sampling, one bounded CPU and
+storage-pressure case, audio callback work and command traffic, and the
+device capture procedure `tools/perf/device-capture.sh`. Its results and
+commands live in `notes/performance.md`; `notes/agent-testing.md` carries
+the run evidence.
 - Keep display synchronization and the fallback limiter intact. High render
   counts caused by disabled pacing do not count as improved performance.
 - Do not require a nested runner, human playtest, or physical device to run

@@ -6,19 +6,24 @@
 #   tests/harness/run.sh
 #
 # It builds the game and the headless reference replay, then drives
-# nineteen sessions through the real SDL application under the dummy video
+# twenty-four sessions through the real SDL application under the dummy video
 # driver:
 # the full scene cycle on the keyboard and on the developer virtual
-# controller, a normal planned game from an empty board, the options screen
+# controller, the landscape default-hard-drop session of task T067 (D-pad up
+# hard drops, X carries nothing, and no press that returns to play drops a
+# piece), a normal planned game from an empty board, the options screen
 # round trip that turns the ghost preview off, the eight-row options screen
 # on both inputs, the music settings page sessions on both inputs of the
 # soundtrack (T062), the hold-off round trip, the grayscale round trip, the
 # staged relaunch, legacy-settings, and next-count sessions of the options
 # expansion (T045), the abandoned-round record session of the mid-round
-# persistence (T052), the two staged portrait sessions of task T055 - a
-# landscape stage that selects the ORIENTATION row and a portrait relaunch
-# that plays a round on the rotated keyboard and pad tables - and three
-# labeled board fixtures (four-line clear, lock-out, block-out). Every
+# persistence (T052), the two staged portrait sessions of tasks T055 and
+# T068 - a landscape stage that selects the ORIENTATION row with a direction
+# held across the press, turns portrait at once, plays a round on the rotated
+# keyboard or pad table, turns back to landscape and to portrait again, and
+# a portrait relaunch that proves the saved preference and plays a full
+# round - and three labeled board fixtures (four-line clear, lock-out,
+# block-out). Every
 # session also runs through the
 # headless reference - a
 # staged session once per stage, over the shared save directory - and
@@ -111,7 +116,8 @@ mkdir -p "$run_dir" || fail "cannot create $run_dir"
     include/stackfall/observe.hpp tests/harness/run.sh \
     tests/harness/check_harness.py tests/harness/reference_replay.cpp \
     tests/fixtures/*.board.txt tests/harness/scripts/*.script.txt \
-    tests/harness/scripts/*.stages.txt tests/harness/settings/*.dat
+    tests/harness/scripts/*.stages.txt tests/harness/settings/*.dat \
+    tests/harness/controls/*.dat
 } > "$run_dir/source.sha256" || fail "cannot record source identity"
 cat "$run_dir/source.sha256"
 
@@ -148,6 +154,7 @@ run_pair() {
   echo "reference: $pair_name"
   "$reference" --seed "$seed" --script "$pair_script" \
     --fixture-dir "$fixtures" --settings "$pair_save/settings.dat" \
+    --controls "$pair_save/controls.dat" \
     --high-score "$pair_save/highscore.dat" \
     --out "$run_dir/$pair_stem.ref.obs" \
     > "$run_dir/$pair_stem.ref.log" 2>&1 ||
@@ -178,9 +185,12 @@ run_pair() {
 # One staged session: every line of the manifest names one script and may add
 # `settings=<name>`, a file under tests/harness/settings/ the driver copies
 # into the shared save directory before the stage runs, so a stage may start
-# from a legacy settings file. The settings file is snapshotted before and
-# after every stage, so the checker reads the exact bytes each stage started
-# from and left behind.
+# from a legacy settings file, `controls=<name>`, the same staging for a file
+# under tests/harness/controls/ (task T066), or `settings=none`, which
+# removes the settings file first and requires the stage to leave none - the
+# marker for a stage that exercises no settings write. The settings and
+# controls files are snapshotted before and after every stage, so the checker
+# reads the exact bytes each stage started from and left behind.
 run_stages() {
   stage_session=$1
   stage_dir=$2
@@ -195,6 +205,8 @@ run_stages() {
     # this function's own positional parameters.
     stage_script=""
     stage_template=""
+    stage_controls=""
+    stage_no_settings=0
     for stage_field in $stage_line; do
       case "$stage_field" in
         script=*)
@@ -203,7 +215,9 @@ run_stages() {
           fi
           stage_script=${stage_field#script=}
           ;;
+        settings=none) stage_no_settings=1 ;;
         settings=*) stage_template=${stage_field#settings=} ;;
+        controls=*) stage_controls=${stage_field#controls=} ;;
         *) fail "unknown field \"$stage_field\" in $stage_manifest" ;;
       esac
     done
@@ -218,24 +232,55 @@ run_stages() {
         fail "missing settings template $settings_dir/$stage_template"
       cp "$settings_dir/$stage_template" "$stage_save/settings.dat" ||
         fail "cannot stage $stage_template for $stage_session"
+    elif [ "$stage_no_settings" -eq 1 ]; then
+      rm -f "$stage_save/settings.dat"
+    fi
+    # `controls=<name>` stages a controls.dat the same way (task T066): a
+    # stage may start from a custom or a damaged binding file, and the
+    # snapshots below carry the exact bytes each stage started from and left
+    # behind.
+    if [ -n "$stage_controls" ]; then
+      [ -f "$controls_dir/$stage_controls" ] ||
+        fail "missing controls template $controls_dir/$stage_controls"
+      cp "$controls_dir/$stage_controls" "$stage_save/controls.dat" ||
+        fail "cannot stage $stage_controls for $stage_session"
     fi
     if [ -f "$stage_save/settings.dat" ]; then
       cp "$stage_save/settings.dat" \
         "$stage_dir/settings-before-stage$stage_no.dat"
     fi
+    if [ -f "$stage_save/controls.dat" ]; then
+      cp "$stage_save/controls.dat" \
+        "$stage_dir/controls-before-stage$stage_no.dat"
+    fi
     mkdir -p "$stage_dir/stage$stage_no/shots"
     run_pair "$stage_session stage $stage_no" "$scripts/$stage_script" \
       "$stage_session.stage$stage_no" "$stage_save" "$stage_dir/stage$stage_no"
-    [ -f "$stage_save/settings.dat" ] ||
-      fail "stage $stage_no of $stage_session left no settings.dat"
-    cp "$stage_save/settings.dat" "$stage_dir/settings-after-stage$stage_no.dat"
+    if [ "$stage_no_settings" -eq 1 ]; then
+      # A stage marked `settings=none` changes no preference, so the run must
+      # not grow a settings file either: an accidental write would surface
+      # here instead of hiding behind the staged sessions that do write one.
+      [ -f "$stage_save/settings.dat" ] &&
+        fail "stage $stage_no of $stage_session wrote settings.dat without a settings change"
+    else
+      [ -f "$stage_save/settings.dat" ] ||
+        fail "stage $stage_no of $stage_session left no settings.dat"
+      cp "$stage_save/settings.dat" "$stage_dir/settings-after-stage$stage_no.dat"
+    fi
+    if [ -f "$stage_save/controls.dat" ]; then
+      cp "$stage_save/controls.dat" \
+        "$stage_dir/controls-after-stage$stage_no.dat"
+    else
+      : > "$stage_dir/controls-after-stage$stage_no.dat"
+    fi
   done < "$stage_manifest"
   [ "$stage_no" -gt 0 ] || fail "$stage_manifest lists no stage"
 }
 
 seed=20261103
 settings_dir="$repo/tests/harness/settings"
-sessions="scene-cycle-keyboard scene-cycle-pad normal-game-clears options-ghost options-six-keyboard options-six-pad music-settings music-settings-pad hold-off grayscale options-relaunch options-legacy next-count portrait-keyboard portrait-pad record-abandon-save fixture-four-line fixture-lockout fixture-blockout"
+controls_dir="$repo/tests/harness/controls"
+sessions="scene-cycle-keyboard scene-cycle-pad harddrop-pad normal-game-clears options-ghost options-six-keyboard options-six-pad music-settings music-settings-pad hold-off grayscale options-relaunch options-legacy next-count portrait-keyboard portrait-pad record-abandon-save controls-keyboard controls-pad controls-relaunch controls-invalid fixture-four-line fixture-lockout fixture-blockout"
 : > "$run_dir/sessions.txt"
 for session in $sessions; do
   echo "$session" >> "$run_dir/sessions.txt"

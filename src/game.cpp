@@ -176,6 +176,9 @@ void Game::tick(const TickInput& input) {
     case Scene::MusicOptions:
       tickMusicOptions(input.menu);
       return;
+    case Scene::Rebind:
+      tickRebind(input.menu);
+      return;
     case Scene::Paused:
       tickPaused(input);
       return;
@@ -210,10 +213,20 @@ void Game::tickTitle(const MenuFrame& menu) {
 }
 
 void Game::tickControls(const MenuFrame& menu) {
-  // Confirm and back both return to the title (specification section 4.7).
-  // The cursor stays on Controls, so B followed by A reopens the screen.
-  if (menu.selectPressed || menu.backPressed) {
+  // Back returns to the title; select opens the controls customization screen
+  // of task T066, which remembers this screen as its way back. Before T066
+  // confirm and back both returned to the title; the mappings table gained a
+  // doorway instead of losing one, because a screen the player cannot leave
+  // is not a customization screen. The title cursor stays on Controls, so
+  // back followed by A reopens it.
+  if (menu.backPressed) {
     scene_ = Scene::Title;
+    return;
+  }
+  if (menu.selectPressed) {
+    scene_ = Scene::Rebind;
+    rebindFrom_ = Scene::Controls;
+    rebindCursor_ = 0;
   }
 }
 
@@ -286,12 +299,34 @@ void Game::tickPaused(const TickInput& input) {
 }
 
 void Game::tickPauseControls(const MenuFrame& menu) {
-  // Confirm and back both return to the pause overlay (specification section
-  // 4.7). The cursor stays on the Controls item, so B followed by A reopens
-  // the screen, and no counter of the frozen round below moves (task T037).
-  if (menu.selectPressed || menu.backPressed) {
+  // Back returns to the pause overlay and select opens the customization
+  // screen of task T066 with this screen as its way back. The cursor stays on
+  // the Controls item, so back followed by A reopens the screen, and no
+  // counter of the frozen round below moves (task T037).
+  if (menu.backPressed) {
     scene_ = Scene::Paused;
+    return;
   }
+  if (menu.selectPressed) {
+    scene_ = Scene::Rebind;
+    rebindFrom_ = Scene::PauseControls;
+    rebindCursor_ = 0;
+  }
+}
+
+void Game::tickRebind(const MenuFrame& menu) {
+  // Back returns to the screen that opened this one, so the player always
+  // walks back out through a menu whose controls never rebind (task T066).
+  // The D-pad moves the cursor over the eight action rows and RESTORE
+  // DEFAULTS. A select changes nothing here: the binding tables are platform
+  // state the core never holds, exactly as the options row values are, so the
+  // platform layer reads the highlighted row and runs the capture or the
+  // restore itself.
+  if (menu.backPressed) {
+    scene_ = rebindFrom_;
+    return;
+  }
+  moveCursor(rebindCursor_, kRebindItemCount, menu);
 }
 
 void Game::tickGameOver(const MenuFrame& menu) {
@@ -585,6 +620,10 @@ int Game::overSelection() const { return overCursor_; }
 int Game::optionsSelection() const { return optionsCursor_; }
 
 int Game::musicSelection() const { return musicCursor_; }
+
+int Game::rebindSelection() const { return rebindCursor_; }
+
+Scene Game::rebindOrigin() const { return rebindFrom_; }
 
 std::uint64_t Game::highScore() const { return highScore_; }
 

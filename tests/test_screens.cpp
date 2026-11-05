@@ -203,8 +203,9 @@ void test_title_controls_round_trip() {
   g.tick(session(menuSelect()));
   SC_CHECK(g.scene() == Scene::Controls);
 
-  // The controls screen takes no gameplay input and no cursor input; only
-  // confirm or back returns to the title.
+  // The controls screen takes no gameplay input and no cursor input; back
+  // returns to the title and select opens the customization screen of task
+  // T066, which remembers this screen as its way back.
   g.tick(gameplay(pressPause()));
   SC_CHECK(g.scene() == Scene::Controls);
   g.tick(session(menuDown()));
@@ -213,11 +214,89 @@ void test_title_controls_round_trip() {
   SC_CHECK(g.scene() == Scene::Title);
   SC_CHECK(g.titleSelection() == 1);  // the cursor stayed on Controls
 
-  // Reopen with A and return with A: both directions work.
+  // Reopen with A: select now opens the customization screen, and back from
+  // there returns to the mappings screen rather than skipping it, so the way
+  // back out is one screen at a time (task T066).
   g.tick(session(menuSelect()));
   SC_CHECK(g.scene() == Scene::Controls);
   g.tick(session(menuSelect()));
+  SC_CHECK(g.scene() == Scene::Rebind);
+  SC_CHECK(g.rebindSelection() == 0);   // the first action row opens
+  SC_CHECK(g.rebindOrigin() == Scene::Controls);
+  g.tick(session(menuBack()));
+  SC_CHECK(g.scene() == Scene::Controls);
+  g.tick(session(menuBack()));
   SC_CHECK(g.scene() == Scene::Title);
+}
+
+// The controls customization screen of task T066: eight action rows plus
+// RESTORE DEFAULTS, the cursor wrapping over all nine, back returning to the
+// screen that opened it, and a select changing nothing in the core because the
+// binding tables are platform state.
+void test_rebind_screen_navigation() {
+  Game g;
+  g.openTitle(1);
+  g.tick(session(menuDown()));     // cursor on Controls
+  g.tick(session(menuSelect()));   // open the mappings screen
+  g.tick(session(menuSelect()));   // open the customization screen
+  SC_CHECK(g.scene() == Scene::Rebind);
+  SC_CHECK(g.rebindSelection() == 0);
+
+  // Gameplay input never reaches a menu screen.
+  g.tick(gameplay(pressPause()));
+  SC_CHECK(g.scene() == Scene::Rebind);
+
+  // The cursor walks the eight action rows and lands on RESTORE DEFAULTS,
+  // then wraps back to the first row from both ends.
+  for (int row = 1; row < stackfall::kRebindItemCount; ++row) {
+    g.tick(session(menuDown()));
+    SC_CHECK(g.rebindSelection() == row);
+  }
+  g.tick(session(menuDown()));
+  SC_CHECK(g.rebindSelection() == 0);
+  g.tick(session(menuUp()));
+  SC_CHECK(g.rebindSelection() == stackfall::kRebindRestoreRow);
+
+  // A select moves nothing and leaves nothing: the platform layer owns the
+  // capture and the restore, exactly as it owns the options row values.
+  g.tick(session(menuSelect()));
+  SC_CHECK(g.scene() == Scene::Rebind);
+  SC_CHECK(g.rebindSelection() == stackfall::kRebindRestoreRow);
+
+  // Back returns to the mappings screen, and back again to the title.
+  g.tick(session(menuBack()));
+  SC_CHECK(g.scene() == Scene::Controls);
+  g.tick(session(menuBack()));
+  SC_CHECK(g.scene() == Scene::Title);
+  SC_CHECK(g.titleSelection() == 1);
+}
+
+// The pause overlay's mappings screen opens the same customization screen,
+// and back walks back out through the overlay, so a frozen round keeps its
+// place while the player rebinds (task T066).
+void test_pause_controls_rebind_round_trip() {
+  Game g;
+  g.openTitle(9);
+  g.tick(session(menuSelect()));  // Start Game
+  for (int i = 0; i < 10; ++i) {
+    g.tick(gameplay(InputFrame::idle()));
+  }
+  const std::uint64_t ticksBefore = g.tickCount();
+  g.tick(gameplay(pressPause()));
+  g.tick(session(menuDown()));
+  g.tick(session(menuDown()));    // cursor on Controls
+  g.tick(session(menuSelect()));  // the mappings screen over the frozen round
+  SC_CHECK(g.scene() == Scene::PauseControls);
+  g.tick(session(menuSelect()));  // the customization screen
+  SC_CHECK(g.scene() == Scene::Rebind);
+  SC_CHECK(g.rebindOrigin() == Scene::PauseControls);
+  SC_CHECK(g.tickCount() == ticksBefore);  // the round stayed frozen
+
+  g.tick(session(menuBack()));
+  SC_CHECK(g.scene() == Scene::PauseControls);
+  SC_CHECK(g.tickCount() == ticksBefore);
+  g.tick(session(menuBack()));
+  SC_CHECK(g.scene() == Scene::Paused);
 }
 
 void test_title_quit() {
@@ -504,7 +583,15 @@ void test_pause_controls_round_trip() {
   SC_CHECK(g.tickCount() == ticksBefore);
   g.tick(session(menuSelect()));
   SC_CHECK(g.scene() == Scene::PauseControls);
-  g.tick(session(menuSelect()));  // confirm returns as well
+  // Select now opens the customization screen of task T066 over the same
+  // frozen round, and back from it returns here; confirm no longer returns to
+  // the overlay.
+  g.tick(session(menuSelect()));
+  SC_CHECK(g.scene() == Scene::Rebind);
+  SC_CHECK(g.tickCount() == ticksBefore);
+  g.tick(session(menuBack()));
+  SC_CHECK(g.scene() == Scene::PauseControls);
+  g.tick(session(menuBack()));
   SC_CHECK(g.scene() == Scene::Paused);
 
   // One more down lands on Quit to Title, so the four-item order holds.
@@ -709,6 +796,8 @@ void run_screens_tests() {
   test_pause_overlay_resume_paths();
   test_pause_overlay_restart_and_quit_to_title();
   test_pause_controls_round_trip();
+  test_rebind_screen_navigation();
+  test_pause_controls_rebind_round_trip();
   test_restart_with_a_held_direction();
   test_game_over_menu_and_record();
   test_high_score_loaded_from_outside();

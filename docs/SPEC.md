@@ -4,15 +4,19 @@
 **Target:** Anbernic RG503 / ROCKNIX / PortMaster  
 **Category:** Original single-player tetromino block-stacking game  
 **Status:** M5 in progress; the platform layer, the rules core, the desktop  
-build, high-score persistence, synthesized sound, the ten-setting  
-screen, portrait play, the desktop verification passes (harness, play and  
-design reviews, stability, performance, the 27-px board layout, and the  
-focused gameplay HUD), and the pause route to the controls screen are  
-integrated and tested headless; the M3 desktop gate passed (T015), the  
-AArch64 binary builds in the PortMaster-aligned environment with hash  
-parity (T016), the PortMaster launcher and install layout are written and  
-checked (T017), and the release package is assembled locally and checked  
-with its version pinned at 1.0.0 (T019, T035); device validation and  
+build, high-score persistence, synthesized sound and the generated  
+twelve-track soundtrack (T062), the ten-setting screen, portrait play with  
+the orientation switch that applies in the running session (T055, T068),  
+the controls customization screen and the D-pad-up hard-drop default  
+(T066, T067), the desktop verification passes (harness, play and design  
+reviews, stability, performance, the 27-px board layout, and the focused  
+gameplay HUD), and the pause route to the controls screen are integrated  
+and tested headless; the M3 desktop gate passed (T015), the AArch64  
+binary builds in the PortMaster-aligned environment with hash parity  
+(T016), the PortMaster launcher and install layout are written and checked  
+(T017), and the release package is assembled locally and checked with its  
+version pinned at 1.0.0 (T019, T035) and now waits on the refresh that  
+carries the device-feedback features (T071); device validation and  
 publication remain
 
 Development runs unattended with AI coding agents. Agents run all available
@@ -38,13 +42,17 @@ Deliver a complete offline block-stacking game that launches from the RG503's RO
 - Ghost landing preview; pause/resume; title screen; controls screen; game-over screen; restart; local high score.
 - RG503 controller via SDL2 GameController; keyboard fallback for desktop development.
 - Fullscreen 960×544 composition, fixed 60 Hz simulation, 60 FPS render target, drawn using rectangles/lines and procedurally generated glyphs; optional nonessential synthesized SFX with mute toggle.
-- Portrait mode (task T055): the OPTIONS row selects Landscape or Portrait, the preference persists, and the next launch turns the scene 90 degrees for the sideways grip with larger cells and remapped controls.
+- Portrait mode (tasks T055 and T068): the OPTIONS row selects Landscape or Portrait, the selection turns the running session at once, and the preference persists so a relaunch opens on it. Portrait turns the scene 90 degrees for the sideways grip with larger cells and remapped controls.
 - PortMaster-compatible AArch64 package, device-side log and clear recovery from errors.
 - Automated headless rules tests and a smoke-test checklist for actual hardware.
 
 ### Explicitly excluded from v1.0
 
-Online play, multiplayer, leaderboards, achievements, network dependency, custom block shapes, 180° rotation, T-spin detection/bonuses, combo and back-to-back scoring, replays exposed to users, themes, music files, sprite/font assets, elaborate particle effects, touch controls, and an in-game controller rebinding UI. Can be considered for v1.1+.
+Online play, multiplayer, leaderboards, achievements, network dependency, custom block shapes, 180° rotation, T-spin detection/bonuses, combo and back-to-back scoring, replays exposed to users, themes, music files, sprite/font assets, elaborate particle effects, and touch controls. Can be considered for v1.1+.
+
+The controls customization screen of section 5 (task T066) is in scope for
+v1.0 and is not excluded. Earlier drafts of this list excluded it; do not
+re-add it from them.
 
 ## 3. Platform and technical constraints
 
@@ -166,17 +174,21 @@ BOOT -> TITLE -> PLAYING -> GAME_OVER -> TITLE
 ```
 
 - **TITLE:** Start Game / Controls / Options / Quit; display saved high score.
-- **CONTROLS:** display mappings, confirm/back to title.
+- **CONTROLS:** display mappings. Confirm opens the customization screen of section 5; back returns to the title. Over a paused round the same screen opens from the overlay's Controls item, and back returns to the overlay on the same item.
 - **OPTIONS:** eight rows, SOUND, GHOST, GRID, HOLD, NEXT PIECES, GRAYSCALE,
   ORIENTATION, and MUSIC. Menu up/down moves the row and wraps at both ends,
   select changes that row's value - ON or OFF, the count 1, 2, 3, 4, 5 that
   cycles back to 1 for NEXT PIECES, or LANDSCAPE and PORTRAIT that alternate
   for ORIENTATION - and back returns to the title with the cursor still on
-  Options. Each row shows its current value. Selecting ORIENTATION changes
-  the stored preference alone: the running session keeps its layout, and the
-  next launch opens in the chosen orientation (task T055). Selecting MUSIC
+  Options. Each row shows its current value. Selecting ORIENTATION turns the
+  running session at once: the canvas composition, the rotated drawing, the
+  input tables, and the row's own value all move together inside the tick
+  that consumed the select, so the row always names the layout on screen and
+  neither a restart nor a relaunch is needed (task T068, building on the
+  next-launch rule T055 shipped). Selecting MUSIC
   opens the music settings page below. All ten preferences persist in the
   settings file; see sections 6.3 and 9.
+- **REBIND:** the customization screen of section 5 (task T066). Menu up/down walks its nine rows - the eight gameplay actions in table order, then RESTORE DEFAULTS - and wraps at both ends. Select arms a capture on an action row and performs the restore on the last row; back cancels an armed capture first and otherwise returns to the screen it came from, title CONTROLS or the pause overlay, with that screen's cursor where it was.
 - **MUSIC_OPTIONS:** the music settings page behind the MUSIC row (task T062),
   with four rows - MUSIC, MUSIC VOLUME, EFFECTS VOLUME, and NEXT TRACK - at
   the shared menu metrics, the playing track's title on one line, and the
@@ -203,19 +215,29 @@ SDL2 GameController mapping must be loaded from the PortMaster environment (`SDL
 | Soft drop | D-pad down | Down |
 | Rotate clockwise | A | X / Up |
 | Rotate counter-clockwise | B | Z |
-| Hard drop | X | Space |
+| Hard drop | D-pad up | Space |
 | Hold | Y or left shoulder | C / Left Shift |
 | Pause/resume | Start | Enter / Esc |
 | Select menu item | A | Enter |
 | Back from controls | B | Esc |
 | Menu navigation | D-pad up/down | Up/Down |
 
+Task T067 moved the controller's default hard drop from X to D-pad up, so X
+carries nothing and the same D-pad-up press still moves the menu cursor up
+in every menu. D-pad up is therefore a two-role control like A and Enter:
+its menu edge belongs to the screen in charge, and no press that returns a
+round to play may drop a piece, so the platform layer spends every gameplay
+edge of the first tick a round owns before the rules core sees the frame.
+The desktop keyboard defaults did not change.
+
 Portrait mode (task T055) turns the device 90 degrees clockwise in the
 player's hands - the D-pad end points at the player's top and sits in the
 right hand, the ABXY cluster sits in the left - so every direction remaps
 into the rotated frame and the cluster pairs reverse. A physical press moves
 the piece in the on-screen direction that press points to in the turned
-frame:
+frame. Hard drop keeps its landscape meaning: it sits on the logical up
+direction of the rotated grip, which is the device D-pad's left arm, the arm
+that points at the player's ceiling once the device has turned (task T067):
 
 | Function | Portrait RG503 SDL mapping | Portrait keyboard |
 | --- | --- | --- |
@@ -223,21 +245,59 @@ frame:
 | Soft drop | D-pad right | Right |
 | Rotate clockwise | B | Z |
 | Rotate counter-clockwise | A | X |
-| Hard drop | Y | C / Left Shift |
-| Hold | X or left shoulder | Space |
+| Hard drop | D-pad left (up in the grip) | Left |
+| Hold | Y or left shoulder | C / Left Shift |
 | Pause/resume | Start | Enter / Esc |
 | Select menu item | B | Enter |
 | Back from menu | A | Esc |
 | Menu navigation | D-pad left/right | Left/Right |
 
-Start, the left shoulder, Enter, and Esc are their own controls, not cluster
-buttons, so they keep their roles in both orientations. The rotation
-direction and the final cluster roles are pinned in
-`notes/design-review.md`.
+The portrait cluster keeps the reversed rotate pair of T055 - B clockwise
+and confirm, A the other way and back - and hold takes Y with the left
+shoulder beside it, the ordering the landscape table gives the same thumb;
+X carries nothing, as it does in landscape. Start, the left shoulder, Enter,
+and Esc are their own controls, not cluster buttons, so they keep their
+roles in both orientations. The rotation direction, the final cluster roles,
+and the hard-drop placement are pinned in `notes/design-review.md`.
+
+### Controls customization (task T066)
+
+Every gameplay action of the two tables above is rebindable. The CONTROLS
+screen's confirm - A or Enter - opens a customization screen with one row
+per gameplay action, the controls each device currently holds beside it, and
+a RESTORE DEFAULTS row that returns every table of both orientations to the
+defaults pinned above. Confirming a row arms a capture: the next press of
+any rebindable control of either device names the new binding, and the
+capture press never reaches the round or a menu. Key auto-repeat is not a
+press, in a capture as in play. Four rules govern the screen:
+
+- A capture edits the table of the orientation in force for the device
+  pressed, so the other orientation keeps its own bindings. A rebound action
+  holds exactly the control pressed, not the pair the default named.
+- Pressing a control the action already uses ends the capture with the
+  binding unchanged, which is the capture's cancel.
+- A control may serve at most one gameplay action per table. A capture that
+  would break this is rejected with a message that names the conflict, and
+  nothing changes: one input never silently maps to two gameplay actions.
+- The menu roles never rebind. Menu navigation, confirm, and back sit on
+  fixed controls beside whatever gameplay action the same control carries,
+  so every menu stays reachable whatever the tables hold, whichever
+  controller is attached, and whatever a damaged binding file leaves behind.
+
+Custom bindings persist in `controls.dat` in the save directory (section 9)
+across relaunches. The file is new in T066, so it has no legacy form: a
+missing file plays the defaults, and a file that is not the exact canonical
+rendering - a truncated line, an unknown control word, a control serving two
+actions - recovers every table to the defaults and the game carries on,
+under the same recovery rule as the record and the settings. The next save
+rewrites the whole file. Changing the tables mid-session clears every held
+level and pending edge, for the same reason the orientation turn does: a
+release that arrives through a new table must not act on a level the old
+table raised.
 
 - D-pad left+right held simultaneously causes no horizontal movement. Pressing a new opposite direction resets DAS/ARR state and moves immediately if the opposite key is no longer down.
 - Rotation, hold, hard drop, pause and menu actions are **edge-triggered**. Holding them does not fire repeatedly; horizontal movement uses the tick-based repeat system.
-- The options screen uses the same menu edges and adds no key bindings: menu up/down moves its eight rows, select changes the highlighted value or opens the MUSIC submenu, and back returns to the title. GRID, NEXT PIECES, and GRAYSCALE change no input handling at all. HOLD off makes the platform layer drop every mapped hold edge before the round sees it, so no hold swap happens and no hold lock is spent; HOLD on leaves the once-per-lock rule of section 4.3 untouched. ORIENTATION changes the stored preference alone and swaps both mapping tables at the next launch. MUSIC opens the music settings page of section 4.7, which uses the same edges.
+- The options screen uses the same menu edges and adds no key bindings: menu up/down moves its eight rows, select changes the highlighted value or opens the MUSIC submenu, and back returns to the title. GRID, NEXT PIECES, and GRAYSCALE change no input handling at all. HOLD off makes the platform layer drop every mapped hold edge before the round sees it, so no hold swap happens and no hold lock is spent; HOLD on leaves the once-per-lock rule of section 4.3 untouched. ORIENTATION swaps both mapping tables and the whole composition inside the tick that consumed the select, and it clears every held level and pending edge at the same moment, so the press that selected the row cannot drop or rotate the next piece and cannot leave a direction held into a menu; the stored preference rides the same save, so a relaunch opens on the orientation the session ended with (task T068). MUSIC opens the music settings page of section 4.7, which uses the same edges.
 - Input processing order within a gameplay tick: pause command; hold (if used, ignore other gameplay actions this tick); rotation; horizontal move/repeat; hard drop (immediately end piece actions for tick); otherwise soft drop or natural gravity; then ground/lock bookkeeping. Process SDL events before simulation, and consume press edges at most once even when the main loop catches up multiple simulation ticks.
 - Let PortMaster handle its platform-wide exit chord; do not capture or override it. Keyboard and gamepad disconnection must not crash the game.
 
@@ -399,7 +459,8 @@ public:
 - In PortMaster, launcher creates `$GAMEDIR/conf`, exports `XDG_DATA_HOME="$GAMEDIR/conf"`, and optionally passes an explicit save-directory environment variable to avoid ambiguity.
 - High score file uses UTF-8 ASCII, a version field and a decimal score. Example: `version=1\nhigh_score=12345\n`. No JSON library required.
 - The record saves at two moments: the moment a running round's score passes the stored best, and at game over when the round improves it. Every save writes a temporary file in the same directory, flushes and closes it, then renames it into place, so each save is complete on disk before the next tick runs - an abandoned round, a closed window, or a power loss keeps every point up to the piece in play instead of losing a finished best. Detect invalid/partial files and safely recover to high score 0; do not crash.
-- The settings file of the player preferences sits beside the record as `settings.dat` and carries all ten values with the same atomic write: `version=1\nsound=on\nghost=on\ngrid=on\nhold=on\nnext=5\ngrayscale=off\norientation=landscape\nmusic=auto\nmusicvolume=6\neffectsvolume=8\n`. The keys are `sound`, `ghost`, `grid`, and `hold` with `on` or `off`, `next` with `1` through `5`, `grayscale` with `on` or `off`, `orientation` with `landscape` or `portrait`, `music` with `auto`, `arcade`, `groove`, `focus`, or `off`, and `musicvolume` and `effectsvolume` with `0` through `10`. The platform layer writes the whole file each time a preference changes and applies all ten at startup - orientation once, at launch, never mid-session - and a read never rewrites it. A missing, partial, or damaged file recovers to every preference at its default (sound, ghost, grid, and hold on, five previews, grayscale off, landscape, auto music, music volume 6, effects volume 8), so a broken file costs only the settings. A file from before a line existed parses with that preference at its default while keeping its saved values: the two-line file of the sound-only era (`version=1` and `sound`), the three-line file of the sound-and-ghost era (`version=1`, `sound`, and `ghost`), the seven-line file of the grayscale era, and the eight-line file of the orientation era all load that way, and the next save upgrades the file to the ten-line form without losing a saved value. The format version stays 1: no version 1 file has ever carried a different meaning for a line.
+- The settings file of the player preferences sits beside the record as `settings.dat` and carries all ten values with the same atomic write: `version=1\nsound=on\nghost=on\ngrid=on\nhold=on\nnext=5\ngrayscale=off\norientation=landscape\nmusic=auto\nmusicvolume=6\neffectsvolume=8\n`. The keys are `sound`, `ghost`, `grid`, and `hold` with `on` or `off`, `next` with `1` through `5`, `grayscale` with `on` or `off`, `orientation` with `landscape` or `portrait`, `music` with `auto`, `arcade`, `groove`, `focus`, or `off`, and `musicvolume` and `effectsvolume` with `0` through `10`. The platform layer writes the whole file each time a preference changes and applies all ten at startup, orientation again on every ORIENTATION select, and a read never rewrites it. A missing, partial, or damaged file recovers to every preference at its default (sound, ghost, grid, and hold on, five previews, grayscale off, landscape, auto music, music volume 6, effects volume 8), so a broken file costs only the settings. A file from before a line existed parses with that preference at its default while keeping its saved values: the two-line file of the sound-only era (`version=1` and `sound`), the three-line file of the sound-and-ghost era (`version=1`, `sound`, and `ghost`), the seven-line file of the grayscale era, and the eight-line file of the orientation era all load that way, and the next save upgrades the file to the ten-line form without losing a saved value. The format version stays 1: no version 1 file has ever carried a different meaning for a line.
+- The custom bindings file sits beside them as `controls.dat` (task T066, section 5) with the same atomic write: `version=1` plus four blocks of eight lines in the fixed order landscape pad, landscape keyboard, portrait pad, portrait keyboard, one line per gameplay action as `<frame>.<device>.<action>=<name>` with two controls joined by `+`, for example `landscape.key.harddrop=space` or `landscape.pad.hold=y+l1`. The action words are `left`, `right`, `down`, `rotatecw`, `rotateccw`, `harddrop`, `hold`, and `pause`; the control words are the canonical names of section 5 (`a` through `z` without `m` and `q`, `left` through `backspace`, and the ten pad buttons `a`, `b`, `x`, `y`, `l1`, `start`, `up`, `down`, `left`, `right`). The platform layer writes the whole file on every applied capture and every RESTORE DEFAULTS, applies it once at startup, and never rewrites it on a read. The file is new in T066 and has no legacy form: a missing file plays the section 5 defaults, and any file that is not the exact canonical rendering of all thirty-three lines - a truncated or reordered line, an unknown word, a padded value, a control serving two actions - recovers every table to those defaults, so a damaged file costs only the customizations.
 - Log startup version, architecture, SDL init failures, selected renderer and controller, any save failure and orderly shutdown to `log.txt` through launcher redirection.
 - If controller is absent, keep keyboard playable. If accelerated renderer creation fails, try a basic SDL renderer; if all renderer creation fails, print an actionable error and terminate cleanly.
 - No network permission required, and no telemetry.
@@ -505,13 +566,16 @@ Implement assertions and data-driven tests, including at least:
 18. Same seed and tick input stream yield identical state hashes across desktop and ARM64.
 19. Input edge presses are consumed once even if catch-up executes multiple ticks.
 20. Corrupt/missing high-score file is safely handled, and good records round-trip after relaunch.
-21. Portrait mode (task T055): both mapping tables translate every control
-    for each orientation through the real SDL event path; the rotated frame,
-    cell size, HUD strip, and page bands assert at exact device pixels while
-    landscape pixels stay byte-identical; the settings file round-trips the
-    orientation line, its legacy forms parse with orientation at its default,
-    and a staged harness session plays a portrait round whose observation
-    stream equals the headless reference replay on the rotated tables.
+21. Portrait mode (tasks T055 and T068): both mapping tables translate every
+    control for each orientation through the real SDL event path; the rotated
+    frame, cell size, HUD strip, and page bands assert at exact device pixels
+    while landscape pixels stay byte-identical; the settings file round-trips
+    the orientation line, its legacy forms parse with orientation at its
+    default, and staged harness sessions turn the orientation inside a run -
+    with a control held across the turn, whose level and pending edges the
+    per-tick input log must show spent - and play a portrait round whose
+    observation stream equals the headless reference replay on the rotated
+    tables.
 
 ## 12. Device acceptance checklist
 
@@ -530,10 +594,11 @@ The release is complete only when all of these pass on a real RG503 running ROCK
 - [ ] Game-over, restart, quit-to-title and PortMaster exit chord work.
 - [ ] Score persists after quitting and rebooting; corrupted save does not crash.
 - [ ] Native display is properly centered with nothing clipped or unreadable.
-- [ ] Portrait mode (task T055): OPTIONS sets PORTRAIT, the relaunch turns
-      the scene, the sideways grip plays a full round with every control
-      moving the piece in the on-screen direction of the rotated frame, and
-      nothing clips in either orientation.
+- [ ] Portrait mode (tasks T055 and T068): OPTIONS sets PORTRAIT and the
+      scene turns at once, the sideways grip plays a full round with every
+      control moving the piece in the on-screen direction of the rotated
+      frame, repeated changes inside one session and a relaunch onto the
+      saved orientation both hold, and nothing clips in either orientation.
 - [ ] Continuous 10-minute play session remains responsive at approximately 60 FPS; record actual frame times, identify spikes, and verify no sustained slowdowns.
 - [ ] No controller-disconnect, audio-init, renderer-fallback or missing-save crash.
 - [ ] Launch log shows a clean process exit; launch and quit repeatedly.

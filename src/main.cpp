@@ -38,13 +38,19 @@
 // file calls it before the event poll and after the render and keeps the
 // timing, the simulation, and the rendering itself.
 //
-// High-score persistence (tasks T012 and T052) runs through src/storage.cpp:
-// the store resolves the launcher's conf/ directory from STACKFALL_SAVE_DIR
-// or XDG_DATA_HOME, the session loads the record before the title screen
-// draws it, a round that sets a record saves it at game over, and the
-// platform layer also writes the record the moment a running score passes
-// the stored best - the tick loop below - so an abandoned round, a
-// window close, or a power loss keeps every point up to the piece in play.
+// High-score persistence (tasks T012 and T052) runs through src/storage.cpp
+// and, since task T065, the writer thread of src/record_writer.cpp: the
+// store resolves the launcher's conf/ directory from STACKFALL_SAVE_DIR or
+// XDG_DATA_HOME, the session loads the record before the title screen draws
+// it, a round that sets a record saves it at game over, and the platform
+// layer also writes the record the moment a running score passes the stored
+// best - the tick loop below. The write itself runs on the writer's own
+// thread, because the store's atomic write costs milliseconds on the
+// handheld's storage and the device-feedback round measured it as the
+// confirmed mid-round stutter (notes/performance.md, T065); the loop hands
+// the newest score over, polls the completed writes once per frame, and
+// flushes at every round boundary, so an abandoned round, a window close, or
+// a power loss still keeps every point up to the piece in play.
 //
 // Sound (task T013) runs through src/audio_sdl.cpp: the loop observes every
 // simulation tick with a CueDetector, a working device plays the five
@@ -102,12 +108,14 @@
 #include <SDL.h>
 
 #include "stackfall/audio_sdl.hpp"
+#include "stackfall/bindings.hpp"
 #include "stackfall/developer_session.hpp"
 #include "stackfall/game.hpp"
 #include "stackfall/input.hpp"
 #include "stackfall/input_sdl.hpp"
 #include "stackfall/music_director.hpp"
 #include "stackfall/observe.hpp"
+#include "stackfall/record_writer.hpp"
 #include "stackfall/renderer_sdl.hpp"
 #include "stackfall/storage.hpp"
 #include "stackfall/version.hpp"
@@ -130,7 +138,10 @@ constexpr Uint64 kMaxFrameMs = 250;
 constexpr int kMaxControllers = 4;
 
 using stackfall::AudioDriver;
+using stackfall::ControlBindings;
+using stackfall::ControlsStore;
 using stackfall::CueDetector;
+using stackfall::DeviceKind;
 using stackfall::CueSet;
 using stackfall::DeveloperSession;
 using stackfall::Game;
@@ -141,6 +152,8 @@ using stackfall::MusicMode;
 using stackfall::MusicSnapshot;
 using stackfall::musicModeName;
 using stackfall::Orientation;
+using stackfall::RecordWrite;
+using stackfall::RecordWriter;
 using stackfall::Renderer;
 using stackfall::SaveStatus;
 using stackfall::Scene;
@@ -800,12 +813,63 @@ void loadStoredHighScore(const HighScoreStore& store, Game& game,
   }
 }
 
+// One crash-safe write of a running round's record (task T052), performed
+// by the record writer's own thread since task T065. The loop hands the
+// score over the moment it passes the saved record; the writer performs the
+// store's atomic temporary-file, flush, fsync, and rename write off the
+// gameplay thread, which measured at 2.7 ms median per save on the round's
+// host and is the confirmed cause of the device's mid-round stutter
+// (notes/performance.md, T065). The log lines below keep their exact
+// pre-T065 formats: the session log names the value and the file, and the
+// input-log line carries the tick the save was requested on, so evidence
+// still proves the save ran while the round was going. The failure line is
+// the high score's own, so a failed record write counts exactly like a
+// failed game-over save. A session without a save directory saves nothing
+// here: its load already reported that persistence is off.
+void logRecordWrite(const RecordWrite& write, const HighScoreStore& store,
+                    std::FILE* inputLog) {
+  if (write.status == SaveStatus::Ok) {
+    logf("Record %llu saved to %s\n",
+         static_cast<unsigned long long>(write.score),
+         store.filePath().c_str());
+  } else {
+    logf("Saving the high score %llu failed: %s\n",
+         static_cast<unsigned long long>(write.score),
+         saveStatusName(write.status));
+  }
+  if (inputLog != nullptr) {
+    std::fprintf(inputLog, "record save=%llu tick=%llu status=%s\n",
+                 static_cast<unsigned long long>(write.score),
+                 static_cast<unsigned long long>(write.tick),
+                 saveStatusName(write.status));
+  }
+}
+
+// Reports every write that completed since the last call. The loop polls
+// once per frame, so the log lines land within a frame of the save they
+// name and the writer's completed queue never grows.
+void pollRecordWrites(RecordWriter& writer, const HighScoreStore& store,
+                      std::FILE* inputLog) {
+  for (const RecordWrite& write : writer.pollCompleted()) {
+    logRecordWrite(write, store, inputLog);
+  }
+}
+
 // Saves the record when a round sets one (specification section 4.7): the
 // game-over screen already raised the session high score, so the platform
-// layer writes that value through the atomic save and reports the outcome.
-void saveHighScore(const HighScoreStore& store, const Game& game,
-                   std::FILE* inputLog) {
-  const SaveStatus status = store.save(game.highScore());
+// layer writes that value through the record writer and reports the
+// outcome. Since task T065 the write runs on the writer's thread; the
+// flush keeps the round's last word durable before the game-over screen
+// draws, exactly as the synchronous write did, and the log lines keep
+// their formats.
+void saveHighScore(RecordWriter& writer, const HighScoreStore& store,
+                   const Game& game, std::uint64_t tick, std::FILE* inputLog) {
+  if (!store.hasDirectory()) {
+    return;
+  }
+  writer.submit(game.highScore(), tick);
+  const SaveStatus status = writer.flush();
+  pollRecordWrites(writer, store, inputLog);
   if (status == SaveStatus::Ok) {
     logf("New high score %llu saved to %s\n",
          static_cast<unsigned long long>(game.highScore()),
@@ -822,37 +886,6 @@ void saveHighScore(const HighScoreStore& store, const Game& game,
   }
 }
 
-// One crash-safe write of a running round's record (task T052). The loop
-// calls this the moment the score passes the saved record, and the store's
-// atomic temporary-file, flush, and rename write makes every one of these
-// saves safe to interrupt, so an abandoned round, a window close, or a
-// power loss costs at most the points of the piece in play. The input-log
-// line carries the tick, so evidence can prove the save ran while the
-// round was still going; the failure line is the high score's own, so a
-// failed record write counts exactly like a failed game-over save. A
-// session without a save directory saves nothing here: its load already
-// reported that persistence is off.
-void saveRunningRecord(const HighScoreStore& store, std::uint64_t score,
-                       std::uint64_t tick, std::FILE* inputLog) {
-  if (!store.hasDirectory()) {
-    return;
-  }
-  const SaveStatus status = store.save(score);
-  if (status == SaveStatus::Ok) {
-    logf("Record %llu saved to %s\n",
-         static_cast<unsigned long long>(score), store.filePath().c_str());
-  } else {
-    logf("Saving the high score %llu failed: %s\n",
-         static_cast<unsigned long long>(score), saveStatusName(status));
-  }
-  if (inputLog != nullptr) {
-    std::fprintf(inputLog, "record save=%llu tick=%llu status=%s\n",
-                 static_cast<unsigned long long>(score),
-                 static_cast<unsigned long long>(tick),
-                 saveStatusName(status));
-  }
-}
-
 // One rendered frame: the letterbox base paints the bars of a window that is
 // not the canvas (task T032, specification section 6.1), the procedural
 // renderer draws the whole round in the section 6.2 order, and the present
@@ -862,6 +895,63 @@ void renderFrame(Renderer& renderer, const Game& game,
   stackfall::beginFrame(sdlRenderer);
   renderer.draw(game);
   SDL_RenderPresent(sdlRenderer);
+}
+
+// ---------------------------------------------------------------------------
+// The controls customization screen (task T066, specification section 5).
+//
+// The binding tables are platform state, exactly as the options row values
+// are: the rules core moves the customization screen's cursor alone, and this
+// half owns the tables, the capture, and the controls file. Every change runs
+// through applyControlBindings() and one atomic save, so the input tables, the
+// drawn mappings page, and the file on disk never disagree for longer than one
+// frame.
+// ---------------------------------------------------------------------------
+
+// The one place the binding tables reach their owners: the input translation
+// and the two screens that draw the mappings. Startup calls it right after the
+// controls load, and every capture and RESTORE DEFAULTS calls it right after
+// editing the tables. setControlBindings() also forgets every held level and
+// pending edge, for the same reason the orientation turn of task T068 does: a
+// control held across the change keeps the action the old table gave it, and
+// its release then arrives through the new table, where it maps to a
+// different action and cannot clear the stuck level.
+void applyControlBindings(const ControlBindings& bindings, SdlInput& input,
+                          Renderer& renderer) {
+  input.setControlBindings(bindings);
+  renderer.setControlBindings(bindings);
+}
+
+// Writes the whole controls file through one atomic save, exactly as
+// savePreference() writes the settings, so a session interrupted right after
+// a change keeps all four tables. `what` names the change for the failure
+// line and `inputLogLine` is the per-tick input log's evidence line.
+void saveControlBindings(const ControlsStore& controls,
+                         const ControlBindings& bindings, const char* what,
+                         const char* inputLogLine, std::FILE* inputLog) {
+  const SaveStatus status = controls.save(bindings);
+  if (status != SaveStatus::Ok) {
+    logf("Saving the %s control bindings failed: %s\n", what,
+         saveStatusName(status));
+  }
+  if (inputLog != nullptr) {
+    std::fprintf(inputLog, "%s status=%s\n", inputLogLine,
+                 saveStatusName(status));
+  }
+}
+
+// The control word of one capture outcome: "KEY X" or "PAD D-PAD LEFT (UP)",
+// the device plus the screen spelling of the control in the orientation in
+// force. `buffer` belongs to the caller and outlives the renderer's pointer
+// to it.
+void formatControlWord(char* buffer, std::size_t capacity, DeviceKind device,
+                       int control, Orientation orientation) {
+  const char* deviceWord = device == DeviceKind::Keyboard ? "KEY " : "PAD ";
+  const char* controlWord =
+      device == DeviceKind::Keyboard
+          ? stackfall::keyboardControlDisplayName(control, orientation)
+          : stackfall::controllerControlDisplayName(control, orientation);
+  std::snprintf(buffer, capacity, "%s%s", deviceWord, controlWord);
 }
 
 // ---------------------------------------------------------------------------
@@ -885,10 +975,6 @@ void applyPreferences(const SettingsValues& prefs, AudioDriver& audio,
   renderer.setShowHold(prefs.holdOn);
   renderer.setNextPreviews(prefs.nextPreviews);
   renderer.setGrayscale(prefs.grayscaleOn);
-  // The ORIENTATION row's value, not the layout: the row always names what
-  // the next launch draws (task T055). The layout itself moves once, in
-  // applyOrientation() at startup.
-  renderer.setOrientationPreference(prefs.orientation);
 }
 
 // The music settings' half of the same rule (task T062): the volumes reach
@@ -909,10 +995,14 @@ void applyMusicPreferences(const SettingsValues& prefs, AudioDriver& audio,
 
 // The one place the orientation reaches the session's owners: the renderer's
 // layout and the input tables. Startup calls it once, right after the
-// settings load, and nothing else ever does, because a mid-session turn would
-// leave the drawn scene and the mapped controls describing two different
-// frames. Selecting the ORIENTATION row changes the stored preference alone;
-// the next launch reads it here (task T055, notes/design-review.md).
+// settings load, and every ORIENTATION select calls it again inside the tick
+// that consumed the select edge, so the drawn scene and the mapped controls
+// always describe one frame (tasks T055 and T068, notes/design-review.md).
+// Nothing else owns a piece of the turn: the device canvas of applyCanvas()
+// stays 960x544 in both orientations - the renderer rotates every primitive
+// inside it - so the window, the letterbox, and the screenshot capture need
+// no change, and SdlInput::setOrientation() itself drops every held level and
+// pending edge the old tables raised.
 void applyOrientation(Orientation orientation, Renderer& renderer,
                       SdlInput& input) {
   renderer.setOrientation(orientation);
@@ -1034,22 +1124,24 @@ void toggleGrayscale(AudioDriver& audio, const SettingsStore& settings,
   savePreference(settings, prefs, "grayscale", line, inputLog);
 }
 
-// The ORIENTATION row of the options screen (task T055): select walks
-// landscape -> portrait -> landscape, the stored preference changes at once,
-// and the layout of the running session does not, because the scene, the
-// controls, and the composition all turn together. The next launch reads the
-// saved value and applies it in applyOrientation() at startup, so the row
-// always names what that launch draws.
+// The ORIENTATION row of the options screen (tasks T055 and T068): select
+// walks landscape -> portrait -> landscape and turns the running session at
+// once. The call runs inside the tick that consumed the select edge, which is
+// the safe frame boundary: the next tick's takeTickInput() reads the new
+// tables only, and every held level and pending edge the old tables raised is
+// already gone, so the press that selected the row cannot drop or rotate the
+// next piece and cannot leave a direction held into a menu. The stored
+// preference rides the same settings save, so a relaunch opens on the
+// orientation the session ended with.
 void cycleOrientation(AudioDriver& audio, const SettingsStore& settings,
                       SettingsValues& prefs, Renderer& renderer,
-                      std::FILE* inputLog) {
+                      SdlInput& input, std::FILE* inputLog) {
   prefs.orientation = prefs.orientation == Orientation::Portrait
                           ? Orientation::Landscape
                           : Orientation::Portrait;
   applyPreferences(prefs, audio, renderer);
+  applyOrientation(prefs.orientation, renderer, input);
   const bool portrait = prefs.orientation == Orientation::Portrait;
-  logf("Orientation preference %s; it applies at the next launch\n",
-       portrait ? "portrait" : "landscape");
   char line[48];
   std::snprintf(line, sizeof(line), "orientation %s",
                 portrait ? "portrait" : "landscape");
@@ -1115,7 +1207,9 @@ void requestNextTrack(MusicDirector& musicDirector, std::FILE* inputLog) {
 
 // A on one row of the options screen changes that row's value. The rules core
 // keeps the highlighted row and changes nothing itself; this platform half
-// applies the change (tasks T040, T044, and T055, specification section 7).
+// applies the change (tasks T040, T044, T055, and T068, specification
+// section 7). `input` travels along because the ORIENTATION row turns the
+// input tables with the layout.
 void applyMusicSelect(Renderer& renderer, AudioDriver& audio,
                       MusicDirector& musicDirector,
                       const SettingsStore& settings, SettingsValues& prefs,
@@ -1139,7 +1233,7 @@ void applyMusicSelect(Renderer& renderer, AudioDriver& audio,
 
 void applyOptionsSelect(Renderer& renderer, AudioDriver& audio,
                         const SettingsStore& settings, SettingsValues& prefs,
-                        int row, std::FILE* inputLog) {
+                        SdlInput& input, int row, std::FILE* inputLog) {
   switch (row) {
     case 0:
       toggleSound(audio, settings, prefs, renderer, inputLog);
@@ -1160,7 +1254,7 @@ void applyOptionsSelect(Renderer& renderer, AudioDriver& audio,
       toggleGrayscale(audio, settings, prefs, renderer, inputLog);
       break;
     default:
-      cycleOrientation(audio, settings, prefs, renderer, inputLog);
+      cycleOrientation(audio, settings, prefs, renderer, input, inputLog);
       break;
   }
 }
@@ -1296,11 +1390,13 @@ bool pollEvents(SDL_Renderer* sdlRenderer, Renderer& renderer,
 // owner, which is what took them off this list.
 int runMainLoop(Renderer& renderer, SDL_Renderer* sdlRenderer,
                 ControllerSet& controllers, SdlInput& input, Game& game,
-                const HighScoreStore& highScores, const SettingsStore& settings,
+                const HighScoreStore& highScores, RecordWriter& recordWriter,
+                const SettingsStore& settings,
                 SettingsValues& prefs, AudioDriver& audio,
                 MusicDirector& musicDirector, CueDetector& cueDetector,
-                DeveloperSession& developer, bool tickPerFrame,
-                Uint64 frameLimit) {
+                DeveloperSession& developer,
+                const ControlsStore& controlsStore, ControlBindings& bindings,
+                bool tickPerFrame, Uint64 frameLimit) {
   std::FILE* const inputLog = developer.inputLog();
   std::FILE* const frameTimes = developer.frameTimes();
   const Uint64 frequency = SDL_GetPerformanceFrequency();
@@ -1327,6 +1423,11 @@ int runMainLoop(Renderer& renderer, SDL_Renderer* sdlRenderer,
   // policy: the first real transition the director sees is the one away from
   // the title screen (task T062).
   Scene musicScene = game.scene();
+  // The scene the previous simulated tick ran on, across frames. A tick that
+  // starts a round while the previous tick ran on a menu owns the
+  // return-to-play gate below (task T067), so the tracking has to outlive one
+  // frame's batch.
+  Scene sceneOfPreviousTick = game.scene();
 
   // The persisted record this session owns (task T052, specification
   // sections 4.7 and 9). It seeds from the load that opened the session -
@@ -1341,6 +1442,14 @@ int runMainLoop(Renderer& renderer, SDL_Renderer* sdlRenderer,
   bool roundActive = false;
   std::uint64_t roundTicks = 0;
 
+  // The controls customization state of task T066. `captureRow` is the row
+  // whose capture SdlInput is armed for, or -1 while none is; `rebindMessage`
+  // is the status line the customization screen draws under its rows, and its
+  // buffer outlives the renderer's pointer to it because both live as long as
+  // the loop.
+  int captureRow = -1;
+  char rebindMessage[80] = "";
+
   while (running) {
     // Scripted input first, so its queued events reach this frame's poll.
     if (developer.hasScript()) {
@@ -1350,6 +1459,94 @@ int runMainLoop(Renderer& renderer, SDL_Renderer* sdlRenderer,
     // Events next, before any simulation (specification section 5).
     running = pollEvents(sdlRenderer, renderer, controllers, input, audio,
                          settings, prefs, inputLog);
+
+    // A capture the customization screen armed (task T066). The press that
+    // named a control stopped at SdlInput instead of becoming adapter state,
+    // so nothing it would have done has happened; this is the safe frame
+    // boundary where the tables change, before this frame's ticks read them.
+    if (captureRow >= 0) {
+      const stackfall::InputCapture capture = input.takeCapture();
+      if (capture.happened) {
+        const int action = captureRow;
+        captureRow = -1;
+        renderer.setRebindCaptureRow(-1);
+        const stackfall::GameAction actionId =
+            stackfall::kRebindableActions[action];
+        const char* actionName = stackfall::rebindableActionName(actionId);
+        stackfall::ControlTable& table =
+            bindings.table(capture.device, prefs.orientation);
+        const int holder =
+            stackfall::actionUsingControl(table, capture.control);
+        if (holder == action) {
+          // The control the action already uses: the capture ends with the
+          // binding untouched, which is the cancellation the footer names.
+          std::snprintf(rebindMessage, sizeof(rebindMessage), "%s UNCHANGED",
+                        actionName);
+          if (inputLog != nullptr) {
+            std::fprintf(inputLog,
+                         "controls capture action=%s device=%s control=%s "
+                         "result=cancelled\n",
+                         stackfall::rebindableActionKeyName(actionId),
+                         capture.device == DeviceKind::Keyboard ? "key" : "pad",
+                         capture.device == DeviceKind::Keyboard
+                             ? stackfall::keyboardControlName(capture.control)
+                             : stackfall::controllerControlName(capture.control));
+          }
+        } else if (holder >= 0) {
+          // One control, one gameplay action: the capture is rejected and the
+          // tables keep what they had, because silently mapping one input to
+          // two actions is the one thing a binding screen may never do.
+          const stackfall::GameAction heldBy =
+              stackfall::kRebindableActions[holder];
+          char controlWord[48];
+          formatControlWord(controlWord, sizeof(controlWord), capture.device,
+                            capture.control, prefs.orientation);
+          std::snprintf(rebindMessage, sizeof(rebindMessage),
+                        "%s IS ALREADY %s", controlWord,
+                        stackfall::rebindableActionName(heldBy));
+          logf("Binding %s to %s rejected: that control already performs %s\n",
+               actionName,
+               capture.device == DeviceKind::Keyboard
+                   ? stackfall::keyboardControlName(capture.control)
+                   : stackfall::controllerControlName(capture.control),
+               stackfall::rebindableActionName(heldBy));
+          if (inputLog != nullptr) {
+            std::fprintf(inputLog,
+                         "controls capture action=%s device=%s control=%s "
+                         "result=rejected holds=%s\n",
+                         stackfall::rebindableActionKeyName(actionId),
+                         capture.device == DeviceKind::Keyboard ? "key" : "pad",
+                         capture.device == DeviceKind::Keyboard
+                             ? stackfall::keyboardControlName(capture.control)
+                             : stackfall::controllerControlName(capture.control),
+                         stackfall::rebindableActionKeyName(heldBy));
+          }
+        } else {
+          // A free control: the action takes it alone, dropping the spare the
+          // section 5 pairs carry, so a rebound action never inherits a
+          // control the player did not just press.
+          table[action][0] = capture.control;
+          table[action][1] = stackfall::kNoControl;
+          applyControlBindings(bindings, input, renderer);
+          char controlWord[48];
+          formatControlWord(controlWord, sizeof(controlWord), capture.device,
+                            capture.control, prefs.orientation);
+          std::snprintf(rebindMessage, sizeof(rebindMessage), "%s = %s",
+                        actionName, controlWord);
+          char line[96];
+          std::snprintf(line, sizeof(line),
+                        "controls capture action=%s device=%s control=%s "
+                        "result=applied",
+                        stackfall::rebindableActionKeyName(actionId),
+                        capture.device == DeviceKind::Keyboard ? "key" : "pad",
+                        capture.device == DeviceKind::Keyboard
+                            ? stackfall::keyboardControlName(capture.control)
+                            : stackfall::controllerControlName(capture.control));
+          saveControlBindings(controlsStore, bindings, "custom", line,
+                              inputLog);
+        }
+      }
+    }
 
     int batch = 0;
     if (tickPerFrame) {
@@ -1393,6 +1590,31 @@ int runMainLoop(Renderer& renderer, SDL_Renderer* sdlRenderer,
     int slot = 0;
     while (slot < batch) {
       stackfall::TickInput tickInput = input.takeTickInput();
+      // The scene before the tick owns the select edge: the A press that
+      // opens the options screen belongs to the title, and only a select
+      // pressed while the screen already showed changes a value, so the
+      // opening press never toggles one (task T040).
+      const Scene sceneBeforeTick = game.scene();
+      // A press that a menu already owns may not act on the round that opens
+      // next (task T067). D-pad up moves the menu cursor and hard drops, so
+      // a queued press of it must spend its gameplay edge on the menu side
+      // alone: the press that returns to play drops no piece. The rules core
+      // drops those edges itself whenever the scene changed inside a tick,
+      // because the tick that changes the scene reads one half only; this
+      // gate covers the transitions that happen between ticks - a scripted
+      // restart is the one today - and it changes nothing when no edge
+      // waits, so the pinned replays keep their hashes. Every gameplay edge
+      // of the first tick a round owns is spent here, before the core sees
+      // it, exactly like the hold gate below.
+      if (sceneBeforeTick == Scene::Playing &&
+          sceneOfPreviousTick != Scene::Playing) {
+        tickInput.game.rotateCWPressed = false;
+        tickInput.game.rotateCCWPressed = false;
+        tickInput.game.hardDropPressed = false;
+        tickInput.game.holdPressed = false;
+        tickInput.game.pausePressed = false;
+      }
+      sceneOfPreviousTick = sceneBeforeTick;
       // Hold disabled on the options screen ignores every mapped hold input
       // (controller Y or left shoulder, keyboard C or left shift): the edge
       // is dropped here, before the round can see it, so no hold swap happens
@@ -1404,11 +1626,6 @@ int runMainLoop(Renderer& renderer, SDL_Renderer* sdlRenderer,
       if (inputLog != nullptr) {
         logTick(inputLog, ticksSimulated, slot, batch, tickInput);
       }
-      // The scene before the tick owns the select edge: the A press that
-      // opens the options screen belongs to the title, and only a select
-      // pressed while the screen already showed changes a value, so the
-      // opening press never toggles one (task T040).
-      const Scene sceneBeforeTick = game.scene();
       game.tick(tickInput);
       // The MUSIC row's select opened the music settings page inside the
       // core, so a select that left the options screen is navigation, not a
@@ -1416,7 +1633,7 @@ int runMainLoop(Renderer& renderer, SDL_Renderer* sdlRenderer,
       // the value rows (tasks T040 and T062).
       if (sceneBeforeTick == Scene::Options && tickInput.menu.selectPressed &&
           game.scene() == Scene::Options) {
-        applyOptionsSelect(renderer, audio, settings, prefs,
+        applyOptionsSelect(renderer, audio, settings, prefs, input,
                            game.optionsSelection(), inputLog);
       }
       // The music settings page's own rows: the opening press that entered
@@ -1426,6 +1643,39 @@ int runMainLoop(Renderer& renderer, SDL_Renderer* sdlRenderer,
           tickInput.menu.selectPressed) {
         applyMusicSelect(renderer, audio, musicDirector, settings, prefs,
                          game.musicSelection(), inputLog);
+      }
+      // The customization screen's own rows (task T066): the opening press
+      // that entered the screen belonged to the mappings page, so the first
+      // select here is the first row action. Rows 0..7 arm a capture for that
+      // action - the next real press of a rebindable control of either device
+      // names the new binding, and nothing else happens until it arrives -
+      // and the RESTORE DEFAULTS row returns all four tables to the section 5
+      // defaults at once.
+      if (sceneBeforeTick == Scene::Rebind && tickInput.menu.selectPressed &&
+          game.scene() == Scene::Rebind) {
+        const int row = game.rebindSelection();
+        if (row == stackfall::kRebindRestoreRow) {
+          bindings = stackfall::defaultControlBindings();
+          applyControlBindings(bindings, input, renderer);
+          std::snprintf(rebindMessage, sizeof(rebindMessage),
+                        "DEFAULTS RESTORED");
+          saveControlBindings(controlsStore, bindings, "restored",
+                              "controls restore result=defaults", inputLog);
+        } else if (row >= 0 && row < stackfall::kRebindableActionCount) {
+          captureRow = row;
+          input.beginCapture();
+          renderer.setRebindCaptureRow(row);
+          rebindMessage[0] = '\0';
+        }
+      }
+      // Leaving the customization screen - by back, by a scripted restart, by
+      // anything - ends any capture still armed, so no press the player makes
+      // on another screen can change a binding.
+      if (sceneBeforeTick == Scene::Rebind && game.scene() != Scene::Rebind &&
+          captureRow >= 0) {
+        input.cancelCapture();
+        captureRow = -1;
+        renderer.setRebindCaptureRow(-1);
       }
       // The music policy of MUSIC.md's playback table: scene transitions
       // reach the director once, the level feed rides every tick, and the
@@ -1439,13 +1689,16 @@ int runMainLoop(Renderer& renderer, SDL_Renderer* sdlRenderer,
       musicDirector.setLevel(game.level());
       musicDirector.update();
       // The record persists the moment the running score passes the best
-      // the store holds (task T052): every save runs through the atomic
-      // temporary-file, flush, and rename write, so a quit to the title, a
-      // window close, or a power loss keeps every point up to the piece in
-      // play instead of waiting for a game over that never came.
+      // the store holds (task T052). Since task T065 the write itself runs
+      // on the record writer's thread: submit() hands over two integers and
+      // returns, the writer performs the atomic temporary-file, flush,
+      // fsync, and rename write, and the completed result comes back through
+      // the per-frame poll below, so a quit to the title, a window close, or
+      // a power loss still costs at most the points of the piece in play
+      // while the gameplay thread never waits on storage.
       if (game.score() > savedRecord) {
         savedRecord = game.score();
-        saveRunningRecord(highScores, savedRecord, ticksSimulated, inputLog);
+        recordWriter.submit(savedRecord, ticksSimulated);
       }
       // Round boundaries feed the persisted best back into the session,
       // between rounds only (specification section 4.7): a round that ends
@@ -1458,16 +1711,29 @@ int runMainLoop(Renderer& renderer, SDL_Renderer* sdlRenderer,
       // single tick: the fresh round's clock restarts, which is how the
       // platform layer tells it from a resume.
       const Scene sceneAfterTick = game.scene();
+      bool roundEnded = false;
       if (roundActive && sceneAfterTick != Scene::Playing &&
           sceneAfterTick != Scene::Paused &&
           sceneAfterTick != Scene::PauseControls) {
         roundActive = false;  // game over or Quit to Title ended the round
         game.setHighScore(savedRecord);
+        roundEnded = true;
       } else if (sceneAfterTick == Scene::Playing && !roundActive) {
         roundActive = true;  // Start Game or Play Again began a round
       } else if (roundActive && sceneAfterTick == Scene::Playing &&
                  game.tickCount() < roundTicks) {
         game.setHighScore(savedRecord);  // Restart replaced the round
+        roundEnded = true;
+      }
+      // A round boundary is where the round's record becomes the session's
+      // best, so it is also where the writer catches up: one flush waits for
+      // at most the write in flight, and the record is complete on disk
+      // before the title screen, the game-over screen, or the next round
+      // reads it back (task T052's abandon guarantee, kept through the
+      // writer of task T065).
+      if (roundEnded) {
+        recordWriter.flush();
+        pollRecordWrites(recordWriter, highScores, inputLog);
       }
       roundTicks = game.tickCount();
       // The detector reads what the tick did and the driver plays it, so a
@@ -1479,6 +1745,12 @@ int runMainLoop(Renderer& renderer, SDL_Renderer* sdlRenderer,
       ++ticksSimulated;
       ++slot;
     }
+
+    // The record writes that completed during this frame's batch report
+    // here, once per frame, so every save keeps its session-log and
+    // input-log line while the gameplay thread never waits on the write
+    // (task T065).
+    pollRecordWrites(recordWriter, highScores, inputLog);
 
     // Scene transitions and the game-over summary go to both logs.
     if (game.scene() != lastScene) {
@@ -1520,9 +1792,12 @@ int runMainLoop(Renderer& renderer, SDL_Renderer* sdlRenderer,
                        game.newRecord() ? 1 : 0);
         }
         // The record is written once, when the round ends and beats the saved
-        // best (specification sections 4.7 and 9).
+        // best (specification sections 4.7 and 9). The writer thread carries
+        // the write and the flush behind it keeps it durable before the
+        // game-over screen draws (task T065).
         if (game.newRecord()) {
-          saveHighScore(highScores, game, inputLog);
+          saveHighScore(recordWriter, highScores, game, ticksSimulated,
+                        inputLog);
         }
         if (inputLog != nullptr) {
           std::fprintf(inputLog, "sfx counts %s\n",
@@ -1544,6 +1819,12 @@ int runMainLoop(Renderer& renderer, SDL_Renderer* sdlRenderer,
     // The music settings page shows the playing track's title, fed from the
     // director every frame; it stays empty while music is silent (MUSIC.md).
     renderer.setMusicTrackTitle(musicDirector.currentTrackTitle());
+    // The customization screen's own mirrors (task T066): which row is
+    // capturing and the status line of the last outcome. Both are loop state,
+    // and the message buffer lives as long as the loop, so the renderer's
+    // pointer stays valid.
+    renderer.setRebindCaptureRow(captureRow);
+    renderer.setRebindMessage(rebindMessage);
     renderFrame(renderer, game, sdlRenderer);
     ++framesRendered;
 
@@ -1569,6 +1850,12 @@ int runMainLoop(Renderer& renderer, SDL_Renderer* sdlRenderer,
   logf("Loop finished: %llu frames rendered, %llu ticks simulated\n",
        static_cast<unsigned long long>(framesRendered),
        static_cast<unsigned long long>(ticksSimulated));
+  // The last word of the session is durable before the evidence lines that
+  // follow: a window close, a frame limit, or a scripted quit flushes the
+  // writer here, and any save that completed in the final frames still gets
+  // its log line (task T052's guarantee through the writer of task T065).
+  recordWriter.flush();
+  pollRecordWrites(recordWriter, highScores, inputLog);
   logSoundCounts(audio, inputLog);
   // The music half of the session evidence: what played, how far, and the
   // voice ceiling the engine really reached (MUSIC.md, task T062).
@@ -1587,6 +1874,38 @@ int runMainLoop(Renderer& renderer, SDL_Renderer* sdlRenderer,
                  musicModeName(musicDirector.mode()),
                  music.transportRunning ? 1 : 0, music.track, music.bar,
                  music.loopCount, audio.musicEngine().voiceHighWater());
+  }
+  // The audio-thread accounting of the T065 evidence (task T065): how much
+  // work the device callback really did and how much command traffic the
+  // main thread sent it. The callback work line appears only when a
+  // profiling session enabled the clock pair, so an ordinary session logs
+  // the counts alone.
+  {
+    const unsigned long callbacks = audio.callbackCount();
+    const unsigned long mixedFrames = audio.callbackFrames();
+    if (audio.callbackTimingEnabled() && callbacks > 0) {
+      const double frequency =
+          static_cast<double>(SDL_GetPerformanceFrequency());
+      logf("Audio: %lu callbacks, %lu frames, mean %.3f ms, max %.3f ms\n",
+           callbacks, mixedFrames,
+           static_cast<double>(audio.callbackWorkCounts()) / callbacks /
+               frequency * 1000.0,
+           static_cast<double>(audio.callbackWorkMaxCounts()) / frequency *
+               1000.0);
+    } else {
+      logf("Audio: %lu callbacks, %lu frames\n", callbacks, mixedFrames);
+    }
+    const stackfall::MusicEngine& engine = audio.musicEngine();
+    logf("Music commands: %lu pushed, %lu rejected, %lu drained\n",
+         engine.commandsPushed(), engine.commandsRejected(),
+         engine.commandsDrained());
+    if (inputLog != nullptr) {
+      std::fprintf(inputLog,
+                   "audio end callbacks=%lu frames=%lu pushed=%lu "
+                   "rejected=%lu drained=%lu\n",
+                   callbacks, mixedFrames, engine.commandsPushed(),
+                   engine.commandsRejected(), engine.commandsDrained());
+    }
   }
   return EXIT_SUCCESS;
 }
@@ -1748,6 +2067,13 @@ int main(int argc, char** argv) {
     // the session log land in one directory (task T033).
     const HighScoreStore highScores(saveDirectory);
     loadStoredHighScore(highScores, game, inputLog);
+    // The record's writer thread (task T065): every save of the session -
+    // the mid-round saves of T052 and the game-over save - runs through it,
+    // so the gameplay thread hands a score over and never waits on the
+    // storage. It is declared after the store it reads beside and before
+    // the audio device, so it joins before the session log closes and every
+    // completed write has already been reported by the loop's own flush.
+    RecordWriter recordWriter(saveDirectory);
 
     // Sound (task T013, specification section 6.3) and the six player
     // preferences of the options screen (tasks T039, T040, and T044). The
@@ -1762,14 +2088,32 @@ int main(int argc, char** argv) {
     // above, so its destructor closes the device before any of them and long
     // before SDL_Quit (specification section 4.7).
     const SettingsStore settings(saveDirectory);
+    // The custom control bindings of the customization screen (task T066,
+    // specification sections 5 and 9): the same directory, the same recovery
+    // rule. A missing or damaged controls.dat costs the customizations alone -
+    // every table returns to the section 5 defaults - and the menus stay
+    // reachable either way, because the fixed menu roles never rebind.
+    const ControlsStore controlsStore(saveDirectory);
+    const stackfall::ControlsResult loadedControls = controlsStore.load();
+    ControlBindings bindings = loadedControls;
+    applyControlBindings(bindings, input, sceneRenderer);
+    if (controlsStore.hasDirectory()) {
+      logf("Controls: %s bindings (%s) from %s\n",
+           stackfall::controlBindingsAreDefault(bindings) ? "default" : "custom",
+           saveStatusName(loadedControls.status),
+           controlsStore.filePath().c_str());
+    } else {
+      logf("No save directory: the control bindings stay in memory this "
+           "session\n");
+    }
     AudioDriver audio;
     CueDetector cueDetector;
     const stackfall::SettingsResult preferences = settings.load();
     SettingsValues prefs = preferences;
     applyPreferences(prefs, audio, sceneRenderer);
-    // The orientation is read once, here, and holds for the whole session: the
-    // layout and both input tables turn together, and the ORIENTATION row the
-    // options screen offers changes the stored value alone (task T055).
+    // The orientation the saved settings carry opens the session here, and the
+    // ORIENTATION row turns it again mid-session through the same call: the
+    // layout and both input tables always move together (tasks T055 and T068).
     applyOrientation(prefs.orientation, sceneRenderer, input);
     if (settings.hasDirectory()) {
       logf("Settings: sound %s, ghost preview %s, grid %s, hold %s, next "
@@ -1787,6 +2131,10 @@ int main(int argc, char** argv) {
            "session\n");
     }
     if (inputLog != nullptr) {
+      std::fprintf(inputLog, "controls start=%s status=%s\n",
+                   stackfall::controlBindingsAreDefault(bindings) ? "default"
+                                                                  : "custom",
+                   saveStatusName(loadedControls.status));
       std::fprintf(inputLog, "sound start=%s\n", prefs.soundOn ? "on" : "off");
       std::fprintf(inputLog, "ghost start=%s\n", prefs.ghostOn ? "on" : "off");
       std::fprintf(inputLog, "grid start=%s\n", prefs.gridOn ? "on" : "off");
@@ -1799,6 +2147,14 @@ int main(int argc, char** argv) {
                                                               : "landscape");
     }
     audio.open();
+    // The opt-in callback timing of the T065 evidence (task T065): two
+    // clock reads per callback, off unless a profiling session asked for
+    // them, so no timed sample pays for the measurement.
+    if (std::getenv("STACKFALL_PROFILE_AUDIO_CALLBACK") != nullptr) {
+      audio.enableCallbackTiming();
+      logf("Audio callback timing enabled (STACKFALL_PROFILE_AUDIO_CALLBACK)"
+           "\n");
+    }
     logf("Sound toggle: M key or controller Select\n");
 
     // The music session of task T062 (MUSIC.md, playback behavior): the
@@ -1839,9 +2195,10 @@ int main(int argc, char** argv) {
     developer.openFrameTimes(options.frameTimes);
 
     exitCode = runMainLoop(sceneRenderer, renderer.get(), controllers, input,
-                           game, highScores, settings, prefs, audio,
-                           musicDirector, cueDetector, developer,
-                           options.tickPerFrame, options.frameLimit);
+                           game, highScores, recordWriter, settings, prefs,
+                           audio, musicDirector, cueDetector, developer,
+                           controlsStore, bindings, options.tickPerFrame,
+                           options.frameLimit);
   }
 
   // EXIT state (specification section 4.7): the block above released every

@@ -4,7 +4,9 @@
 // a press edge is consumed exactly once even when a frame catches up through
 // several simulation ticks, held directions merge across input sources, left
 // and right held together cause no movement, and losing a source or the
-// window focus clears exactly that input. The SDL event path above the
+// window focus clears exactly that input. A change of the mapping tables -
+// the orientation turn of task T068 - clears both the held levels and the
+// pending edges, unlike a focus loss. The SDL event path above the
 // adapter is covered by the separate stackfall_input_tests target; everything
 // here runs without SDL, so it belongs to the portable suite.
 
@@ -203,6 +205,42 @@ void check_release_all_held_on_focus_loss() {
   SC_CHECK(!adapter.takeTickInput().game.leftHeld);
 }
 
+// The orientation turn of task T068: the tables change under hands that may
+// hold a control, so every held level and every pending edge of every source
+// goes at once, while focus loss keeps a queued press (the rule above). The
+// sources themselves survive, and a control pressed after the turn works
+// normally under whichever table is now in force.
+void check_orientation_turn_clears_input() {
+  InputAdapter adapter;
+  adapter.setButton(kKeyboard, GameAction::Left, true);
+  adapter.setButton(kKeyboard, GameAction::RotateCW, true);
+  adapter.setButton(kPadA, GameAction::MenuDown, true);
+  SC_CHECK(adapter.sourceCount() == 2);
+  SC_CHECK(adapter.isHeld(GameAction::Left));
+  SC_CHECK(adapter.edgePending(GameAction::RotateCW));
+
+  adapter.clearHeldAndPending();
+  SC_CHECK(adapter.sourceCount() == 2);  // the sources stay registered
+  SC_CHECK(!adapter.isHeld(GameAction::Left));
+  SC_CHECK(!adapter.edgePending(GameAction::RotateCW));
+  SC_CHECK(isEmpty(adapter.takeTickInput()));
+
+  // The release of a control the player still holds physically arrives under
+  // the new tables and maps to a different action: it clears a level that was
+  // never set, so nothing sticks and nothing fires.
+  adapter.setButton(kKeyboard, GameAction::HardDrop, false);
+  adapter.setButton(kPadA, GameAction::Down, false);
+  SC_CHECK(isEmpty(adapter.takeTickInput()));
+
+  // A fresh press under the new tables holds and fires exactly as before.
+  adapter.setButton(kPadA, GameAction::HardDrop, true);
+  const TickInput tick = adapter.takeTickInput();
+  SC_CHECK(tick.game.hardDropPressed);
+  SC_CHECK(!tick.game.leftHeld);
+  adapter.setButton(kPadA, GameAction::HardDrop, false);
+  SC_CHECK(isEmpty(adapter.takeTickInput()));
+}
+
 // Menu edges ride on the same tick as gameplay edges and are consumed
 // together, so a menu action and a gameplay action pressed together both land
 // once, on the same tick.
@@ -296,6 +334,7 @@ void run_input_tests() {
   check_drop_source_on_removal();
   check_drop_source_keeps_other_edge();
   check_release_all_held_on_focus_loss();
+  check_orientation_turn_clears_input();
   check_menu_edges_share_the_tick();
   check_presses_during_pause_are_consumed();
   check_restart_inherits_no_pending_edge();

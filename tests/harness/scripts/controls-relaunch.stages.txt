@@ -1,0 +1,7 @@
+# The controls relaunch session of task T066: one shared save directory, two
+# game processes. Stage one customizes and quits; stage two relaunches, reads
+# the saved tables, plays on them, and restores the defaults. No stage changes
+# a preference, so `settings=none` also proves the customization path writes
+# no settings file on its own.
+script=controls-relaunch-set.script.txt settings=none
+script=controls-relaunch-read.script.txt settings=none

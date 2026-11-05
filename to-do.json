@@ -456,7 +456,13 @@
       "status": "blocked",
       "details": "Round M4 gate (external prerequisite: physical hardware). Install the port under /roms/ports on a real Anbernic RG503 running ROCKNIX and execute every section 12 checklist item: the port appears in Ports with no missing-library error; the game starts using only RG503 buttons, with no keyboard and no network; all seven shapes spawn, rotate, fall, hard-drop, and lock; hold and five previews work and hold cannot be repeated within one piece; the ghost is correct at walls and over tall stacks; 1/2/3/4-line clears and scoring match the test fixtures; pause, resume, and repeated menu transitions never leave a stuck button; game over, restart, quit-to-title, and the PortMaster exit chord work; the score persists across quitting and rebooting and a corrupted save does not crash; the native display is centered with nothing clipped or unreadable; a continuous 10-minute session stays responsive at about 60 FPS with recorded frame times and no sustained slowdown; no crash on controller disconnect, audio init, renderer fallback, or missing save; repeated launch and quit cycles leave a clean exit in stackfall/log.txt. Verify the section 5 controller mapping table on the physical device and update the single mapping location if the Anbernic markings differ from SDL button letters. Record actual frame times and process RAM use (design target under 64 MiB).\n\nUnattended verification policy: Run only at final acceptance, after the complete local archive from T019 and all agent software checks. Include a human assessment of control precision, visible spawn behavior, readability, feedback, and pace. Collect all operator questions in one handoff. Do not request device access during earlier development. Note 2026-11-04: the package was refreshed for the portrait build; the current ARM64 pin is dd51324f7e91ad042c6fa6e7108ce314b81f92c2458cf1d05e00c06b9392cfe5 per portmaster/BUILDING.md. The handheld gates wait until the current work wave lands.",
       "depends_on": [
-        "T019"
+        "T019",
+        "T065",
+        "T066",
+        "T067",
+        "T068",
+        "T070",
+        "T071"
       ],
       "blockers": [
         "An operator must complete this prerequisite; coding workers cannot execute it.",
@@ -467,6 +473,7 @@
         "Deferred: RG503 hardware access is unblocked",
         "Deferred: T017, T045, and T019 are done; the operator receives the local archive and schedules the RG503 pass",
         "Deferred: T018 is scheduled",
+        "Deferred: T018 is unblocked and the RG503 is reachable",
         "Deferred: T018, the RG503 device acceptance pass, runs on physical hardware",
         "Deferred: T019 delivers the assembled PortMaster package and the operator grants device access",
         "Deferred: T019 delivers the assembled PortMaster package and the operator has an RG503 running ROCKNIX available for the device pass",
@@ -474,15 +481,18 @@
         "Deferred: The T019 local PortMaster package and the T035 1.0.0 version bump are in the repository, and an operator has an RG503 running ROCKNIX available to run the section 12 checklist",
         "Deferred: The T019 local package exists and is handed to the operator with an RG503 running ROCKNIX available; T020 follows a passing T018 device check and T021 follows owner approval of a publication channel",
         "Deferred: The operator grants access to the Anbernic RG503 running ROCKNIX for the final acceptance pass.",
+        "Deferred: The operator grants physical RG503 access for the T018 acceptance run.",
         "Deferred: The operator schedules the RG503 section 12 device pass and takes the refreshed stackfall.zip (4b9d10f0...) with its package-report.txt",
         "Requires a physical Anbernic RG503 running ROCKNIX with PortMaster; no device is attached to this environment, and software workers cannot press handheld buttons or observe the device screen."
       ],
       "tags": [
         "M4",
         "looper:deferred",
+        "looper:finding:looper:finding:t066-device-confirm",
         "looper:finding:rg503-final-device-acceptance-and-publication",
         "looper:finding:rg503-midround-save-pacing",
         "looper:finding:rg503-physical-controller-mapping",
+        "looper:finding:t018-device-acceptance",
         "looper:finding:t024-physical-acceptance-device-pass",
         "looper:finding:t055-device-portrait-check",
         "looper:operator"
@@ -554,6 +564,7 @@
       "tags": [
         "M5",
         "looper:deferred",
+        "looper:finding:fresh-rocknix-install-verification",
         "looper:finding:rocknix-fresh-install-release-gate",
         "looper:finding:t024-audio-on-physical-device",
         "looper:operator"
@@ -574,23 +585,25 @@
         "An operator must complete this prerequisite; coding workers cannot execute it.",
         "Deferred: T020 passes on a fresh ROCKNIX install and the owner approves a publication channel",
         "Deferred: The owner approves submitting the port to the public PortMaster index",
+        "Deferred: The owner explicitly approves publication after T018 and T020 evidence is recorded.",
         "Publishing to the PortMaster listing or any public channel requires owner approval and channel credentials or accounts that workers do not hold."
       ],
       "tags": [
         "M5",
         "looper:deferred",
+        "looper:finding:portmaster-publication",
         "looper:finding:portmaster-publication-owner-approval",
         "looper:operator"
       ],
       "updated_at": "2026-11-04T17:24:02Z",
-      "unblock_when": "Record evidence that the operator completed the action, then mark this task done. To delegate different work, explicitly change its contract and remove looper:operator."
+      "unblock_when": "The owner explicitly approves publication after T018 and T020 evidence is recorded.; remove looper:deferred and set todo when this condition is met."
     },
     {
       "id": "T022",
       "title": "README status section still describes the M0 skeleton",
       "priority": 3,
       "status": "done",
-      "details": "README.md still says \"Status: M0 project skeleton\" and \"Current state (M0)\" with a placeholder main.cpp, although T003-T005 have delivered the shape tables, SRS rotation, and the board engine of M1. Update the status line and the current-state bullet list to reflect M1 progress when the next milestone task touches documentation, so the front page matches the repository. Purely documentation; no code impact.\nEvidence: README.md lines 10-12 and 66-73 describe only the M0 skeleton, while include/stackfall/pieces.hpp, board.hpp and their passing suites already exist.\n\nReview repair: README front page still describes the M0 skeleton after four M1 components landed\nREADME.md must state the actual milestone status and current-state list so the front page matches the repository. The outcome is already tracked as task T022; this finding attaches updated evidence only and must not create a second task.\nEvidence: README.md lines 10-12 still read \"Status: M0 project skeleton\" and lines 66-73 list only the M0 skeleton, while include/stackfall/pieces.hpp, board.hpp, randomizer.hpp, src/pieces.cpp, src/board.cpp, src/randomizer.cpp and their suites (323387 checks passing in Debug and Release at da23a3d) deliver the shape tables, SRS kicks, board engine, and randomizer of M1.\n\nReview repair: README status section still describes the M0 skeleton\nREADME.md lines 66-73 still describe src/main.cpp as the M0 placeholder that only initializes and shuts down SDL2, and lines 10-12 still say \"Status: M0 project skeleton\". T002 replaced the placeholder with the real SDL2 window, controller detection, and fixed 60 Hz loop, and T003-T006 already delivered the shape tables, SRS kicks, board engine, and randomizer, so the front page lags the repository further. The outcome is already tracked as task T022; this finding attaches updated evidence only and must not create a second task.\nEvidence: After T002, README.md line 71 still reads \"src/main.cpp is a placeholder that initializes and shuts down SDL2. Task T002 adds the desktop window, controller detection, and the fixed 60 Hz loop\", while src/main.cpp in the T002 worktree now implements the 960x544 window, logged renderer fallback chain, ControllerSet discovery with keyboard-fallback logging, integer fixed-step 60 Hz accumulator with 250 ms clamp and stall logs, and clean EXIT shutdown, verified headless via SDL_VIDEODRIVER=dummy (--frames runs exit 0 with \"Clean shutdown\"; SIGSTOP/SIGCONT produced \"Frame stall of 1002 ms clamped to 250 ms\").\n\nReview repair: README status header still says M1 in progress while M1 is complete\nThe README front page states the actual milestone status, so the header and the current-state list agree with the repository after every milestone task lands.\nEvidence: README.md:10-16 reads 'Status: M1 in progress' and lists only the shape tables, SRS rotation, board engine, and PCG32 randomizer (scope of T003-T006). README.md:89-110 of the same file declares 'Milestone M1, the rules core, is complete. Six components are done', lists the T007 tick engine (src/game.cpp, src/scoring.cpp) and the T008 regression runner (tests/test_regression.cpp, --seed CLI), and ends with 'Milestone M2, the playable desktop build, is next'. The M1 gate is met at 9ce8e60: ctest passes in Debug and Release with 335,826 checks and 0 failures, and stackfall_tests --seed output is byte-identical across runs and build types. The outcome is already tracked as task T022 (key looper:finding:readme-milestone-status-stale, status done); this finding attaches updated evidence only and must not create a second task.\n\nReview repair: docs/SPEC.md status header still says M1 complete while M2/M3 work is integrated\nThe specification's own status line states the actual integrated milestone state (M3 in progress with T009-T013 landed), matching README.md, so the two front pages agree.\nEvidence: docs/SPEC.md:6 reads 'Status: M1 complete; the full rules core passes headless tests in Debug and Release' at 98e786b, while README.md:10 reads 'Status: M3 in progress' and T009-T013 (input adapter, renderer, screens, persistence, audio) are integrated per the same commit. The outcome is already tracked as task T022 (done, key looper:finding:readme-milestone-status-stale); this finding attaches updated evidence only and must not create a second task.\n\nReview repair: README front page lags the repository again after the verification tasks landed\nAcceptance criteria: the README status paragraph states the actual integrated state, per T022's own criterion that the front page matches the repository. After T014 and T023 through T028 are integrated, the sentence 'The agent verification of M2 and M3, the platform hardening, packaging, and device validation remain' is wrong on the first two items: the platform hardening and the M2/M3 agent verification (harness, play review, design-review fixes, stability pass, performance loop) are done; what remains is the T015 final gate at the approved layout, then packaging and device validation.\nEvidence: README.md lines 10-27 at 0ef908d. Completed and verified in this review: ctest 5/5 in Debug and Release; tests/harness/run.sh 163/163 and tests/harness/t024.sh 287/287 passing; T014 platform hardening present (renderer fallback chain, Architecture log line, fallback frame limiter observed in the log of a dummy-driver run); T023/T024/T025 sections and the T030-T034 fix records in notes/agent-testing.md; T027/T028 in notes/design-review.md; T026 in notes/performance.md. Outcome already tracked as done under key readme-milestone-status-stale; this finding attaches updated evidence only.\n\nReview repair: README project status says the options screen is next although T040 and T041 landed it\nAcceptance criteria: the README status paragraph states the actual integrated state, per T022's own criterion that the front page matches the repository. The options screen with the ghost toggle is integrated at cf980db, so 'Next comes the options screen with the ghost toggle' is wrong; what remains is the approved panel layout (T037), the final desktop regression gate (T015), then handheld packaging and device testing.\nEvidence: README.md:99-103 reads 'Next comes the options screen with the ghost toggle, the approved panel layout, and the final desktop regression checks', while src/renderer_sdl.cpp:78 lists the four-item title menu {'START GAME', 'CONTROLS', 'OPTIONS', ...} with kTitleItemCount 4 (include/stackfall/game.hpp:68), docs/SPEC.md:160-162 documents the OPTIONS scene and the two preferences, and the options-ghost harness session passed in this review's run (build/agent-checks/review-final, harness 195/195). The outcome is already tracked as task T022 (key readme-milestone-status-stale, status done); this finding attaches fresh evidence and must not create a second task.\n\nReview repair: README front page says fourteen harness sessions while fifteen run\nAcceptance criteria per T022's standing rule: the README status paragraph states the actual integrated state. The T052 record-abandon session made the harness fifteen sessions (tests/harness/run.sh:8 and docs/AGENT_TESTING.md:55 both say fifteen), but README.md:141 still says fourteen and its session description omits the abandoned-round record check.\nEvidence: build/agent-checks/review-final-442a546c/sessions.txt lists 15 session names; README.md:141 reads 'drives fourteen sessions'; T052's file list did not include README.md. All fifteen sessions pass 689/689 checks at c075fde.\n\nReview repair: docs/SPEC.md status line says release packaging remains although the package is assembled and byte-reproduced\nAcceptance criteria per T022's standing rule that the front pages state the actual integrated state and agree with each other: the docs/SPEC.md status line should record that the local release package is assembled and checked (T019) and that device validation and publication are what remain, matching README.md ('The release archive (stackfall.zip) is assembled locally ... Testing on the RG503 and public publication follow'). The outcome is already tracked as task T022; this finding attaches updated evidence only and must not create a second task.\nEvidence: docs/SPEC.md:6-13 reads 'Status: M4 in progress; ... device validation and release packaging remain', written in the same commit 262a3a5 that assembles and checks the release archive (commit message: 'Reproduce the AArch64 binary with desktop hash parity and assemble the PortMaster release package'; verified by tests/harness/t019.sh 78/78 in this review, archive SHA 7d5e0f63...). README.md:157-188 correctly reports the archive assembled and only RG503 testing and publication remaining, so the two front pages disagree.\n\nReview repair: README front page is stale after portrait mode landed\nAcceptance criteria per T022's standing rule: the README front page states the actual integrated state. The product ships seven preferences and a portrait mode (T055), but README.md line 55 says 'all six options settings', lines 34-35 and 160-162 list six settings without orientation, line 166 says the harness drives 'fifteen sessions' while run.sh and docs/AGENT_TESTING.md say seventeen, and the word portrait or orientation appears nowhere in README.md.\nEvidence: README.md:55, 34-35, 160-162, 166 at 4bc5d06 (grep for 'portrait|orientation' in README.md returns nothing); tests/harness/run.sh:9 and docs/AGENT_TESTING.md:55 say seventeen sessions; the options screen has seven rows (docs/SPEC.md:169-177) and the harness ran 17 sessions with 833 checks passing in this review (build/agent-checks/review-final-4bc5d06). T055's file list did not include README.md. Outcome already tracked under key readme-milestone-status-stale; this finding attaches updated evidence and must not create a second task.",
+      "details": "README.md still says \"Status: M0 project skeleton\" and \"Current state (M0)\" with a placeholder main.cpp, although T003-T005 have delivered the shape tables, SRS rotation, and the board engine of M1. Update the status line and the current-state bullet list to reflect M1 progress when the next milestone task touches documentation, so the front page matches the repository. Purely documentation; no code impact.\nEvidence: README.md lines 10-12 and 66-73 describe only the M0 skeleton, while include/stackfall/pieces.hpp, board.hpp and their passing suites already exist.\n\nReview repair: README front page still describes the M0 skeleton after four M1 components landed\nREADME.md must state the actual milestone status and current-state list so the front page matches the repository. The outcome is already tracked as task T022; this finding attaches updated evidence only and must not create a second task.\nEvidence: README.md lines 10-12 still read \"Status: M0 project skeleton\" and lines 66-73 list only the M0 skeleton, while include/stackfall/pieces.hpp, board.hpp, randomizer.hpp, src/pieces.cpp, src/board.cpp, src/randomizer.cpp and their suites (323387 checks passing in Debug and Release at da23a3d) deliver the shape tables, SRS kicks, board engine, and randomizer of M1.\n\nReview repair: README status section still describes the M0 skeleton\nREADME.md lines 66-73 still describe src/main.cpp as the M0 placeholder that only initializes and shuts down SDL2, and lines 10-12 still say \"Status: M0 project skeleton\". T002 replaced the placeholder with the real SDL2 window, controller detection, and fixed 60 Hz loop, and T003-T006 already delivered the shape tables, SRS kicks, board engine, and randomizer, so the front page lags the repository further. The outcome is already tracked as task T022; this finding attaches updated evidence only and must not create a second task.\nEvidence: After T002, README.md line 71 still reads \"src/main.cpp is a placeholder that initializes and shuts down SDL2. Task T002 adds the desktop window, controller detection, and the fixed 60 Hz loop\", while src/main.cpp in the T002 worktree now implements the 960x544 window, logged renderer fallback chain, ControllerSet discovery with keyboard-fallback logging, integer fixed-step 60 Hz accumulator with 250 ms clamp and stall logs, and clean EXIT shutdown, verified headless via SDL_VIDEODRIVER=dummy (--frames runs exit 0 with \"Clean shutdown\"; SIGSTOP/SIGCONT produced \"Frame stall of 1002 ms clamped to 250 ms\").\n\nReview repair: README status header still says M1 in progress while M1 is complete\nThe README front page states the actual milestone status, so the header and the current-state list agree with the repository after every milestone task lands.\nEvidence: README.md:10-16 reads 'Status: M1 in progress' and lists only the shape tables, SRS rotation, board engine, and PCG32 randomizer (scope of T003-T006). README.md:89-110 of the same file declares 'Milestone M1, the rules core, is complete. Six components are done', lists the T007 tick engine (src/game.cpp, src/scoring.cpp) and the T008 regression runner (tests/test_regression.cpp, --seed CLI), and ends with 'Milestone M2, the playable desktop build, is next'. The M1 gate is met at 9ce8e60: ctest passes in Debug and Release with 335,826 checks and 0 failures, and stackfall_tests --seed output is byte-identical across runs and build types. The outcome is already tracked as task T022 (key looper:finding:readme-milestone-status-stale, status done); this finding attaches updated evidence only and must not create a second task.\n\nReview repair: docs/SPEC.md status header still says M1 complete while M2/M3 work is integrated\nThe specification's own status line states the actual integrated milestone state (M3 in progress with T009-T013 landed), matching README.md, so the two front pages agree.\nEvidence: docs/SPEC.md:6 reads 'Status: M1 complete; the full rules core passes headless tests in Debug and Release' at 98e786b, while README.md:10 reads 'Status: M3 in progress' and T009-T013 (input adapter, renderer, screens, persistence, audio) are integrated per the same commit. The outcome is already tracked as task T022 (done, key looper:finding:readme-milestone-status-stale); this finding attaches updated evidence only and must not create a second task.\n\nReview repair: README front page lags the repository again after the verification tasks landed\nAcceptance criteria: the README status paragraph states the actual integrated state, per T022's own criterion that the front page matches the repository. After T014 and T023 through T028 are integrated, the sentence 'The agent verification of M2 and M3, the platform hardening, packaging, and device validation remain' is wrong on the first two items: the platform hardening and the M2/M3 agent verification (harness, play review, design-review fixes, stability pass, performance loop) are done; what remains is the T015 final gate at the approved layout, then packaging and device validation.\nEvidence: README.md lines 10-27 at 0ef908d. Completed and verified in this review: ctest 5/5 in Debug and Release; tests/harness/run.sh 163/163 and tests/harness/t024.sh 287/287 passing; T014 platform hardening present (renderer fallback chain, Architecture log line, fallback frame limiter observed in the log of a dummy-driver run); T023/T024/T025 sections and the T030-T034 fix records in notes/agent-testing.md; T027/T028 in notes/design-review.md; T026 in notes/performance.md. Outcome already tracked as done under key readme-milestone-status-stale; this finding attaches updated evidence only.\n\nReview repair: README project status says the options screen is next although T040 and T041 landed it\nAcceptance criteria: the README status paragraph states the actual integrated state, per T022's own criterion that the front page matches the repository. The options screen with the ghost toggle is integrated at cf980db, so 'Next comes the options screen with the ghost toggle' is wrong; what remains is the approved panel layout (T037), the final desktop regression gate (T015), then handheld packaging and device testing.\nEvidence: README.md:99-103 reads 'Next comes the options screen with the ghost toggle, the approved panel layout, and the final desktop regression checks', while src/renderer_sdl.cpp:78 lists the four-item title menu {'START GAME', 'CONTROLS', 'OPTIONS', ...} with kTitleItemCount 4 (include/stackfall/game.hpp:68), docs/SPEC.md:160-162 documents the OPTIONS scene and the two preferences, and the options-ghost harness session passed in this review's run (build/agent-checks/review-final, harness 195/195). The outcome is already tracked as task T022 (key readme-milestone-status-stale, status done); this finding attaches fresh evidence and must not create a second task.\n\nReview repair: README front page says fourteen harness sessions while fifteen run\nAcceptance criteria per T022's standing rule: the README status paragraph states the actual integrated state. The T052 record-abandon session made the harness fifteen sessions (tests/harness/run.sh:8 and docs/AGENT_TESTING.md:55 both say fifteen), but README.md:141 still says fourteen and its session description omits the abandoned-round record check.\nEvidence: build/agent-checks/review-final-442a546c/sessions.txt lists 15 session names; README.md:141 reads 'drives fourteen sessions'; T052's file list did not include README.md. All fifteen sessions pass 689/689 checks at c075fde.\n\nReview repair: docs/SPEC.md status line says release packaging remains although the package is assembled and byte-reproduced\nAcceptance criteria per T022's standing rule that the front pages state the actual integrated state and agree with each other: the docs/SPEC.md status line should record that the local release package is assembled and checked (T019) and that device validation and publication are what remain, matching README.md ('The release archive (stackfall.zip) is assembled locally ... Testing on the RG503 and public publication follow'). The outcome is already tracked as task T022; this finding attaches updated evidence only and must not create a second task.\nEvidence: docs/SPEC.md:6-13 reads 'Status: M4 in progress; ... device validation and release packaging remain', written in the same commit 262a3a5 that assembles and checks the release archive (commit message: 'Reproduce the AArch64 binary with desktop hash parity and assemble the PortMaster release package'; verified by tests/harness/t019.sh 78/78 in this review, archive SHA 7d5e0f63...). README.md:157-188 correctly reports the archive assembled and only RG503 testing and publication remaining, so the two front pages disagree.\n\nReview repair: README front page is stale after portrait mode landed\nAcceptance criteria per T022's standing rule: the README front page states the actual integrated state. The product ships seven preferences and a portrait mode (T055), but README.md line 55 says 'all six options settings', lines 34-35 and 160-162 list six settings without orientation, line 166 says the harness drives 'fifteen sessions' while run.sh and docs/AGENT_TESTING.md say seventeen, and the word portrait or orientation appears nowhere in README.md.\nEvidence: README.md:55, 34-35, 160-162, 166 at 4bc5d06 (grep for 'portrait|orientation' in README.md returns nothing); tests/harness/run.sh:9 and docs/AGENT_TESTING.md:55 say seventeen sessions; the options screen has seven rows (docs/SPEC.md:169-177) and the harness ran 17 sessions with 833 checks passing in this review (build/agent-checks/review-final-4bc5d06). T055's file list did not include README.md. Outcome already tracked under key readme-milestone-status-stale; this finding attaches updated evidence and must not create a second task.\n\nReview repair: README harness section says nineteen sessions and omits the controls and hard-drop sessions\nThe front page must state the actual integrated state. The harness now drives 24 sessions. The README count is stale and its coverage list omits the controls-customization sessions and the default hard-drop session. Docs for the new features exist elsewhere in the README, so only this paragraph needs the correction.\nEvidence: README.md line 225 says the harness 'drives nineteen sessions'. tests/harness/run.sh line 283 registers 24 sessions, including controls-keyboard, controls-pad, controls-relaunch, controls-invalid, and harddrop-pad. docs/AGENT_TESTING.md line 55 already says twenty-four.",
       "files": [
         "README.md",
         "docs/SPEC.md",
@@ -599,7 +612,7 @@
       "tags": [
         "looper:finding:readme-milestone-status-stale"
       ],
-      "updated_at": "2026-11-04T15:26:21Z"
+      "updated_at": "2026-11-05T05:37:33Z"
     },
     {
       "id": "T023",
@@ -993,20 +1006,24 @@
       "status": "blocked",
       "details": "Under Xvfb, presentation never blocks: the opengl renderer reports the PRESENTVSYNC flag but returns at once, so vsync-on and vsync-off rows are statistically identical and the elapsed-time fallback limiter holds the 60 Hz simulation in every renderer mode. The percentile table (median ~16.5-16.8 ms, p99 ~17.6 ms, 60.00 ticks/s in all four modes) is a host measurement only. Repeat the frame-time measurement on the RG503 panel with real blocking vsync to close the finding; do not infer device pacing or battery use from these numbers.\nEvidence: build/agent-checks/2026-11-03-t025-stability/pacing/pacing.tsv (4 modes, renderer flags pinned in each run.log); notes/agent-testing.md, T025 section, findings",
       "depends_on": [
-        "T018"
+        "T018",
+        "T065"
       ],
       "blockers": [
         "An operator must complete this prerequisite; coding workers cannot execute it.",
+        "Deferred: An RG503 running ROCKNIX is connected to the operator and the T065 capture bundle (game binary, same-architecture stackfall_save_probe, tests/harness/t065_monitor.py, and the generated scenario scripts) is copied to it; then run tools/perf/device-capture.sh and read the results against the desktop tables in notes/performance.md.",
         "Deferred: When the RG503 hardware pass of T018/T036 unblocks (device access).",
         "Deferred: final device acceptance round"
       ],
       "tags": [
         "looper:deferred",
+        "looper:finding:device-vsync-percentiles",
         "looper:finding:looper:finding:t025-vsync-percentile-device-pacing",
         "looper:finding:music-handheld-audio-validation",
+        "looper:finding:rg503-device-frame-tail-measurement",
         "looper:operator"
       ],
-      "unblock_when": "When the RG503 hardware pass of T018/T036 unblocks (device access).; remove looper:deferred and set todo when this condition is met."
+      "unblock_when": "Record evidence that the operator completed the action, then mark this task done. To delegate different work, explicitly change its contract and remove looper:operator."
     },
     {
       "id": "T037",
@@ -1537,15 +1554,17 @@
       "blockers": [
         "An operator must complete this prerequisite; coding workers cannot execute it.",
         "Deferred: Owner records the per-class strategy choice after reviewing notes/anbernic-resolutions.md",
-        "Deferred: Owner reviews notes/anbernic-resolutions.md and records the per-class strategy choice"
+        "Deferred: Owner reviews notes/anbernic-resolutions.md and records the per-class strategy choice",
+        "Deferred: The owner records the class A strategy choice and includes or excludes class D."
       ],
       "tags": [
         "looper:deferred",
         "looper:finding:anbernic-resolution-strategy-choice",
+        "looper:finding:anbernic-resolution-strategy-decision",
         "looper:operator"
       ],
       "updated_at": "2026-11-04T17:24:02Z",
-      "unblock_when": "Owner records the per-class strategy choice after reviewing notes/anbernic-resolutions.md; remove looper:deferred and set todo when this condition is met."
+      "unblock_when": "The owner records the class A strategy choice and includes or excludes class D.; remove looper:deferred and set todo when this condition is met."
     },
     {
       "id": "T058",
@@ -1680,6 +1699,9 @@
       "priority": 3,
       "status": "blocked",
       "details": "MUSIC.md forbids an agent from claiming a listening check from source inspection alone, so the soundtrack's human pass stays open. A person must play the 36 previews in build/music-previews/ (all three intensity maps per track) and the game itself, on headphones and on handheld speakers, and confirm per track: the mix, the loop seam, the intensity steps, and that no layer enters or leaves with a click. Record the outcome per track in the Listening status section of docs/music/\u003ctrack\u003e.md and flip the open checklist item in MUSIC.md for the handheld half once the device pass runs. Machine evidence already covers validation, timing, levels (zero clipped samples, DC within 61/32768), and loop-wrap clicks.\nEvidence: MUSIC.md listening checks: \"An agent must not claim a listening check from source inspection alone\"; every record in docs/music/ carries \"## Listening status: Pending\"; previews and report exist under build/music-previews/ (ignored build output, regenerable with ./build/stackfall_music_preview --intensity all).",
+      "depends_on": [
+        "T065"
+      ],
       "blockers": [
         "An operator must complete this prerequisite; coding workers cannot execute it.",
         "Deferred: When a human operator can listen: the 36 WAV files under build/music-previews/ and the desktop game on headphones, then the handheld build on the RG503 speakers."
@@ -1687,6 +1709,7 @@
       "tags": [
         "looper:deferred",
         "looper:finding:music-human-listening-pass",
+        "looper:finding:soundtrack-human-listening-pass",
         "looper:operator"
       ],
       "unblock_when": "Record evidence that the operator completed the action, then mark this task done. To delegate different work, explicitly change its contract and remove looper:operator."
@@ -1698,13 +1721,252 @@
       "status": "blocked",
       "details": "The owner decision of 2026-11-04 delegated the instrument set, track forms, and mixes to this implementation, to be \"reviewed in the design review\". The choices and their rationale are recorded per track in docs/music/ (index plus twelve records: tempo, key and mode, form spans, progression degrees, instrument roles, layer maps) and in SPEC.md section 6.4. Run the repo's design review over those records and the previews, then apply or answer every finding the same way the portrait revision did.\nEvidence: Task T062 owner decision text; docs/music/index.md and the twelve records; docs/SPEC.md section 6.4 (new); build/music-previews/*.wav as the review audio.",
       "blockers": [
+        "Deferred: The next design review round opens over the T062 revisions through the docs/DESIGN_REVIEW.md flow.",
         "Deferred: When the next design review round runs over the T062 revisions (the docs/DESIGN_REVIEW.md flow)."
       ],
       "tags": [
         "looper:deferred",
+        "looper:finding:design-review-round-over-t062-revisions",
         "looper:finding:music-design-review"
       ],
-      "unblock_when": "When the next design review round runs over the T062 revisions (the docs/DESIGN_REVIEW.md flow).; remove looper:deferred and set todo when this condition is met."
+      "unblock_when": "The next design review round opens over the T062 revisions through the docs/DESIGN_REVIEW.md flow.; remove looper:deferred and set todo when this condition is met."
+    },
+    {
+      "id": "T065",
+      "title": "Profile the integrated Release build and fix confirmed stutter causes",
+      "priority": 1,
+      "status": "done",
+      "details": "Round post-v1.0 device-feedback wave. Profile the current integrated Release build (T052 mid-round record saves, T055 portrait, T062 soundtrack included) with deterministic, repeated, real SDL input: several clockwise and counterclockwise rotations, left and right movement, held soft drop, hard drop, repeated rounds, line clears, and pause and resume. Keep scenarios playing by restarting rounds, so no sample spends most of its duration at game over. Cover keyboard and virtual controller. Run three samples per selected scenario and renderer, one sustained-play case, and one bounded CPU and storage-pressure case; use bounded pressure only, never fill RAM or disk, never disrupt other runs. Record frame-time percentiles and tails, simulation rate, CPU, resident memory over time, write counts and bytes, audio callback work and command traffic, and rendering versus pacing. Keep profiler overhead out of timed samples. Inspect and measure the stated hypotheses: synchronous score writes in src/main.cpp, music synthesis and callback costs, pacing, resource growth, and diagnostic logging. Optimize only confirmed causes, each with paired before and after evidence and a regression test. Preserve pinned rules hashes, save compatibility, and the T052 record guarantee: a new record still persists promptly on abandon or power loss. Do not infer handheld pacing from Xvfb or dummy rendering. Deliver a repeatable device capture procedure; actual device tail measurements stay open with T036 unless a device is available. Acceptance: durable report under notes/ (extend notes/performance.md), raw evidence under ignored build output, commands and source identity recorded, and either measured fixes with regression tests or a measured no-change result with no actionable cause left.",
+      "depends_on": [
+        "T026",
+        "T062"
+      ],
+      "files": [
+        "CMakeLists.txt",
+        "docs/PERFORMANCE.md",
+        "include/stackfall/audio_sdl.hpp",
+        "include/stackfall/music.hpp",
+        "include/stackfall/record_writer.hpp",
+        "notes/agent-testing.md",
+        "notes/performance.md",
+        "src/audio_sdl.cpp",
+        "src/main.cpp",
+        "src/music.cpp",
+        "src/record_writer.cpp",
+        "tests/harness/t065.sh",
+        "tests/harness/t065_gen.py",
+        "tests/harness/t065_monitor.py",
+        "tests/harness/t065_pressure.py",
+        "tests/harness/t065_pressure_row.py",
+        "tests/harness/t065_scenes.py",
+        "tests/harness/t065_summarize.py",
+        "tests/harness/t065_sustained.py",
+        "tests/harness/t065_verify.py",
+        "tests/test_main.cpp",
+        "tests/test_record_writer.cpp",
+        "tools/perf/device-capture.sh",
+        "tools/perf/save_probe.cpp"
+      ],
+      "updated_at": "2026-11-05T02:18:10Z",
+      "unblock_when": "\"\""
+    },
+    {
+      "id": "T066",
+      "title": "Add a controls customization screen for keyboard and gamepad",
+      "priority": 2,
+      "status": "done",
+      "details": "Round post-v1.0 device-feedback wave. Add an accessible controls customization screen for keyboard and gamepad, reachable from the existing CONTROLS screen. Rebind every gameplay action (left, right, soft drop, hard drop, rotate clockwise, rotate counter-clockwise, hold, pause); show current assignments; persist custom bindings across relaunch; restore defaults; cancel a capture without changing the binding; and handle conflicts without silently mapping one input to two gameplay actions. Keep a reliable way back through menus after custom bindings, controller reconnects, and invalid binding files; recover invalid files to defaults under the existing storage recovery rule, and load legacy settings without loss. Do not accept key repeat as repeated edge actions, in capture or in play. Tests cover held buttons, focus loss, unplugging and replugging, simultaneous inputs, and edges consumed exactly once across catch-up ticks, on both inputs. Update the controls display, docs/SPEC.md section 5, harness sessions, and user documentation. Desktop defaults stay Space for hard drop and X for rotation, and controller defaults stay as P3 sets them, unless the player changes them. Acceptance: deterministic harness sessions prove capture, conflict rejection, persistence after relaunch, restore defaults, and menu egress by keyboard and controller; ctest passes in Debug and Release; pinned hashes stay unchanged with default bindings.",
+      "depends_on": [
+        "T067"
+      ],
+      "files": [
+        "CMakeLists.txt",
+        "README.md",
+        "docs/AGENT_TESTING.md",
+        "docs/SPEC.md",
+        "include/stackfall/bindings.hpp",
+        "include/stackfall/developer_session.hpp",
+        "include/stackfall/game.hpp",
+        "include/stackfall/input_sdl.hpp",
+        "include/stackfall/renderer_sdl.hpp",
+        "include/stackfall/storage.hpp",
+        "notes/agent-testing.md",
+        "portmaster/README.md",
+        "src/bindings.cpp",
+        "src/developer_session.cpp",
+        "src/game.cpp",
+        "src/input_sdl.cpp",
+        "src/main.cpp",
+        "src/observe.cpp",
+        "src/renderer_sdl.cpp",
+        "src/storage.cpp",
+        "tests/harness/check_harness.py",
+        "tests/harness/controls/broken-controls.dat",
+        "tests/harness/controls/custom-controls.dat",
+        "tests/harness/controls/default-controls.dat",
+        "tests/harness/reference_replay.cpp",
+        "tests/harness/run.sh",
+        "tests/harness/scripts/controls-invalid-recover.script.txt",
+        "tests/harness/scripts/controls-invalid.stages.txt",
+        "tests/harness/scripts/controls-keyboard.script.txt",
+        "tests/harness/scripts/controls-pad.script.txt",
+        "tests/harness/scripts/controls-relaunch-read.script.txt",
+        "tests/harness/scripts/controls-relaunch-set.script.txt",
+        "tests/harness/scripts/controls-relaunch.stages.txt",
+        "tests/test_bindings.cpp",
+        "tests/test_input_sdl.cpp",
+        "tests/test_main.cpp",
+        "tests/test_renderer_sdl.cpp",
+        "tests/test_screens.cpp"
+      ],
+      "updated_at": "2026-11-05T05:01:39Z"
+    },
+    {
+      "id": "T067",
+      "title": "Move the default controller hard drop from X to D-pad Up",
+      "priority": 2,
+      "status": "done",
+      "details": "Round post-v1.0 device-feedback wave. Change the LANDSCAPE controller default: D-pad Up hard drops, and X no longer hard drops by default. Keep desktop Space for hard drop and desktop X for rotation unless the player changes them. D-pad Up must still move the cursor up in menus, and the press that returns to play must drop no piece: clear or suppress pending edges on scene transitions. In portrait, map hard drop to the logical Up direction of the rotated grip and describe the physical button in the controls screen and documentation, replacing the portrait cluster roles pinned by T055 in notes/design-review.md. Update the single mapping location from T009, the controls display, the docs/SPEC.md section 5 table, harness scripts and checkers that pin X as hard drop, and user documentation. Acceptance: harness sessions prove landscape D-pad Up hard drops and X does not, menu Up never drops a piece on return to play, portrait logical Up hard drops on pad and keyboard, desktop keyboard defaults are unchanged, pinned hashes stay unchanged where inputs are unchanged, and affected ctest and harness sessions pass in Debug and Release. Follow-up work on completed T009 and T055; never reopen or rewrite them.",
+      "depends_on": [
+        "T055"
+      ],
+      "files": [
+        "README.md",
+        "docs/AGENT_TESTING.md",
+        "docs/SPEC.md",
+        "include/stackfall/input_sdl.hpp",
+        "notes/agent-testing.md",
+        "notes/design-review.md",
+        "portmaster/README.md",
+        "src/input_sdl.cpp",
+        "src/main.cpp",
+        "src/renderer_sdl.cpp",
+        "tests/harness/check_harness.py",
+        "tests/harness/reference_replay.cpp",
+        "tests/harness/run.sh",
+        "tests/harness/scripts/harddrop-pad.script.txt",
+        "tests/harness/scripts/portrait-keyboard.script.txt",
+        "tests/harness/scripts/portrait-pad.script.txt",
+        "tests/harness/scripts/scene-cycle-pad.script.txt",
+        "tests/harness/scripts/t024-shapes-pad.script.txt",
+        "tests/harness/t065_gen.py",
+        "tests/test_input_sdl.cpp",
+        "tests/test_renderer_sdl.cpp",
+        "tools/design-review/build_prompt.py"
+      ],
+      "updated_at": "2026-11-05T03:13:05Z"
+    },
+    {
+      "id": "T068",
+      "title": "Apply the portrait and landscape selection in the current session",
+      "priority": 2,
+      "status": "done",
+      "details": "Round post-v1.0 device-feedback wave. Make the Landscape and Portrait selection take visible effect in the current session, without restarting the application. Apply renderer canvas, composition, rotation, controls, preferences, and pointer and coordinate handling together at a safe frame boundary. Clear held and pending controls on the transition, so the press that selects the option cannot drop or rotate the next piece and cannot trap menus. Support portrait to landscape and repeated changes in one session, persistence on relaunch, and keyboard and controller navigation of the OPTIONS row. Remove the next-launch-only labels from the interface and documentation. Acceptance: harness sessions toggle orientation mid-run and pin the new geometry, the remapped input, the absence of leaked edges, and persistence after relaunch; fresh screenshots of both orientations pass geometry and input assertions; a landscape-only session keeps pinned hashes and timing byte-identical; docs/SPEC.md and docs/AGENT_TESTING.md describe same-session application; evidence recorded in notes/agent-testing.md. Follow-up on completed T055, whose accepted contract applied the mode on the next launch; never reopen or rewrite T055.",
+      "depends_on": [
+        "T055"
+      ],
+      "files": [
+        "README.md",
+        "docs/AGENT_TESTING.md",
+        "docs/SPEC.md",
+        "include/stackfall/input.hpp",
+        "include/stackfall/input_sdl.hpp",
+        "include/stackfall/renderer_sdl.hpp",
+        "include/stackfall/storage.hpp",
+        "include/stackfall/types.hpp",
+        "notes/agent-testing.md",
+        "notes/design-review.md",
+        "portmaster/README.md",
+        "portmaster/release-notes.md",
+        "src/main.cpp",
+        "src/renderer_sdl.cpp",
+        "tests/harness/check_harness.py",
+        "tests/harness/reference_replay.cpp",
+        "tests/harness/run.sh",
+        "tests/harness/scripts/orientation-keyboard.script.txt",
+        "tests/harness/scripts/orientation-pad.script.txt",
+        "tests/harness/scripts/orientation-portrait.script.txt",
+        "tests/harness/scripts/portrait-keyboard.stages.txt",
+        "tests/harness/scripts/portrait-pad.stages.txt",
+        "tests/test_input.cpp",
+        "tests/test_input_sdl.cpp",
+        "tests/test_renderer_sdl.cpp"
+      ],
+      "updated_at": "2026-11-05T03:54:49Z"
+    },
+    {
+      "id": "T070",
+      "title": "Run the final performance and input regression pass after the device-feedback features",
+      "priority": 2,
+      "status": "doing",
+      "details": "Round post-v1.0 device-feedback wave closure. After all device-feedback features land, rerun the full performance measurement set (three samples per scenario and renderer, sustained play, bounded pressure case) and the input regression coverage (keyboard and virtual controller across gameplay, menus, rebinding, both orientations, pause and resume, focus loss, and disconnect) at the integrated revision. This repeats the affected checks of the completed T015 desktop gate and the completed T025 and T026 measurement passes without reopening them. Acceptance: notes/performance.md and notes/agent-testing.md record commands, seeds, source identity, screenshots, and dispositions; every P1 optimization still holds or is re-measured and explained; no input edge, pinned hash, save-compatibility, or pacing regression remains; unavailable checks are labeled explicitly. Desktop evidence does not replace the T018 and T036 device gates. Owner clarification on 2026-11-04 removes shader work from this wave. Test performance, configurable controls, the D-pad Up default, and immediate orientation changes; shaders are not a prerequisite.",
+      "depends_on": [
+        "T065",
+        "T066",
+        "T067",
+        "T068"
+      ],
+      "blockers": [
+        "Deferred: T070 begins its final pass"
+      ],
+      "tags": [
+        "looper:finding:looper:finding:t066-input-regression",
+        "looper:finding:device-feedback-final-regression"
+      ],
+      "unblock_when": "T070 begins its final pass; remove looper:deferred and set todo when this condition is met."
+    },
+    {
+      "id": "T071",
+      "title": "Regenerate the ARM64 PortMaster archive, binary pin, release notes, and handoff",
+      "priority": 2,
+      "status": "todo",
+      "details": "Round post-v1.0 device-feedback wave, local preparation only; publication stays blocked in T021. Follow the T061 refresh pattern: rerun tools/arm64/build-arm64.sh at the integrated revision, verify the clean-container byte-identical reproduction, refresh the SHA-256 pin in portmaster/BUILDING.md, repackage stackfall.zip with tools/portmaster/package.sh, update release notes and handoff instructions for the device-feedback features (performance fixes, custom controls, D-pad Up default, same-session orientation), and rerun tests/harness/t019.sh and t035.sh to green. Align the archive and binary hashes named in the T018 operator handoff with the refreshed package. No game code changes. Acceptance: t019.sh passes every check at the new binary; BUILDING.md names the shipped binary's SHA-256; the handoff names the new archive hash.",
+      "depends_on": [
+        "T070"
+      ],
+      "tags": [
+        "looper:finding:arm64-package-pin-and-notes-stale"
+      ]
+    },
+    {
+      "id": "T072",
+      "title": "Re-import the operator descope edit that removes T069 from the backlog",
+      "priority": 3,
+      "status": "done",
+      "details": "At an idle boundary (0 implementing, 0 checking, no ready tasks), import the stashed descope delta through Looper so the accepted scope and the backlog agree. Merge /tmp/operator-delta.json onto the then-live ~/stackfall/to-do.json: remove T069, drop T069 from the depends_on of T018 and T070, and apply the owner-clarification detail edits to T070 and T071. Do not write the stashed 23:53 file (/tmp/operator-todo-edit.json) as-is; it would regress T065-done and later integrations. Confirm the 'Imported changed project requirements' event afterwards. Never write to-do.json while any attempt is running: the installed looper treats it as fatal and the daemon dies (event 502207). Until the import lands, T069 stays blocked with no shader code, and T018/T070 keep a false dependency on it.\nEvidence: state.db events: 501757 plan import import-7e6a683d757e4005 adds the device-feedback tasks including T069; 502230 applies clarification import-2df710b4468ab6ac (0 tasks added, 9 covered) without removing T069; 503154 starts T069 anyway. Live to-do.json still shows T069 todo and T018/T070 depends_on containing T069, contradicting the applied clarification. /tmp/operator-delta.json and /tmp/operator-todo-edit.json exist. Memory note stackfall-operator-edit-pending-reimport records the crash and the pending re-import. Operator delegate executed this at the 2026-11-05 06:58 idle boundary: merged the stashed delta onto the live backlog, removing T069 and its dependency edges and applying the owner clarifications to T070 and T071. Evidence: the Imported-changed-project-requirements event that followed this write, and T070 becoming ready afterwards.",
+      "blockers": [
+        "An operator must complete this prerequisite; coding workers cannot execute it."
+      ],
+      "tags": [
+        "looper:finding:stackfall-shader-descope-reimport",
+        "looper:operator"
+      ],
+      "unblock_when": "Record evidence that the operator completed the action, then mark this task done. To delegate different work, explicitly change its contract and remove looper:operator."
+    },
+    {
+      "id": "T073",
+      "title": "SPEC exclusion list still excludes the shipped in-game controller rebinding UI",
+      "priority": 3,
+      "status": "done",
+      "details": "Section 2 lists an in-game controller rebinding UI as excluded from v1.0. Section 5 specifies that same screen as a shipped T066 feature, and the harness exercises it. The exclusion sentence contradicts the integrated product and should drop the rebinding clause. No task covers the section 2 list, so this is a new finding.\nEvidence: docs/SPEC.md line 47 ends the exclusion list with 'an in-game controller rebinding UI. Can be considered for v1.1+'. docs/SPEC.md lines 169, 183, 255-279, and 455 specify the customization screen and controls.dat from T066. Harness session controls-keyboard passed at 54f6be3; inspected screenshot shows the SET CONTROLS screen with all eight actions and RESTORE DEFAULTS.",
+      "files": [
+        "docs/SPEC.md",
+        "notes/agent-testing.md"
+      ],
+      "tags": [
+        "looper:finding:spec-exclusion-list-rebinding-stale"
+      ],
+      "updated_at": "2026-11-05T05:48:26Z"
+    },
+    {
+      "id": "T074",
+      "title": "Add the missing Scene::Rebind case to the regression test sceneName switch",
+      "priority": 2,
+      "status": "todo",
+      "details": "Final review at 3e63c10 found tests/test_regression.cpp sceneName switch missing the Scene::Rebind case added by T066, producing a -Wswitch warning in Debug and Release at HEAD and failing the t015 M3 zero-warning gate (2/432). The pinned regression scenarios never reach Rebind, so no wrong behavior ships, but falling off the end of the non-void sceneName is undefined if a scenario ever ends on Rebind, and T070's rerun of the t015 gate cannot pass a zero-warning build until the case is added. Fix: add case Scene::Rebind to the sceneName switch in tests/test_regression.cpp and rerun the t015 gate to a zero-warning pass.",
+      "tags": [
+        "looper:finding:regression-scenename-rebind-case"
+      ]
     }
   ]
 }

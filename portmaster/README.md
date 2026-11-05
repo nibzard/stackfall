@@ -26,12 +26,29 @@ environment, and the launcher template this port follows.
 | Soft drop | D-pad down |
 | Rotate clockwise | A |
 | Rotate counterclockwise | B |
-| Hard drop | X |
+| Hard drop | D-pad up |
 | Hold | Y / Left shoulder |
 | Pause or resume | Start |
 | Mute or unmute | Select |
 
 Use the D-pad to move in menus, A to select, and B to go back.
+D-pad up also hard drops during play, and the press that leaves a menu
+never drops the next piece.
+
+In portrait mode you hold the device sideways, so the controls follow the
+turned grip: D-pad up and down move right and left, D-pad right soft drops,
+and hard drop sits on the D-pad arm that points at the ceiling - the arm
+marked left on the device. B rotates clockwise, A rotates
+counterclockwise, and Y or the left shoulder holds.
+
+You can change every gameplay control. Open **Controls** from the title
+screen or the pause menu and press A: select a row, press the button you
+want, and the change applies to the grip you are playing and saves on its
+own. Press the button an action already uses to leave it unchanged, a
+button can hold one action at a time, and **Restore defaults** returns
+everything to the table above. The menu controls never change, so you can
+always find your way back out.
+
 Pause with Start and choose **Quit to Title** to end a round; the points
 survive. Select **Quit** on the title screen to close the game, or leave
 through the PortMaster exit chord of your device.
@@ -46,9 +63,9 @@ Open **Options** from the title screen to change eight settings:
 - Hold preview on or off.
 - Next preview count from one to five.
 - Grayscale play scene on or off.
-- Orientation: landscape or portrait. The next launch turns the whole game
-  into a tall 544 x 960 frame with 40-pixel board squares. Hold the device
-  sideways; every control keeps the action it points at.
+- Orientation: landscape or portrait. Selecting it turns the whole game at
+  once into a tall 544 x 960 frame with 40-pixel board squares. Hold the
+  device sideways; every control keeps the action it points at.
 - Music. Opens the music settings page.
 
 The music settings page carries four rows: Music (Auto, Arcade, Groove,

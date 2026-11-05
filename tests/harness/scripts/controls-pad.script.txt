@@ -1,0 +1,314 @@
+# The controls customization screen on the developer virtual controller
+# (task T066): the same capture, rejection, cancellation, egress, and
+# restore walk as the keyboard session, plus a mid-round unplug and replug
+# that must neither stick a held direction nor lose the custom table - the
+# tables name a device kind, never a handle. Normal game from an empty
+# board; no fixtures.
+check title-start
+wait 1
+pad down down
+wait 2
+pad down up
+wait 2
+check title-at-controls
+wait 1
+pad a down
+wait 2
+pad a up
+wait 2
+check controls-open
+wait 1
+pad a down
+wait 2
+pad a up
+wait 2
+check rebind-open
+wait 1
+# five downs to HARD DROP
+pad down down
+wait 2
+pad down up
+wait 2
+pad down down
+wait 2
+pad down up
+wait 2
+pad down down
+wait 2
+pad down up
+wait 2
+pad down down
+wait 2
+pad down up
+wait 2
+pad down down
+wait 2
+pad down up
+wait 2
+check rebind-at-harddrop
+wait 1
+# X carries nothing since task T067, so it is free: hard drop moves to it
+# and D-pad up stops hard dropping
+pad a down
+wait 2
+pad a up
+wait 2
+check rebind-capture-armed
+wait 1
+pad x down
+wait 2
+pad x up
+wait 2
+check rebind-harddrop-x
+wait 1
+# two ups to ROTATE CW; B is ROTATE CCW, so the capture is rejected
+pad up down
+wait 2
+pad up up
+wait 2
+pad up down
+wait 2
+pad up up
+wait 2
+check rebind-at-rotatecw
+wait 1
+pad a down
+wait 2
+pad a up
+wait 2
+pad b down
+wait 2
+pad b up
+wait 2
+check rebind-conflict-rejected
+wait 1
+# A is ROTATE CW's own control, so arming again and pressing A once more
+# ends the capture with the binding kept
+pad a down
+wait 2
+pad a up
+wait 2
+pad a down
+wait 2
+pad a up
+wait 2
+check rebind-cancelled
+wait 1
+# the way back out through the mappings page, which now names X
+pad b down
+wait 2
+pad b up
+wait 2
+check controls-custom
+wait 1
+pad b down
+wait 2
+pad b up
+wait 2
+check title-back
+wait 1
+# start a round; the title cursor is on CONTROLS, so one up reaches START
+# GAME
+pad up down
+wait 2
+pad up up
+wait 2
+pad a down
+wait 2
+pad a up
+wait 2
+check playing-start
+wait 1
+# D-pad up carries nothing now: no lock, no score
+pad up down
+wait 2
+pad up up
+wait 2
+check dpad-up-dead
+wait 1
+# X hard drops on the custom table
+pad x down
+wait 2
+pad x up
+wait 2
+check x-harddrops
+wait 1
+# the unplug: hold left, detach, and the held level must vanish with the
+# pad
+pad left down
+wait 4
+detach
+wait 4
+check detached-mid-hold
+wait 1
+# the replug: the pad returns as a new source on the same table, and the
+# custom binding still answers
+attach
+wait 4
+pad x down
+wait 2
+pad x up
+wait 2
+check replugged-x-harddrops
+wait 1
+# leave the round for the restore
+pad start down
+wait 2
+pad start up
+wait 2
+check paused
+wait 1
+pad down down
+wait 2
+pad down up
+wait 2
+pad down down
+wait 2
+pad down up
+wait 2
+pad down down
+wait 2
+pad down up
+wait 2
+check paused-at-quit
+wait 1
+pad a down
+wait 2
+pad a up
+wait 2
+check title-after-round
+wait 1
+# back into the customization screen
+pad down down
+wait 2
+pad down up
+wait 2
+pad a down
+wait 2
+pad a up
+wait 2
+check controls-again
+wait 1
+pad a down
+wait 2
+pad a up
+wait 2
+check rebind-again
+wait 1
+# eight downs walk from MOVE LEFT down to RESTORE DEFAULTS
+pad down down
+wait 2
+pad down up
+wait 2
+pad down down
+wait 2
+pad down up
+wait 2
+pad down down
+wait 2
+pad down up
+wait 2
+pad down down
+wait 2
+pad down up
+wait 2
+pad down down
+wait 2
+pad down up
+wait 2
+pad down down
+wait 2
+pad down up
+wait 2
+pad down down
+wait 2
+pad down up
+wait 2
+pad down down
+wait 2
+pad down up
+wait 2
+check rebind-at-restore
+wait 1
+pad a down
+wait 2
+pad a up
+wait 2
+check defaults-restored
+wait 1
+# back out and play on the restored table
+pad b down
+wait 2
+pad b up
+wait 2
+check controls-restored
+wait 1
+pad b down
+wait 2
+pad b up
+wait 2
+check title-restored
+wait 1
+# the title cursor sits on CONTROLS, so one up reaches START GAME
+pad up down
+wait 2
+pad up up
+wait 2
+pad a down
+wait 2
+pad a up
+wait 2
+check playing-restored
+wait 1
+pad up down
+wait 2
+pad up up
+wait 2
+check dpad-up-harddrops-again
+wait 1
+# quit through the title menu: leave the round through the pause overlay,
+# then walk the title cursor down to QUIT
+pad start down
+wait 2
+pad start up
+wait 2
+check paused-before-quit
+wait 1
+pad down down
+wait 2
+pad down up
+wait 2
+pad down down
+wait 2
+pad down up
+wait 2
+pad down down
+wait 2
+pad down up
+wait 2
+check paused-at-quit
+wait 1
+pad a down
+wait 2
+pad a up
+wait 2
+check title-after-leave
+wait 1
+pad down down
+wait 2
+pad down up
+wait 2
+pad down down
+wait 2
+pad down up
+wait 2
+pad down down
+wait 2
+pad down up
+wait 2
+check title-at-quit
+check quit-confirmed
+pad a down
+wait 2
+pad a up
+wait 2

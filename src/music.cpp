@@ -468,10 +468,12 @@ bool MusicEngine::tryPushCommand(const MusicCommand& command) {
   const std::uint32_t tail = queueTail_.load(std::memory_order_relaxed);
   const std::uint32_t head = queueHead_.load(std::memory_order_acquire);
   if (tail - head >= kQueueSlots) {
+    commandsRejected_.fetch_add(1, std::memory_order_relaxed);
     return false;  // the caller retries; scheduled commands coalesce anyway
   }
   queue_[tail & (kQueueSlots - 1)] = command;
   queueTail_.store(tail + 1, std::memory_order_release);
+  commandsPushed_.fetch_add(1, std::memory_order_relaxed);
   return true;
 }
 
@@ -490,6 +492,7 @@ void MusicEngine::drainCommands() {
         queue_[queueHead_.load(std::memory_order_relaxed) & (kQueueSlots - 1)];
     queueHead_.store(queueHead_.load(std::memory_order_relaxed) + 1,
                      std::memory_order_release);
+    commandsDrained_.fetch_add(1, std::memory_order_relaxed);
     applyImmediate(command);
   }
 }

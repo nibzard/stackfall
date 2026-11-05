@@ -1,0 +1,94 @@
+# Stage one of the controls relaunch session (task T066): bind hard drop to
+# key D on the keyboard and to X on the pad, then quit, so the controls file
+# the next stage reads holds both custom tables.
+check title-start
+wait 1
+key down down
+wait 2
+key down up
+wait 2
+check title-at-controls
+wait 1
+key enter down
+wait 2
+key enter up
+wait 2
+check controls-open
+wait 1
+key enter down
+wait 2
+key enter up
+wait 2
+check rebind-open
+wait 1
+key down down
+wait 2
+key down up
+wait 2
+key down down
+wait 2
+key down up
+wait 2
+key down down
+wait 2
+key down up
+wait 2
+key down down
+wait 2
+key down up
+wait 2
+key down down
+wait 2
+key down up
+wait 2
+check rebind-at-harddrop
+wait 1
+key enter down
+wait 2
+key enter up
+wait 2
+key d down
+wait 2
+key d up
+wait 2
+check rebind-harddrop-d
+wait 1
+# the pad half of the same row: arming again and pressing the pad's X names
+# the controller table, because a capture applies to the device that pressed
+key enter down
+wait 2
+key enter up
+wait 2
+pad x down
+wait 2
+pad x up
+wait 2
+check rebind-harddrop-x
+wait 1
+key esc down
+wait 2
+key esc up
+wait 2
+check controls-custom
+wait 1
+key esc down
+wait 2
+key esc up
+wait 2
+check title-back
+wait 1
+# quit on the title menu; the cursor sits on CONTROLS
+key down down
+wait 2
+key down up
+wait 2
+key down down
+wait 2
+key down up
+wait 2
+check title-at-quit
+check quit-confirmed
+key enter down
+wait 2
+key enter up
+wait 2

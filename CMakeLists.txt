@@ -29,8 +29,15 @@ endif()
 # music.cpp, music_tracks.cpp, and music_director.cpp hold the generated
 # soundtrack (MUSIC.md, task T062): engine, catalogue, and scene policy,
 # all SDL-free so the music suite and the offline preview tool run headless.
+# record_writer.cpp holds the record file's writer thread (task T065): the
+# T052 mid-round record saves moved off the gameplay thread, SDL-free so
+# the headless suite times and pins it. bindings.cpp holds the rebindable
+# control bindings of task T066 - the control vocabularies, the section 5
+# defaults, and the validity rule - SDL-free so the headless suite, the
+# renderer, the input layer, and the reference replay share one word list.
 # ---------------------------------------------------------------------------
 add_library(stackfall_core STATIC
+  src/bindings.cpp
   src/board.cpp
   src/fixture.cpp
   src/game.cpp
@@ -40,6 +47,7 @@ add_library(stackfall_core STATIC
   src/observe.cpp
   src/pieces.cpp
   src/randomizer.cpp
+  src/record_writer.cpp
   src/scoring.cpp
   src/script.cpp
   src/storage.cpp
@@ -140,6 +148,7 @@ enable_testing()
 
 add_executable(stackfall_tests
   tests/test_main.cpp
+  tests/test_bindings.cpp
   tests/test_board.cpp
   tests/test_fixture.cpp
   tests/test_font.cpp
@@ -148,6 +157,7 @@ add_executable(stackfall_tests
   tests/test_music.cpp
   tests/test_pieces.cpp
   tests/test_randomizer.cpp
+  tests/test_record_writer.cpp
   tests/test_regression.cpp
   tests/test_sanity.cpp
   tests/test_screens.cpp
@@ -173,6 +183,18 @@ add_executable(stackfall_music_preview
 )
 target_link_libraries(stackfall_music_preview PRIVATE stackfall_core)
 target_compile_features(stackfall_music_preview PRIVATE cxx_std_17)
+
+# ---------------------------------------------------------------------------
+# stackfall_save_probe: the durable-save cost measurement of the performance
+# evidence (task T065). Not a test and not shipped: it runs the store's own
+# atomic write N times and reports the latency distribution, on the desktop
+# and on the RG503 alike, so the two hosts' numbers measure the same work.
+# ---------------------------------------------------------------------------
+add_executable(stackfall_save_probe
+  tools/perf/save_probe.cpp
+)
+target_link_libraries(stackfall_save_probe PRIVATE stackfall_core)
+target_compile_features(stackfall_save_probe PRIVATE cxx_std_17)
 
 # ---------------------------------------------------------------------------
 # stackfall_reference: the headless reference replay of the unattended harness
