@@ -1,0 +1,10 @@
+Integrate the T065-T068 work wave: the record saves moved onto a
+writer thread with the save_probe latency tool (T065), the controls
+customization screen on the shared bindings core (T066), the hard-drop
+default on D-pad up (T067), and the same-session orientation switch
+(T068). The harness grew from seventeen to twenty-four sessions.
+
+The README gameplay image was replaced at operator request with the
+newer 2026-11-04 capture (score 402, ghost outline visible, Hold in
+use); the alt text names what the frame shows. The previous frame
+(seed 31337, tick 127, the dr-hold-locked shot) is superseded.
