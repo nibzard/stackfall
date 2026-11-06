@@ -1,0 +1,27 @@
+# Context
+
+## Background
+Lands the approved background design package (task T078) plus the
+per-piece in-cell designs (T95) and the zero-warning gate fix (T095).
+The owner approved implementation from the imagegen concept gallery
+on 2026-11-05.
+
+## Why This Way
+- Backgrounds are drawn procedurally at runtime. The PNG concept
+  plates are never loaded by the game; they only set the visual
+  direction.
+- The concept plates and prompts are retained under tracked paths
+  (docs/backgrounds, output/background-mocks) because the hosted
+  gallery expires on 2026-11-08 unless claimed. New worktrees must
+  not depend on that hosting.
+
+## Gotchas
+- When a plate disagrees with the renderer, the brief's limits and
+  the real renderer geometry win over the image.
+- Players can turn backgrounds off or pin one preferred background
+  across all levels; relaunch tests cover legacy and broken
+  settings files.
+
+## Related
+- docs/BACKGROUND_IMPLEMENTATION.md
+- docs/backgrounds/reference/operator-background-brief.md
