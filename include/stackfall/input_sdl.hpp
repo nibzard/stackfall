@@ -14,6 +14,14 @@
 // roles of bindings.hpp ride along beside the gameplay actions, so whatever
 // the tables hold, every menu stays navigable.
 //
+// Since task T86 the same class also reads the analog thumbstick: every
+// SDL_CONTROLLERAXISMOTION of the left stick resolves to the D-pad arm its
+// reading points at, through the deadzoned translation of bindings.hpp, and
+// the arm then travels the same table path a D-pad press travels. A stick
+// deflection is a held level for the arms that carry levels and one press
+// edge for the arm that carries an edge, so DAS, repeat, and the
+// edge-once rule behave exactly as the D-pad path does.
+//
 // The same class owns the capture half of the customization screen: while a
 // capture runs, the next real press of a rebindable control stops at the raw
 // control id instead of becoming adapter state, so the press that names a new
@@ -61,10 +69,13 @@ class SdlInput {
   // its release then arrives through the new table, where it maps to a
   // different action and cannot clear the stuck level (task T068). The press
   // that selected the row has already spent its edge on the tick that carried
-  // it, so this cannot cost an input the player made.
+  // it, so this cannot cost an input the player made. The thumbstick's
+  // deflected arms are forgotten with them: the stick stays where the player
+  // holds it, and its next motion starts from a clean reading (task T86).
   void setOrientation(Orientation orientation) noexcept {
     orientation_ = orientation;
     adapter_.clearHeldAndPending();
+    forgetSticks();
   }
   Orientation orientation() const noexcept { return orientation_; }
 
@@ -80,6 +91,7 @@ class SdlInput {
   void setControlBindings(const ControlBindings& bindings) {
     bindings_ = bindings;
     adapter_.clearHeldAndPending();
+    forgetSticks();
   }
   const ControlBindings& controlBindings() const noexcept { return bindings_; }
 
@@ -118,9 +130,10 @@ class SdlInput {
   int loadEnvironmentMappings();
 
   // Translates one polled SDL event into adapter state: keyboard key events,
-  // game controller button events, and the events that end input (focus loss
-  // and controller removal). Device discovery stays with the caller's
-  // controller set; this method only reads input-carrying events.
+  // game controller button events, the analog thumbstick's axis events, and
+  // the events that end input (focus loss and controller removal). Device
+  // discovery stays with the caller's controller set; this method only reads
+  // input-carrying events.
   void handleEvent(const SDL_Event& event);
 
   // The input of one simulation tick, straight from the adapter. Consume it
@@ -136,11 +149,50 @@ class SdlInput {
     adapter_.setButton(source, action, pressed);
   }
 
+  // Applies one controller control - a pressed D-pad arm a button named, or
+  // the arm a stick reading resolved to - through the table in force.
+  void applyControllerControl(int source, int control, bool pressed);
+
+  // The thumbstick of one controller: the D-pad control each axis last
+  // deflected to, or kNoControl while it rests inside the deadzone. The
+  // state exists only to turn a continuous axis into press and release
+  // transitions, so the adapter sees the same edges a D-pad arm produces.
+  struct StickState {
+    int source = kFreeStickSlot;
+    int arms[kStickAxisCount] = {kNoControl, kNoControl};
+  };
+
+  // The sentinel of an unused stick slot. SDL joystick instance ids are
+  // non-negative and the keyboard never reaches the axis path, so no real
+  // source can hold it.
+  static constexpr int kFreeStickSlot = -1;
+
+  static constexpr int kMaxTrackedSticks = 8;  // one per adapter source
+
+  // The stick state of `source`, created on first sight. Null when the table
+  // is full, exactly as the adapter ignores an extra device.
+  StickState* stickOf(int source);
+
+  // Resolves one axis reading of one controller to a D-pad arm and turns the
+  // change from the last reading into adapter transitions (task T86).
+  void handleControllerAxis(int source, StickAxis axis, int value);
+
+  // Forgets every tracked stick arm, so a later axis motion cannot release
+  // an arm the new tables no longer hold. The orientation turn and a binding
+  // change call this beside clearHeldAndPending(), for the reason that call
+  // gives: a level raised under the old tables must not survive into the new
+  // ones, and neither may the arm that raised it.
+  void forgetSticks();
+
+  // Forgets the stick state of `source` alone, on controller removal.
+  void forgetStickOf(int source);
+
   InputAdapter adapter_;
   ControlBindings bindings_ = defaultControlBindings();
   Orientation orientation_ = Orientation::Landscape;
   bool capturing_ = false;
   InputCapture capture_;
+  StickState sticks_[kMaxTrackedSticks];
 };
 
 // ---------------------------------------------------------------------------
@@ -158,12 +210,22 @@ enum VirtualPadButton : int {
   kVirtualButtonX,
   kVirtualButtonY,
   kVirtualButtonLeftShoulder,
+  kVirtualButtonRightShoulder,  // task T87: the free shoulder a rebind can take
   kVirtualButtonStart,
   kVirtualButtonDpadUp,
   kVirtualButtonDpadDown,
   kVirtualButtonDpadLeft,
   kVirtualButtonDpadRight,
   kVirtualButtonCount
+};
+
+// Axis indices of the virtual pad, the left stick's two readings, referenced
+// by the mapping string and by test and script drivers (task T86). The pad
+// carried no axes before T86, because nothing read them.
+enum VirtualPadAxis : int {
+  kVirtualAxisLeftX = 0,
+  kVirtualAxisLeftY,
+  kVirtualAxisCount
 };
 
 // Attaches the virtual joystick and returns its device index, or -1 when SDL
@@ -187,9 +249,13 @@ int attachVirtualController();
 bool detachVirtualController(int deviceIndex);
 
 // Resolves one script or test name to a virtual pad button index; -1 when the
-// name is unknown. Accepted names: a, b, x, y, l1, start, up, down, left,
-// right.
+// name is unknown. Accepted names: a, b, x, y, l1, r1, start, up, down,
+// left, right.
 int virtualPadButtonFromName(const char* name);
+
+// Resolves one script or test name to a virtual pad axis index; -1 when the
+// name is unknown. Accepted names: x, y (task T86).
+int virtualPadAxisFromName(const char* name);
 
 // ---------------------------------------------------------------------------
 // The device translations (task T066). One table per device turns a control
@@ -212,7 +278,7 @@ int keyboardControlOfScancode(SDL_Scancode scancode);
 SDL_GameControllerButton controllerButtonOfControl(int control);
 
 // The control of `button`, or kNoControl when the button sits outside the
-// ten-button RG503 layout.
+// eleven-button RG503 layout.
 int controllerControlOfButton(SDL_GameControllerButton button);
 
 // Resolves one mapped control to its actions, straight from the tables this
@@ -225,6 +291,13 @@ int controllerControlOfButton(SDL_GameControllerButton button);
 // T067).
 int mapControllerButton(SDL_GameControllerButton button, Orientation orientation,
                         const ControlBindings& bindings, GameAction* actions);
+
+// The same resolution for a control id, which is the form the thumbstick
+// produces: an axis reading resolves to a D-pad arm of
+// controllerControlOfStickAxis() and that arm travels this path, exactly as a
+// pressed button does after controllerControlOfButton() names it (task T86).
+int mapControllerControl(int control, Orientation orientation,
+                         const ControlBindings& bindings, GameAction* actions);
 int mapKeyboardScancode(SDL_Scancode scancode, Orientation orientation,
                         const ControlBindings& bindings, GameAction* actions);
 

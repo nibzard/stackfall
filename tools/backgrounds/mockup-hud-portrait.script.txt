@@ -1,0 +1,36 @@
+# Background mockup session, portrait half (docs/backgrounds, task T075):
+# the same frame as mockup-hud.script.txt through the rotated key table of
+# the portrait orientation (task T055). Key left hard drops and key up
+# moves right in portrait, so the two scoring hard drops of the landscape
+# script ride `left` here and everything else is identical: the round
+# scores twice on its own empty board, the tall-stack fixture replaces the
+# board, and one hold swap stashes the T.
+#
+#   bg-mockup  the tall stack with the piece in flight, its ghost on the
+#              stack top, a stashed Hold piece, all five Next previews,
+#              and the statistics strip of the running round
+check bg-title
+wait 1
+key enter down
+wait 2
+key enter up
+wait 2
+check bg-start
+wait 30
+key left down
+wait 2
+key left up
+wait 6
+key left down
+wait 2
+key left up
+wait 6
+fixture tall-stack-ready
+wait 2
+key c down
+wait 2
+key c up
+wait 2
+check bg-mockup
+wait 2
+quit

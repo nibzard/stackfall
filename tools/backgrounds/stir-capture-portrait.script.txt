@@ -1,0 +1,314 @@
+# Stir chapter capture session, portrait half (docs/backgrounds, task T080):
+# the same ladder of four-line clears through the rotated key table of task
+# T055 - `z` rotates clockwise, `key left` hard drops - on the turned canvas
+# from a saved orientation=portrait, so the four moving designs draw in
+# their own 544x960 layout zones, three clock phases per level.
+#
+#   stir-5..stir-8    the play frame of levels 5 through 8, 544x960
+check stir-title
+wait 1
+key enter down
+wait 2
+key enter up
+wait 2
+wait 0
+fixture four-line-ready
+wait 2
+key z down
+wait 2
+key z up
+wait 2
+key left down
+wait 2
+key left up
+wait 10
+fixture four-line-ready
+wait 2
+key z down
+wait 2
+key z up
+wait 2
+key left down
+wait 2
+key left up
+wait 10
+fixture four-line-ready
+wait 2
+key z down
+wait 2
+key z up
+wait 2
+key left down
+wait 2
+key left up
+wait 10
+fixture four-line-ready
+wait 2
+key z down
+wait 2
+key z up
+wait 2
+key left down
+wait 2
+key left up
+wait 10
+fixture four-line-ready
+wait 2
+key z down
+wait 2
+key z up
+wait 2
+key left down
+wait 2
+key left up
+wait 10
+fixture four-line-ready
+wait 2
+key z down
+wait 2
+key z up
+wait 2
+key left down
+wait 2
+key left up
+wait 10
+fixture four-line-ready
+wait 2
+key z down
+wait 2
+key z up
+wait 2
+key left down
+wait 2
+key left up
+wait 10
+fixture four-line-ready
+wait 2
+key z down
+wait 2
+key z up
+wait 2
+key left down
+wait 2
+key left up
+wait 10
+fixture four-line-ready
+wait 2
+key z down
+wait 2
+key z up
+wait 2
+key left down
+wait 2
+key left up
+wait 10
+fixture four-line-ready
+wait 2
+key z down
+wait 2
+key z up
+wait 2
+key left down
+wait 2
+key left up
+wait 10
+wait 45
+fixture tall-stack-ready
+wait 2
+key c down
+wait 2
+key c up
+wait 2
+check stir-5
+wait 2
+wait 54
+fixture tall-stack-ready
+wait 2
+key c down
+wait 2
+key c up
+wait 2
+check stir-5b
+wait 2
+wait 54
+fixture tall-stack-ready
+wait 2
+key c down
+wait 2
+key c up
+wait 2
+check stir-5c
+wait 2
+wait 54
+wait 2
+# three more cycles: 52 lines reach level 6
+fixture four-line-ready
+wait 2
+key z down
+wait 2
+key z up
+wait 2
+key left down
+wait 2
+key left up
+wait 10
+fixture four-line-ready
+wait 2
+key z down
+wait 2
+key z up
+wait 2
+key left down
+wait 2
+key left up
+wait 10
+fixture four-line-ready
+wait 2
+key z down
+wait 2
+key z up
+wait 2
+key left down
+wait 2
+key left up
+wait 10
+wait 45
+fixture tall-stack-ready
+wait 2
+key c down
+wait 2
+key c up
+wait 2
+check stir-6
+wait 2
+wait 54
+fixture tall-stack-ready
+wait 2
+key c down
+wait 2
+key c up
+wait 2
+check stir-6b
+wait 2
+wait 54
+fixture tall-stack-ready
+wait 2
+key c down
+wait 2
+key c up
+wait 2
+check stir-6c
+wait 2
+wait 54
+wait 2
+# two more cycles: 60 lines reach level 7
+fixture four-line-ready
+wait 2
+key z down
+wait 2
+key z up
+wait 2
+key left down
+wait 2
+key left up
+wait 10
+fixture four-line-ready
+wait 2
+key z down
+wait 2
+key z up
+wait 2
+key left down
+wait 2
+key left up
+wait 10
+wait 45
+fixture tall-stack-ready
+wait 2
+key c down
+wait 2
+key c up
+wait 2
+check stir-7
+wait 2
+wait 54
+fixture tall-stack-ready
+wait 2
+key c down
+wait 2
+key c up
+wait 2
+check stir-7b
+wait 2
+wait 54
+fixture tall-stack-ready
+wait 2
+key c down
+wait 2
+key c up
+wait 2
+check stir-7c
+wait 2
+wait 54
+wait 2
+# three more cycles: 72 lines reach level 8
+fixture four-line-ready
+wait 2
+key z down
+wait 2
+key z up
+wait 2
+key left down
+wait 2
+key left up
+wait 10
+fixture four-line-ready
+wait 2
+key z down
+wait 2
+key z up
+wait 2
+key left down
+wait 2
+key left up
+wait 10
+fixture four-line-ready
+wait 2
+key z down
+wait 2
+key z up
+wait 2
+key left down
+wait 2
+key left up
+wait 10
+wait 45
+fixture tall-stack-ready
+wait 2
+key c down
+wait 2
+key c up
+wait 2
+check stir-8
+wait 2
+wait 54
+fixture tall-stack-ready
+wait 2
+key c down
+wait 2
+key c up
+wait 2
+check stir-8b
+wait 2
+wait 54
+fixture tall-stack-ready
+wait 2
+key c down
+wait 2
+key c up
+wait 2
+check stir-8c
+wait 2
+wait 54
+wait 2
+quit

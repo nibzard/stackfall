@@ -27,6 +27,7 @@
 
 #include <array>
 
+#include "stackfall/backgrounds.hpp"
 #include "stackfall/bindings.hpp"
 #include "stackfall/game.hpp"
 #include "stackfall/music.hpp"
@@ -231,6 +232,30 @@ constexpr SDL_Rect nextSlotBox(int index) {
 }
 
 // ---------------------------------------------------------------------------
+// The wallpaper zones of the level backgrounds (task T078, docs/backgrounds).
+//
+// The design package mask (docs/backgrounds/index.md, "The layout mask")
+// states the same rectangles these functions return, derived here from the
+// geometry constants above so a geometry change moves the mask with it:
+//
+// Landscape 960x544: the frame (the opaque well plus its one-pixel ring) is
+// excluded from every background shape; the quiet span covers the two HUD
+// columns and their gaps (x = 192..767) where no color above kSecondaryCap
+// ever draws; the loud margins (x = 0..191 and x = 768..959) carry the
+// accents.
+//
+// Portrait 544x960: the frame (x = 71..472, y = 119..920) is excluded from
+// every shape; the HUD strip above the board (y = 0..118) and the guard
+// strips beside the frame are quiet; the side margins beside the guards and
+// the strip below the board are loud. The portrait guard is 12 px, half the
+// landscape kHudGap, the breathing room the tall layout leaves beside the
+// board.
+// ---------------------------------------------------------------------------
+inline constexpr int kPortraitBackgroundGuard = 12;
+
+backgrounds::Zones backgroundZones(Orientation orientation);
+
+// ---------------------------------------------------------------------------
 // Screen geometry of the section 4.7 screens (task T011): the title and
 // controls pages and the pause and game-over overlays. The same rule as the
 // play layout applies: the constants live here, so the SDL-path suite asserts
@@ -293,18 +318,18 @@ inline constexpr int kRebindRestoreY = 382;
 inline constexpr int kRebindMessageY = 428;
 inline constexpr int kRebindFooterY = 464;
 
-// The options page (tasks T040, T044, and T062): one heading, the eight
-// setting rows at the shared menu metrics, one footer. The rows read their
-// value from the renderer's preference settings, because the rules core holds
-// the cursor alone and the values are platform state (specification section
-// 7). Eight rows at the 44 px menu height span y = 112..433, so the heading
-// stays high and the footer sits under the last row; everything stays inside
-// the 960x544 canvas with the hint glyphs at their 14 px scale (tasks T037
-// and T062).
-inline constexpr int kOptionsHeadingY = 64;
+// The options page (tasks T040, T044, T062, T084, and T095): one heading,
+// the ten setting rows at the shared menu metrics, one footer. The rows read
+// their value from the renderer's preference settings, because the rules core
+// holds the cursor alone and the values are platform state (specification
+// section 7). Ten rows at the 44 px menu height span y = 88..504 in text, so
+// the heading sits above them at y = 40 and the footer follows at y = 516;
+// everything stays inside the 960x544 canvas with the hint glyphs at their
+// 14 px scale (tasks T037, T062, T084, and T095).
+inline constexpr int kOptionsHeadingY = 40;
 inline constexpr int kOptionsHeadingScale = 4;
-inline constexpr int kOptionsMenuY = 112;
-inline constexpr int kOptionsFooterY = 464;
+inline constexpr int kOptionsMenuY = 88;
+inline constexpr int kOptionsFooterY = 516;
 
 // The overlays: a translucent veil over the frozen play scene plus one solid
 // panel that carries the text. Offsets are panel-relative.
@@ -377,6 +402,14 @@ inline constexpr int kPOptionsFooterY = 880;
 // its own, and the same footer hint.
 inline constexpr int kMusicTrackY = 348;
 inline constexpr int kPMusicTrackY = 430;
+
+// The backgrounds page behind the BACKGROUNDS row (task T084,
+// docs/BACKGROUND_IMPLEMENTATION.md): the same heading and menu metrics as
+// the options page over its two rows - the mode and the preferred design -
+// and the same footer hint. The design row spells the stable design number
+// and its approved name, so the player picks by either; the widest text,
+// "DESIGN 20 SLEEPING SKYLINE", leaves its selection marker on the canvas
+// in both orientations.
 
 constexpr SDL_Rect pausePanelPortrait() {
   return SDL_Rect{kPortraitBoardOriginX, 280, kPortraitBoardPixelWidth, 360};
@@ -500,6 +533,56 @@ inline constexpr std::array<CellPalette, kPieceCount> kGrayscalePalettesDim = {{
     cellPaletteOf(mixToward(kGrayscaleFills[6], kBackground, 1, 2)),
 }};
 
+// ---------------------------------------------------------------------------
+// The per-piece in-cell designs (task T95, owner concept of 2026-11-05).
+//
+// Color is the only cue a flat fill gives a piece, so a grayscale screen or a
+// colorblind player reads seven shapes through their outlines alone. The
+// PIECE DESIGNS preference (off by default) draws one small geometric mark
+// inside every filled cell a piece occupies - settled cells, the active
+// piece, and the Hold and Next previews - so each of the seven types carries
+// its own second cue. The mark is built from filled rectangles alone, the
+// same primitive every other pixel uses, and it draws in the cell palette's
+// own dark shade, so grayscale mode keeps the mark visible beside the gray
+// fill while the flat geometric look of section 6.2 stays: no texture, no
+// second color, and nothing new outside the cell.
+//
+// The pattern table, one mark per type, drawn inside the interior the cell
+// frame leaves (two pixels in from each edge). See notes/agent-testing.md for
+// the mapping with the drawn extents at every supported cell size:
+//
+//   I  one wide horizontal rule   the line piece carries the line
+//   O  one hollow square          the square piece carries the frame
+//   T  one plus, two crossing     the crossing of the three-way piece
+//      rules
+//   S  two squares stacked        a vertical pair
+//   Z  two squares side by side   a horizontal pair
+//   J  one tall vertical rule     the post
+//   L  one small filled square    the dot
+//
+// The seven marks stay pairwise distinct at the smallest supported cell
+// (12 px, the portrait preview), where the interior measures 8 x 8: the SDL
+// suite pins the pixel mask of every mark at every supported size in both
+// orientations and proves the seven masks pairwise unequal, so no two types
+// can share a look in gray. The ghost keeps its hollow outline: it carries no
+// fill a mark could sit on, and its shape stays the cue it always was.
+// ---------------------------------------------------------------------------
+
+// One in-cell design: at most four filled rectangles in cell-local
+// coordinates, each one inside the interior the cell frame leaves.
+inline constexpr int kCellDesignMaxRects = 4;
+
+struct CellDesign {
+  int count = 0;
+  SDL_Rect rects[kCellDesignMaxRects] = {};
+};
+
+// The mark rectangles of `id` in a `size` x `size` cell, local to its
+// top-left corner. A size too small for a mark (below 6 px) yields an empty
+// design, so a degenerate call draws the plain cell instead of an
+// unpredictable one.
+CellDesign cellDesign(PieceId id, int size);
+
 // Piece index 0..6 from a PieceId, for the palette arrays above.
 constexpr int pieceIndex(PieceId id) { return static_cast<int>(id) - 1; }
 
@@ -614,6 +697,13 @@ class Renderer {
   int nextPreviews() const noexcept;
   void setGrayscale(bool on) noexcept;
   bool grayscale() const noexcept;
+  // The per-piece in-cell designs of task T95. Off draws every filled cell
+  // exactly as the years before the task did - the plain flat fill, the
+  // light and dark frame - so the default path holds its pixels. On adds the
+  // mark of the piece's type inside each cell, drawn by drawCell from
+  // cellDesign() in the palette's dark shade.
+  void setPieceDesigns(bool on) noexcept;
+  bool pieceDesigns() const noexcept;
   // The orientation this renderer draws (tasks T055 and T068). The platform
   // layer sets it at startup from the persisted preference and again on every
   // ORIENTATION select, which turns the running session at once: the layout,
@@ -649,6 +739,28 @@ class Renderer {
   int rebindCaptureRow() const noexcept;
   void setRebindMessage(const char* text) noexcept;
   const char* rebindMessage() const noexcept;
+  // The level backgrounds of the approved package (task T078,
+  // docs/backgrounds). The platform layer owns the mode, the preferred
+  // design, and the presentation clock, exactly as it owns the option rows
+  // above: the default is Auto with design 1, the plan's default pair.
+  // setBackgroundLevel() records the level Auto mode selects from; a level
+  // change switches designs with the record's cut or stepped fade. A manual
+  // mode or preference change cuts. resetBackgroundRound() lands on every
+  // round boundary: in Auto the clock and the selection restart, in Fixed
+  // the design runs on unbroken, and Off holds nothing to reset. The clock
+  // advances on rendered frames alone - never on simulation ticks - and
+  // freezing it holds motion and fade progress until it thaws.
+  void setBackgroundMode(backgrounds::Mode mode) noexcept;
+  backgrounds::Mode backgroundMode() const noexcept;
+  void setBackgroundPreference(int designId) noexcept;
+  int backgroundPreference() const noexcept;
+  void setBackgroundLevel(int level) noexcept;
+  int backgroundLevel() const noexcept;
+  void advanceBackgroundClock(std::uint32_t deltaMs);
+  void advanceBackgroundFrames(int frames);
+  void freezeBackgroundClock(bool frozen) noexcept;
+  bool backgroundClockFrozen() const noexcept;
+  void resetBackgroundRound();
 
   // The glyph scale one statistics value draws at: the full value scale while
   // the number fits the statistics column, one step smaller when it does not,
@@ -658,6 +770,8 @@ class Renderer {
   int statValueScale(const char* value) const;
 
  private:
+  class WallpaperPainter;  // the backgrounds::Painter adapter of fillRect()
+
   void drawBackground() const;
   void clearBackground() const;
   void drawGridLines() const;
@@ -676,6 +790,7 @@ class Renderer {
   void drawRebindScreen(const Game& game) const;
   void drawOptionsScreen(const Game& game) const;
   void drawMusicOptionsScreen(const Game& game) const;
+  void drawBackgroundOptionsScreen(const Game& game) const;
   void drawPauseOverlay(const Game& game) const;
   void drawGameOverOverlay(const Game& game) const;
   void drawOverlayPanel(const SDL_Rect& panel) const;
@@ -685,7 +800,8 @@ class Renderer {
 
   void fillRect(SDL_Color color, int x, int y, int w, int h) const;
   void drawRectOutline(SDL_Color color, int x, int y, int w, int h) const;
-  void drawCell(int x, int y, int size, const CellPalette& palette) const;
+  void drawCell(int x, int y, int size, PieceId id,
+                const CellPalette& palette) const;
   void drawGhostCell(int x, int y, int size, SDL_Color color) const;
   void drawPreviewPiece(PieceId id, const SDL_Rect& box, bool dimmed) const;
   void drawPreviewPiece(PieceId id, const SDL_Rect& box, bool dimmed,
@@ -789,6 +905,7 @@ class Renderer {
   bool showHold_ = true;
   int nextPreviews_ = kPreviewCount;
   bool grayscale_ = false;
+  bool pieceDesigns_ = false;
   Orientation orientation_ = Orientation::Landscape;
   MusicMode musicMode_ = MusicMode::Auto;
   int musicVolume_ = 6;
@@ -797,6 +914,7 @@ class Renderer {
   ControlBindings bindings_ = defaultControlBindings();
   int rebindCaptureRow_ = -1;
   const char* rebindMessage_ = "";
+  backgrounds::Wallpaper wallpaper_;
 };
 
 }  // namespace stackfall

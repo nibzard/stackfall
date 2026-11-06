@@ -1,0 +1,319 @@
+# Backgrounds-pad session (T084, docs/BACKGROUND_IMPLEMENTATION.md player
+# options, docs/AGENT_TESTING.md): the backgrounds page on the developer
+# virtual controller, the input path of scene-cycle-pad. A opens the page
+# from the BACKGROUNDS row, one A lands the MODE ring on Off, one A on the
+# DESIGN row moves the preferred design to 2 while the mode stays Off, and
+# the round that follows draws the legacy flat wallpaper - the same-session
+# application on the very next play frame. Quitting to the title and
+# selecting Fixed on the reopened page then draws the retained design 2 on
+# the next play frame of the same session, and the session quits through the
+# title menu with the settings file holding background=fixed and
+# backgroundid=2. A `wait` follows every check.
+check title-start
+wait 1
+pad down down
+wait 2
+pad down up
+wait 2
+pad down down
+wait 2
+pad down up
+wait 2
+check title-at-options
+wait 1
+pad a down
+wait 2
+pad a up
+wait 2
+check options-open
+wait 1
+pad down down
+wait 2
+pad down up
+wait 2
+pad down down
+wait 2
+pad down up
+wait 2
+pad down down
+wait 2
+pad down up
+wait 2
+pad down down
+wait 2
+pad down up
+wait 2
+pad down down
+wait 2
+pad down up
+wait 2
+pad down down
+wait 2
+pad down up
+wait 2
+pad down down
+wait 2
+pad down up
+wait 2
+pad down down
+wait 2
+pad down up
+wait 2
+check options-backgrounds-row
+wait 1
+pad a down
+wait 2
+pad a up
+wait 2
+check backgrounds-page-open
+wait 1
+# MODE: Auto -> Off
+pad a down
+wait 2
+pad a up
+wait 2
+check backgrounds-mode-off
+wait 1
+# DESIGN: the preferred design moves to 2 while the mode stays Off
+pad down down
+wait 2
+pad down up
+wait 2
+check backgrounds-design-row
+wait 1
+pad a down
+wait 2
+pad a up
+wait 2
+check backgrounds-design-02
+wait 1
+pad b down
+wait 2
+pad b up
+wait 2
+check options-back-on-backgrounds
+wait 1
+pad b down
+wait 2
+pad b up
+wait 2
+check title-back
+wait 1
+# START GAME: the play frame after the change draws the flat Off wallpaper
+pad down down
+wait 2
+pad down up
+wait 2
+pad down down
+wait 2
+pad down up
+wait 2
+pad a down
+wait 2
+pad a up
+wait 2
+check playing-off-flat
+wait 1
+# leave the round through the pause overlay
+pad start down
+wait 2
+pad start up
+wait 2
+check paused-for-exit
+wait 1
+pad down down
+wait 2
+pad down up
+wait 2
+pad down down
+wait 2
+pad down up
+wait 2
+pad down down
+wait 2
+pad down up
+wait 2
+check pause-quit-item
+wait 1
+pad a down
+wait 2
+pad a up
+wait 2
+check title-after-round
+wait 1
+# reopen the page and land the MODE ring on Fixed: the options cursor kept
+# the BACKGROUNDS row through the round trip, so A opens the page at once
+pad down down
+wait 2
+pad down up
+wait 2
+pad down down
+wait 2
+pad down up
+wait 2
+pad a down
+wait 2
+pad a up
+wait 2
+check options-open-again
+wait 1
+pad a down
+wait 2
+pad a up
+wait 2
+check backgrounds-page-reopen
+wait 1
+pad a down
+wait 2
+pad a up
+wait 2
+check backgrounds-mode-fixed
+wait 1
+pad b down
+wait 2
+pad b up
+wait 2
+check options-back-on-backgrounds-again
+wait 1
+pad b down
+wait 2
+pad b up
+wait 2
+check title-back-again
+wait 1
+# START GAME: the play frame now draws the fixed design 2
+pad down down
+wait 2
+pad down up
+wait 2
+pad down down
+wait 2
+pad down up
+wait 2
+pad a down
+wait 2
+pad a up
+wait 2
+check playing-fixed-2
+wait 1
+# leave the fixed round and land the MODE ring on Auto: the retained
+# design 2 rides along, and the next play frame of this session draws the
+# level 1 design of Auto mode
+pad start down
+wait 2
+pad start up
+wait 2
+check paused-for-quit
+wait 1
+pad down down
+wait 2
+pad down up
+wait 2
+pad down down
+wait 2
+pad down up
+wait 2
+pad down down
+wait 2
+pad down up
+wait 2
+pad a down
+wait 2
+pad a up
+wait 2
+check title-final
+wait 1
+pad down down
+wait 2
+pad down up
+wait 2
+pad down down
+wait 2
+pad down up
+wait 2
+pad a down
+wait 2
+pad a up
+wait 2
+check options-open-auto
+wait 1
+pad a down
+wait 2
+pad a up
+wait 2
+check backgrounds-page-auto-open
+wait 1
+pad a down
+wait 2
+pad a up
+wait 2
+check backgrounds-mode-auto
+wait 1
+pad b down
+wait 2
+pad b up
+wait 2
+pad b down
+wait 2
+pad b up
+wait 2
+check title-back-auto
+wait 1
+pad down down
+wait 2
+pad down up
+wait 2
+pad down down
+wait 2
+pad down up
+wait 2
+pad a down
+wait 2
+pad a up
+wait 2
+check playing-auto-1
+wait 1
+# quit through the title menu
+pad start down
+wait 2
+pad start up
+wait 2
+check paused-final
+wait 1
+pad down down
+wait 2
+pad down up
+wait 2
+pad down down
+wait 2
+pad down up
+wait 2
+pad down down
+wait 2
+pad down up
+wait 2
+pad a down
+wait 2
+pad a up
+wait 2
+check title-after-auto-round
+wait 1
+pad down down
+wait 2
+pad down up
+wait 2
+pad down down
+wait 2
+pad down up
+wait 2
+pad down down
+wait 2
+pad down up
+wait 2
+check title-at-quit
+wait 1
+check quit-confirmed
+pad a down
+wait 2
+pad a up
+wait 2

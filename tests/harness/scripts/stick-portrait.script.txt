@@ -1,0 +1,231 @@
+# T86 portrait thumbstick session (docs/AGENT_TESTING.md), on the developer
+# virtual controller, seed 20261103. A landscape session walks to the
+# ORIENTATION row and selects it with the stick deflected across the press -
+# X negative is the D-pad's left arm, move-left in landscape and the logical
+# up direction that hard drops in portrait - so the turn must spend the held
+# level, the pending edges, and the stick's own deflected arm together. The
+# turned session then plays a round on the rotated stick table: the physical
+# down reading moves the piece left, the physical up reading moves it right,
+# the physical right reading soft drops, and the physical left reading hard
+# drops, which is exactly the table the D-pad arms follow. The face buttons
+# stay playable beside the stick - B rotates clockwise, A counter-clockwise,
+# Y holds, X carries nothing - and the quit runs through the turned roles.
+# A `wait` follows every check, so no record carries the tick of the input
+# that comes after it.
+check title-start
+wait 1
+# landscape roles: D-pad down walks the title cursor to OPTIONS, A confirms
+pad down down
+wait 2
+pad down up
+wait 2
+pad down down
+wait 2
+pad down up
+wait 2
+check title-at-options
+wait 1
+pad a down
+wait 2
+pad a up
+wait 2
+check options-sound-row
+wait 1
+# six downs walk SOUND -> GHOST -> GRID -> HOLD -> NEXT PIECES -> GRAYSCALE
+# -> ORIENTATION
+pad down down
+wait 2
+pad down up
+wait 2
+pad down down
+wait 2
+pad down up
+wait 2
+pad down down
+wait 2
+pad down up
+wait 2
+pad down down
+wait 2
+pad down up
+wait 2
+pad down down
+wait 2
+pad down up
+wait 2
+pad down down
+wait 2
+pad down up
+wait 2
+check options-orientation-row
+wait 1
+# the turn, with the stick deflected across it: both land on one frame, the
+# tick consumes the select, and the session turns inside that tick
+stick x -32767
+pad a down
+wait 2
+pad a up
+stick x 0
+wait 2
+check orientation-portrait-live
+wait 1
+# back to the title on the portrait table: A carries the back role there
+pad a down
+wait 2
+pad a up
+wait 2
+check title-portrait
+wait 1
+# the turned menu: the stick's X axis is the logical left and right of the
+# grip, so two upward readings walk the cursor back to START GAME, and B
+# confirms
+stick x -32767
+wait 2
+stick x 0
+wait 2
+stick x -32767
+wait 2
+stick x 0
+wait 2
+check title-at-start
+wait 1
+pad b down
+wait 2
+pad b up
+wait 2
+check playing-portrait
+wait 1
+# the rotated stick: Y positive is the down arm, which the turned frame
+# points at the player's left, so the piece moves left
+stick y 32767
+wait 2
+stick y 0
+wait 2
+check stick-moved-left
+wait 1
+# Y negative is the up arm, which points at the player's right
+stick y -32767
+wait 2
+stick y 0
+wait 2
+check stick-moved-right
+wait 1
+# X positive is the right arm, the logical down of the turned grip: a soft
+# drop of one cell with its point
+stick x 32767
+wait 2
+stick x 0
+wait 2
+check stick-soft-drop
+wait 1
+# the face buttons beside the stick: B rotates clockwise on the reversed
+# cluster
+pad b down
+wait 2
+pad b up
+wait 2
+check face-b-rotates
+wait 1
+# A rotates counter-clockwise, so the piece returns to its spawn orientation
+pad a down
+wait 2
+pad a up
+wait 2
+check face-a-rotates-back
+wait 1
+# Y holds, and X carries nothing
+pad y down
+wait 2
+pad y up
+wait 2
+check face-y-holds
+wait 1
+pad x down
+wait 2
+pad x up
+wait 2
+check face-x-nothing
+wait 1
+# a reading inside the deadzone moves nothing in the turned frame either
+stick y 7999
+wait 2
+stick y 0
+wait 2
+check portrait-deadzone-quiet
+wait 1
+# X negative is the left arm, the logical up of the turned grip: the stick
+# hard drops there, the same arm the D-pad hard drops on
+stick x -32767
+wait 2
+stick x 0
+wait 2
+check stick-hard-drop
+wait 1
+# the pause overlay on the rotated roles, then quit to the title
+pad start down
+wait 2
+pad start up
+wait 2
+check paused-portrait
+wait 1
+pad left down
+wait 2
+pad left up
+wait 2
+check paused-at-quit
+wait 1
+pad b down
+wait 2
+pad b up
+wait 2
+check title-after-round
+wait 1
+# turn back to landscape and portrait again, so the session has turned three
+# times and the saved preference the run leaves is portrait
+pad right down
+wait 2
+pad right up
+wait 2
+pad right down
+wait 2
+pad right up
+wait 2
+check title-at-options-again
+wait 1
+pad b down
+wait 2
+pad b up
+wait 2
+check options-row-again
+wait 1
+pad b down
+wait 2
+pad b up
+wait 2
+check orientation-landscape-live
+wait 2
+pad a down
+wait 2
+pad a up
+wait 2
+check orientation-portrait-again
+wait 2
+# the quit through the portrait table: the X axis's downward reading walks
+# the title cursor from OPTIONS to QUIT, and B confirms it
+pad a down
+wait 2
+pad a up
+wait 2
+check title-final
+wait 1
+stick x 32767
+wait 2
+stick x 0
+wait 2
+check title-at-quit
+wait 1
+check quit-confirmed
+pad b down
+wait 2
+pad b up
+wait 2

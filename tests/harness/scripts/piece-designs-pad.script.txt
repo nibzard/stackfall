@@ -1,0 +1,141 @@
+# Piece-designs pad session (T095, docs/AGENT_TESTING.md): the PIECE
+# DESIGNS row of the options screen on the developer virtual controller,
+# seed 20261103, the input path of scene-cycle-pad. The D-pad walks the ten
+# rows to PIECE DESIGNS, A turns the per-piece in-cell designs on, and a
+# round over the labeled all-pieces fixture draws every mark through the
+# controller-driven play path. The session ends with the saved settings file
+# holding piecedesigns=on. A `wait` follows every check, so no record
+# carries the tick of the input that comes after it.
+check title-start
+wait 1
+pad down down
+wait 2
+pad down up
+wait 2
+pad down down
+wait 2
+pad down up
+wait 2
+check title-at-options
+wait 1
+pad a down
+wait 2
+pad a up
+wait 2
+check options-open
+wait 1
+pad down down
+wait 2
+pad down up
+wait 2
+pad down down
+wait 2
+pad down up
+wait 2
+pad down down
+wait 2
+pad down up
+wait 2
+pad down down
+wait 2
+pad down up
+wait 2
+pad down down
+wait 2
+pad down up
+wait 2
+pad down down
+wait 2
+pad down up
+wait 2
+pad down down
+wait 2
+pad down up
+wait 2
+pad down down
+wait 2
+pad down up
+wait 2
+pad down down
+wait 2
+pad down up
+wait 2
+check options-piece-designs-row
+wait 1
+pad a down
+wait 2
+pad a up
+wait 2
+check designs-on
+wait 1
+pad b down
+wait 2
+pad b up
+wait 2
+check title-back
+wait 1
+pad up down
+wait 2
+pad up up
+wait 2
+pad up down
+wait 2
+pad up up
+wait 2
+check title-at-start
+wait 1
+pad a down
+wait 2
+pad a up
+wait 2
+check playing-start
+wait 1
+fixture all-pieces
+wait 2
+check designs-frame
+wait 2
+pad start down
+wait 2
+pad start up
+wait 2
+check paused
+wait 2
+pad down down
+wait 2
+pad down up
+wait 2
+pad down down
+wait 2
+pad down up
+wait 2
+pad down down
+wait 2
+pad down up
+wait 2
+check paused-at-quit
+wait 2
+pad a down
+wait 2
+pad a up
+wait 2
+check title-after-round
+wait 1
+pad down down
+wait 2
+pad down up
+wait 2
+pad down down
+wait 2
+pad down up
+wait 2
+pad down down
+wait 2
+pad down up
+wait 2
+check title-at-quit
+wait 1
+check quit-confirmed
+pad a down
+wait 2
+pad a up
+wait 2

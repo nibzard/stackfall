@@ -1,10 +1,11 @@
 # Options-six-keyboard session (T045, T055, and T062, docs/AGENT_TESTING.md):
-# the eight-row options screen on the keyboard, seed 20261103. The cursor
-# reaches every row from SOUND down to MUSIC and wraps past MUSIC back to
-# SOUND, one select changes each of the four T045 preferences (GRID off, HOLD
-# off, NEXT PIECES 5 -> 1, GRAYSCALE on), and the ORIENTATION and MUSIC rows
-# are reached but never selected, so this landscape session stays landscape
-# and never opens the music settings page.
+# the ten-row options screen on the keyboard, seed 20261103. The cursor
+# reaches every row from SOUND down to PIECE DESIGNS and wraps past PIECE
+# DESIGNS back to SOUND (T084 added the ninth row, T095 the tenth), one
+# select changes each of the four T045 preferences (GRID off, HOLD off, NEXT
+# PIECES 5 -> 1, GRAYSCALE on), and the ORIENTATION, MUSIC, and PIECE DESIGNS
+# rows are reached but never selected, so this landscape session stays
+# landscape, keeps the designs off, and never opens the music settings page.
 # The session quits through the title menu with the settings file holding
 # every new value. A `wait` follows every check, so no record carries the
 # tick of the input that comes after it.
@@ -91,6 +92,18 @@ wait 2
 key down up
 wait 2
 check options-music-row
+wait 1
+key down down
+wait 2
+key down up
+wait 2
+check options-backgrounds-row-unselected
+wait 1
+key down down
+wait 2
+key down up
+wait 2
+check options-piece-designs-row
 wait 1
 key down down
 wait 2

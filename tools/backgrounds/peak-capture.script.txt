@@ -1,0 +1,628 @@
+# Peak chapter capture session (docs/backgrounds, task T083): real game
+# frames of the four final designs, landscape half.
+#
+# The round walks the level ladder the only way the rules allow - by
+# clearing lines. Each `four-line-ready` fixture replaces the settled board
+# with four rows that miss only column 5, the forced vertical I completes
+# them, and the round clears four lines per cycle: 160 lines after forty
+# cycles reaches level 17, 172 after forty-three reaches level 18, 184 for
+# level 19, 196 for level 20. Each capture waits the record's fade out
+# (0.5 s for level 19, 0.6 s for level 20; levels 17 and 18 cut), reloads
+# the tall-stack fixture, and holds, so every frame carries the same real
+# HUD over a real board and the designs differ alone. Three frames per
+# level, 62 ticks apart on the presentation clock, give the motion check
+# its phases: the moving layer advances 62 * 1000 / 60 ms between them
+# while the game itself moves on.
+#
+#   peak-17..peak-20    the play frame of levels 17 through 20
+#   peak-17b..peak-20b  the same levels 62 ticks later on the clock
+#   peak-17c..peak-20c  and 62 ticks later still
+#
+# `c` is hold, `x` rotates clockwise, `space` hard drops on the default
+# keyboard table.
+check peak-title
+wait 1
+key enter down
+wait 2
+key enter up
+wait 2
+wait 0
+# forty cycles: 160 lines reach level 17
+fixture four-line-ready
+wait 2
+key x down
+wait 2
+key x up
+wait 2
+key space down
+wait 2
+key space up
+wait 10
+fixture four-line-ready
+wait 2
+key x down
+wait 2
+key x up
+wait 2
+key space down
+wait 2
+key space up
+wait 10
+fixture four-line-ready
+wait 2
+key x down
+wait 2
+key x up
+wait 2
+key space down
+wait 2
+key space up
+wait 10
+fixture four-line-ready
+wait 2
+key x down
+wait 2
+key x up
+wait 2
+key space down
+wait 2
+key space up
+wait 10
+fixture four-line-ready
+wait 2
+key x down
+wait 2
+key x up
+wait 2
+key space down
+wait 2
+key space up
+wait 10
+fixture four-line-ready
+wait 2
+key x down
+wait 2
+key x up
+wait 2
+key space down
+wait 2
+key space up
+wait 10
+fixture four-line-ready
+wait 2
+key x down
+wait 2
+key x up
+wait 2
+key space down
+wait 2
+key space up
+wait 10
+fixture four-line-ready
+wait 2
+key x down
+wait 2
+key x up
+wait 2
+key space down
+wait 2
+key space up
+wait 10
+fixture four-line-ready
+wait 2
+key x down
+wait 2
+key x up
+wait 2
+key space down
+wait 2
+key space up
+wait 10
+fixture four-line-ready
+wait 2
+key x down
+wait 2
+key x up
+wait 2
+key space down
+wait 2
+key space up
+wait 10
+fixture four-line-ready
+wait 2
+key x down
+wait 2
+key x up
+wait 2
+key space down
+wait 2
+key space up
+wait 10
+fixture four-line-ready
+wait 2
+key x down
+wait 2
+key x up
+wait 2
+key space down
+wait 2
+key space up
+wait 10
+fixture four-line-ready
+wait 2
+key x down
+wait 2
+key x up
+wait 2
+key space down
+wait 2
+key space up
+wait 10
+fixture four-line-ready
+wait 2
+key x down
+wait 2
+key x up
+wait 2
+key space down
+wait 2
+key space up
+wait 10
+fixture four-line-ready
+wait 2
+key x down
+wait 2
+key x up
+wait 2
+key space down
+wait 2
+key space up
+wait 10
+fixture four-line-ready
+wait 2
+key x down
+wait 2
+key x up
+wait 2
+key space down
+wait 2
+key space up
+wait 10
+fixture four-line-ready
+wait 2
+key x down
+wait 2
+key x up
+wait 2
+key space down
+wait 2
+key space up
+wait 10
+fixture four-line-ready
+wait 2
+key x down
+wait 2
+key x up
+wait 2
+key space down
+wait 2
+key space up
+wait 10
+fixture four-line-ready
+wait 2
+key x down
+wait 2
+key x up
+wait 2
+key space down
+wait 2
+key space up
+wait 10
+fixture four-line-ready
+wait 2
+key x down
+wait 2
+key x up
+wait 2
+key space down
+wait 2
+key space up
+wait 10
+fixture four-line-ready
+wait 2
+key x down
+wait 2
+key x up
+wait 2
+key space down
+wait 2
+key space up
+wait 10
+fixture four-line-ready
+wait 2
+key x down
+wait 2
+key x up
+wait 2
+key space down
+wait 2
+key space up
+wait 10
+fixture four-line-ready
+wait 2
+key x down
+wait 2
+key x up
+wait 2
+key space down
+wait 2
+key space up
+wait 10
+fixture four-line-ready
+wait 2
+key x down
+wait 2
+key x up
+wait 2
+key space down
+wait 2
+key space up
+wait 10
+fixture four-line-ready
+wait 2
+key x down
+wait 2
+key x up
+wait 2
+key space down
+wait 2
+key space up
+wait 10
+fixture four-line-ready
+wait 2
+key x down
+wait 2
+key x up
+wait 2
+key space down
+wait 2
+key space up
+wait 10
+fixture four-line-ready
+wait 2
+key x down
+wait 2
+key x up
+wait 2
+key space down
+wait 2
+key space up
+wait 10
+fixture four-line-ready
+wait 2
+key x down
+wait 2
+key x up
+wait 2
+key space down
+wait 2
+key space up
+wait 10
+fixture four-line-ready
+wait 2
+key x down
+wait 2
+key x up
+wait 2
+key space down
+wait 2
+key space up
+wait 10
+fixture four-line-ready
+wait 2
+key x down
+wait 2
+key x up
+wait 2
+key space down
+wait 2
+key space up
+wait 10
+fixture four-line-ready
+wait 2
+key x down
+wait 2
+key x up
+wait 2
+key space down
+wait 2
+key space up
+wait 10
+fixture four-line-ready
+wait 2
+key x down
+wait 2
+key x up
+wait 2
+key space down
+wait 2
+key space up
+wait 10
+fixture four-line-ready
+wait 2
+key x down
+wait 2
+key x up
+wait 2
+key space down
+wait 2
+key space up
+wait 10
+fixture four-line-ready
+wait 2
+key x down
+wait 2
+key x up
+wait 2
+key space down
+wait 2
+key space up
+wait 10
+fixture four-line-ready
+wait 2
+key x down
+wait 2
+key x up
+wait 2
+key space down
+wait 2
+key space up
+wait 10
+fixture four-line-ready
+wait 2
+key x down
+wait 2
+key x up
+wait 2
+key space down
+wait 2
+key space up
+wait 10
+fixture four-line-ready
+wait 2
+key x down
+wait 2
+key x up
+wait 2
+key space down
+wait 2
+key space up
+wait 10
+fixture four-line-ready
+wait 2
+key x down
+wait 2
+key x up
+wait 2
+key space down
+wait 2
+key space up
+wait 10
+fixture four-line-ready
+wait 2
+key x down
+wait 2
+key x up
+wait 2
+key space down
+wait 2
+key space up
+wait 10
+fixture four-line-ready
+wait 2
+key x down
+wait 2
+key x up
+wait 2
+key space down
+wait 2
+key space up
+wait 10
+wait 45
+fixture tall-stack-ready
+wait 2
+key c down
+wait 2
+key c up
+wait 2
+check peak-17
+wait 2
+wait 54
+fixture tall-stack-ready
+wait 2
+key c down
+wait 2
+key c up
+wait 2
+check peak-17b
+wait 2
+wait 54
+fixture tall-stack-ready
+wait 2
+key c down
+wait 2
+key c up
+wait 2
+check peak-17c
+fixture four-line-ready
+wait 2
+key x down
+wait 2
+key x up
+wait 2
+key space down
+wait 2
+key space up
+wait 10
+fixture four-line-ready
+wait 2
+key x down
+wait 2
+key x up
+wait 2
+key space down
+wait 2
+key space up
+wait 10
+fixture four-line-ready
+wait 2
+key x down
+wait 2
+key x up
+wait 2
+key space down
+wait 2
+key space up
+wait 10
+# three more cycles: 172 lines reach level 18
+wait 45
+fixture tall-stack-ready
+wait 2
+key c down
+wait 2
+key c up
+wait 2
+check peak-18
+wait 2
+wait 54
+fixture tall-stack-ready
+wait 2
+key c down
+wait 2
+key c up
+wait 2
+check peak-18b
+wait 2
+wait 54
+fixture tall-stack-ready
+wait 2
+key c down
+wait 2
+key c up
+wait 2
+check peak-18c
+fixture four-line-ready
+wait 2
+key x down
+wait 2
+key x up
+wait 2
+key space down
+wait 2
+key space up
+wait 10
+fixture four-line-ready
+wait 2
+key x down
+wait 2
+key x up
+wait 2
+key space down
+wait 2
+key space up
+wait 10
+fixture four-line-ready
+wait 2
+key x down
+wait 2
+key x up
+wait 2
+key space down
+wait 2
+key space up
+wait 10
+# three more cycles: 184 lines reach level 19
+wait 45
+fixture tall-stack-ready
+wait 2
+key c down
+wait 2
+key c up
+wait 2
+check peak-19
+wait 2
+wait 54
+fixture tall-stack-ready
+wait 2
+key c down
+wait 2
+key c up
+wait 2
+check peak-19b
+wait 2
+wait 54
+fixture tall-stack-ready
+wait 2
+key c down
+wait 2
+key c up
+wait 2
+check peak-19c
+fixture four-line-ready
+wait 2
+key x down
+wait 2
+key x up
+wait 2
+key space down
+wait 2
+key space up
+wait 10
+fixture four-line-ready
+wait 2
+key x down
+wait 2
+key x up
+wait 2
+key space down
+wait 2
+key space up
+wait 10
+fixture four-line-ready
+wait 2
+key x down
+wait 2
+key x up
+wait 2
+key space down
+wait 2
+key space up
+wait 10
+# three more cycles: 196 lines reach level 20
+wait 45
+fixture tall-stack-ready
+wait 2
+key c down
+wait 2
+key c up
+wait 2
+check peak-20
+wait 2
+wait 54
+fixture tall-stack-ready
+wait 2
+key c down
+wait 2
+key c up
+wait 2
+check peak-20b
+wait 2
+wait 54
+fixture tall-stack-ready
+wait 2
+key c down
+wait 2
+key c up
+wait 2
+check peak-20c
+quit

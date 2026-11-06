@@ -1,0 +1,92 @@
+# Backgrounds-relaunch stage three (T084): the legacy eleven-line settings
+# file of the music era. Every saved value loads - the sound, ghost, grid,
+# hold, next, grayscale, orientation, music mode, and both volumes - and the
+# two lines the file does not carry fill with the new defaults, the Auto
+# wallpaper over design 1. One select on the MODE row lands Off, and the
+# atomic save that follows upgrades the file to the current thirteen-line
+# canonical form with every legacy value kept. A `wait` follows every check.
+check title-start
+wait 1
+key down down
+wait 2
+key down up
+wait 2
+key down down
+wait 2
+key down up
+wait 2
+check title-at-options
+wait 1
+key enter down
+wait 2
+key enter up
+wait 2
+check options-open
+wait 1
+key down down
+wait 2
+key down up
+wait 2
+key down down
+wait 2
+key down up
+wait 2
+key down down
+wait 2
+key down up
+wait 2
+key down down
+wait 2
+key down up
+wait 2
+key down down
+wait 2
+key down up
+wait 2
+key down down
+wait 2
+key down up
+wait 2
+key down down
+wait 2
+key down up
+wait 2
+key down down
+wait 2
+key down up
+wait 2
+check options-backgrounds-row
+wait 1
+key enter down
+wait 2
+key enter up
+wait 2
+check backgrounds-page-open
+wait 1
+key enter down
+wait 2
+key enter up
+wait 2
+check backgrounds-mode-off
+wait 1
+key esc down
+wait 2
+key esc up
+wait 2
+key esc down
+wait 2
+key esc up
+wait 2
+check title-back
+wait 1
+key down down
+wait 2
+key down up
+wait 2
+check title-at-quit
+wait 1
+check quit-confirmed
+key enter down
+wait 2
+key enter up
+wait 2

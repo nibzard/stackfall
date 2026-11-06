@@ -504,6 +504,162 @@ void test_controls_store_round_trip() {
   SC_CHECK(nowhere.save(custom) == stackfall::SaveStatus::NoSaveDirectory);
 }
 
+// The analog thumbstick translation (task T86): every reading resolves to the
+// D-pad arm that points the same physical way, and every reading inside the
+// deadzone resolves to none. The translation knows the device's physical
+// directions only - the orientation applies afterwards, through the same
+// tables the D-pad arms travel, which is what keeps the stick and the D-pad
+// from ever disagreeing about a direction.
+void test_stick_axis_translation() {
+  using stackfall::StickAxis;
+  using stackfall::controllerControlOfStickAxis;
+  using stackfall::kControllerButtonDown;
+  using stackfall::kControllerButtonLeft;
+  using stackfall::kControllerButtonRight;
+  using stackfall::kControllerButtonUp;
+  using stackfall::kStickDeadzone;
+
+  // The full deflections of both axes.
+  SC_CHECK(controllerControlOfStickAxis(StickAxis::X, 32767) ==
+           kControllerButtonRight);
+  SC_CHECK(controllerControlOfStickAxis(StickAxis::X, -32767) ==
+           kControllerButtonLeft);
+  SC_CHECK(controllerControlOfStickAxis(StickAxis::X, -32768) ==
+           kControllerButtonLeft);
+  SC_CHECK(controllerControlOfStickAxis(StickAxis::Y, 32767) ==
+           kControllerButtonDown);
+  SC_CHECK(controllerControlOfStickAxis(StickAxis::Y, -32767) ==
+           kControllerButtonUp);
+  SC_CHECK(controllerControlOfStickAxis(StickAxis::Y, -32768) ==
+           kControllerButtonUp);
+
+  // A resting stick holds no direction: zero, the wobble of a real stick
+  // near its center, and both sides of the deadzone boundary.
+  SC_CHECK(controllerControlOfStickAxis(StickAxis::X, 0) == kNoControl);
+  SC_CHECK(controllerControlOfStickAxis(StickAxis::Y, 0) == kNoControl);
+  SC_CHECK(controllerControlOfStickAxis(StickAxis::X, kStickDeadzone - 1) ==
+           kNoControl);
+  SC_CHECK(controllerControlOfStickAxis(StickAxis::X, -(kStickDeadzone - 1)) ==
+           kNoControl);
+  SC_CHECK(controllerControlOfStickAxis(StickAxis::Y, kStickDeadzone - 1) ==
+           kNoControl);
+  SC_CHECK(controllerControlOfStickAxis(StickAxis::Y, -(kStickDeadzone - 1)) ==
+           kNoControl);
+
+  // The deadzone boundary itself counts as deflected, so the exact value is
+  // testable from a session script on both axes and both directions.
+  SC_CHECK(controllerControlOfStickAxis(StickAxis::X, kStickDeadzone) ==
+           kControllerButtonRight);
+  SC_CHECK(controllerControlOfStickAxis(StickAxis::X, -kStickDeadzone) ==
+           kControllerButtonLeft);
+  SC_CHECK(controllerControlOfStickAxis(StickAxis::Y, kStickDeadzone) ==
+           kControllerButtonDown);
+  SC_CHECK(controllerControlOfStickAxis(StickAxis::Y, -kStickDeadzone) ==
+           kControllerButtonUp);
+
+  // Each arm the stick can reach carries the action the orientation's table
+  // gives it, so the logical mapping below is a property of the tables, not
+  // of the stick. Landscape: left, right, soft drop, hard drop on up.
+  // Portrait: the turned frame swaps every direction, so the same physical
+  // readings move the piece left, right, soft drop on right, and hard drop
+  // on left (tasks T055 and T067).
+  const ControlBindings defaults = defaultControlBindings();
+  struct ArmCase {
+    int control;
+    GameAction landscape;
+    GameAction portrait;
+  };
+  const ArmCase arms[] = {
+      {kControllerButtonLeft, GameAction::Left, GameAction::HardDrop},
+      {kControllerButtonRight, GameAction::Right, GameAction::Down},
+      {kControllerButtonDown, GameAction::Down, GameAction::Left},
+      {kControllerButtonUp, GameAction::HardDrop, GameAction::Right},
+  };
+  for (const ArmCase& arm : arms) {
+    const ControlTable& landscape =
+        defaults.table(DeviceKind::Controller, Orientation::Landscape);
+    const ControlTable& portrait =
+        defaults.table(DeviceKind::Controller, Orientation::Portrait);
+    SC_CHECK(kRebindableActions[actionUsingControl(landscape, arm.control)] ==
+             arm.landscape);
+    SC_CHECK(kRebindableActions[actionUsingControl(portrait, arm.control)] ==
+             arm.portrait);
+  }
+}
+
+// The right shoulder of task T87: the one shoulder a capture can always
+// take, because the left one is Hold's spare in both default tables and the
+// conflict rule forbids taking a control another action already serves. R1
+// carries nothing by default - the defaults stay per T067 - and it carries no
+// menu role, so binding an action to it changes exactly one cell of one
+// table. The controls file knows its canonical word, so a rebound table
+// survives the same round trip every custom table does.
+void test_right_shoulder_control() {
+  using stackfall::kControllerButtonR1;
+  SC_CHECK(controllerControlFromName("r1") == kControllerButtonR1);
+  SC_CHECK(std::string(controllerControlName(kControllerButtonR1)) == "r1");
+  SC_CHECK(std::string(controllerControlDisplayName(kControllerButtonR1,
+                                                    Orientation::Landscape)) ==
+           "R1");
+  SC_CHECK(std::string(controllerControlDisplayName(kControllerButtonR1,
+                                                    Orientation::Portrait)) ==
+           "R1");
+
+  // R1 is free in both default tables and holds no menu role in either
+  // orientation, while the left shoulder stays Hold's spare - which is why
+  // the rebind path needed the second shoulder at all.
+  const ControlBindings defaults = defaultControlBindings();
+  for (int frame = 0; frame < 2; ++frame) {
+    const auto orientation = static_cast<Orientation>(frame);
+    const ControlTable& pad = defaults.table(DeviceKind::Controller,
+                                             orientation);
+    SC_CHECK(actionUsingControl(pad, kControllerButtonR1) < 0);
+    SC_CHECK(actionUsingControl(pad, stackfall::kControllerButtonL1) >= 0);
+    SC_CHECK(menuRoleOfControl(DeviceKind::Controller, kControllerButtonR1,
+                               orientation) == stackfall::kNoGameAction);
+  }
+
+  // Hard drop may move to R1 in one orientation alone; the tables stay valid
+  // and the file carries the word, so a relaunch reads the shoulder back.
+  ControlBindings rebound = defaults;
+  ControlTable& landscape =
+      rebound.table(DeviceKind::Controller, Orientation::Landscape);
+  landscape[static_cast<int>(GameAction::HardDrop)][0] = kControllerButtonR1;
+  landscape[static_cast<int>(GameAction::HardDrop)][1] = kNoControl;
+  SC_CHECK(controlBindingsValid(rebound));
+  SC_CHECK(!controlBindingsAreDefault(rebound));
+  const std::string bytes = formatControlsFile(rebound);
+  SC_CHECK(bytes.find("landscape.pad.harddrop=r1") != std::string::npos);
+  SC_CHECK(bytes.find("portrait.pad.harddrop=left") != std::string::npos);
+  ControlBindings read;
+  SC_CHECK(parseControlsFile(bytes, &read));
+  SC_CHECK(read.table(DeviceKind::Controller, Orientation::Landscape) ==
+           rebound.table(DeviceKind::Controller, Orientation::Landscape));
+  SC_CHECK(read.table(DeviceKind::Controller, Orientation::Portrait) ==
+           defaults.table(DeviceKind::Controller, Orientation::Portrait));
+
+  // The defaults themselves render without the word: a legacy file from
+  // before T87 is byte-identical to what this build writes for the defaults,
+  // and R1 spelled into a value the defaults never hold still parses, because
+  // the word names a control of the device.
+  SC_CHECK(formatControlsFile(defaults).find("r1") == std::string::npos);
+  SC_CHECK(parseControlsFile(formatControlsFile(defaults), &read));
+  SC_CHECK(controlBindingsAreDefault(read));
+
+  // A rebound Up stops hard-dropping entirely: no second trigger hides in the
+  // tables, because one control serves at most one action and the freed arm
+  // names no action at all. The stick resolves to the same arm, so its
+  // deflection carries the arm's menu role alone.
+  const ControlTable& table =
+      rebound.table(DeviceKind::Controller, Orientation::Landscape);
+  SC_CHECK(actionUsingControl(table, stackfall::kControllerButtonUp) < 0);
+  SC_CHECK(kRebindableActions[actionUsingControl(table, kControllerButtonR1)] ==
+           GameAction::HardDrop);
+  SC_CHECK(stackfall::controllerControlOfStickAxis(stackfall::StickAxis::Y,
+                                                   -32767) ==
+           stackfall::kControllerButtonUp);
+}
+
 }  // namespace
 
 void run_bindings_tests() {
@@ -516,6 +672,8 @@ void run_bindings_tests() {
   test_menu_roles_are_fixed();
   test_validity_rejects_double_booked_controls();
   test_controls_of_action_skips_empty_slots();
+  test_stick_axis_translation();
+  test_right_shoulder_control();
   test_controls_file_round_trip();
   test_controls_file_rejects_damaged_forms();
   test_controls_store_round_trip();

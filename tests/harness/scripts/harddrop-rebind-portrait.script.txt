@@ -1,0 +1,348 @@
+# T87 stage two (docs/AGENT_TESTING.md): the relaunch that reads stage one's
+# controls file, the portrait turn, and the portrait half of the rebind flow,
+# on the developer virtual controller, seed 20261103. The landscape round
+# plays the loaded custom tables - R1 and D hard drop, D-pad up, the stick's
+# up arm, Space, and X carry nothing - then the ORIENTATION row turns the
+# session portrait. A round on the untouched portrait defaults proves the
+# grip's up direction still hard drops there (the landscape rebind leaked
+# into no other table) with the same edge rule: one drop per deflection,
+# none while it is held. The customization screen then rebinds the portrait
+# HARD DROP to R1 through the turned menu roles - the cursor walks on the
+# arms that point up and down in the grip, B confirms, A goes back - and the
+# round that follows proves the freed arm, the freed stick reading, and the
+# shoulder. A `wait` follows every check, so no record carries the tick of
+# the input that comes after it.
+check title-start
+wait 1
+# the mappings page names the loaded custom tables before anything changes
+pad down down
+wait 2
+pad down up
+wait 2
+check title-at-controls
+wait 1
+pad a down
+wait 2
+pad a up
+wait 2
+check controls-custom-loaded
+wait 1
+pad b down
+wait 2
+pad b up
+wait 2
+check title-back-loaded
+wait 1
+# the round on the loaded landscape tables; the cursor sits on CONTROLS, so
+# one up reaches START GAME
+pad up down
+wait 2
+pad up up
+wait 2
+pad a down
+wait 2
+pad a up
+wait 2
+check playing-loaded
+wait 1
+pad r1 down
+wait 2
+pad r1 up
+wait 2
+check r1-drops-loaded
+wait 1
+pad up down
+wait 2
+pad up up
+wait 2
+check up-dead-loaded
+wait 1
+stick y -32767
+wait 4
+check stick-up-dead-loaded
+wait 1
+stick y 0
+wait 2
+# the keyboard half of the loaded file: Space carries nothing, D drops
+key space down
+wait 2
+key space up
+wait 2
+check space-dead-loaded
+wait 1
+key d down
+wait 2
+key d up
+wait 2
+check d-drops-loaded
+wait 1
+# leave the round and turn the session portrait through the options screen
+pad start down
+wait 2
+pad start up
+wait 2
+check paused-loaded
+wait 1
+pad down down
+wait 2
+pad down up
+wait 2
+pad down down
+wait 2
+pad down up
+wait 2
+pad down down
+wait 2
+pad down up
+wait 2
+check paused-at-quit
+wait 1
+pad a down
+wait 2
+pad a up
+wait 2
+check title-landscape
+wait 1
+pad down down
+wait 2
+pad down up
+wait 2
+pad down down
+wait 2
+pad down up
+wait 2
+check title-at-options
+wait 1
+pad a down
+wait 2
+pad a up
+wait 2
+check options-sound-row
+wait 1
+# six downs walk SOUND -> GHOST -> GRID -> HOLD -> NEXT PIECES -> GRAYSCALE
+# -> ORIENTATION
+pad down down
+wait 2
+pad down up
+wait 2
+pad down down
+wait 2
+pad down up
+wait 2
+pad down down
+wait 2
+pad down up
+wait 2
+pad down down
+wait 2
+pad down up
+wait 2
+pad down down
+wait 2
+pad down up
+wait 2
+pad down down
+wait 2
+pad down up
+wait 2
+check options-orientation-row
+wait 1
+pad a down
+wait 2
+pad a up
+wait 2
+check orientation-portrait-live
+wait 1
+# back to the title on the turned roles: A carries the back role in portrait
+pad a down
+wait 2
+pad a up
+wait 2
+check title-portrait
+wait 1
+# a round on the untouched portrait defaults: the grip's up hard drops, one
+# edge per deflection; two MenuUps - left arms - walk the title cursor back
+# to START GAME from OPTIONS, and B confirms in the turned frame
+pad left down
+wait 2
+pad left up
+wait 2
+pad left down
+wait 2
+pad left up
+wait 2
+check title-portrait-at-start
+wait 1
+pad b down
+wait 2
+pad b up
+wait 2
+check playing-portrait-default
+wait 1
+stick x -32767
+wait 2
+check portrait-stick-up-drops
+wait 10
+check portrait-stick-up-held-quiet
+wait 1
+stick x 0
+wait 2
+# leave the round through the turned pause roles: left wraps RESUME up to
+# QUIT TO TITLE
+pad start down
+wait 2
+pad start up
+wait 2
+check paused-portrait
+wait 1
+pad left down
+wait 2
+pad left up
+wait 2
+check paused-portrait-at-quit
+wait 1
+pad b down
+wait 2
+pad b up
+wait 2
+check title-after-portrait-round
+wait 1
+# the customization screen in portrait: the cursor sits on START GAME, one
+# MenuDown - the right arm - reaches CONTROLS, and B confirms
+pad right down
+wait 2
+pad right up
+wait 2
+check title-portrait-at-controls
+wait 1
+pad b down
+wait 2
+pad b up
+wait 2
+check controls-portrait
+wait 1
+pad b down
+wait 2
+pad b up
+wait 2
+check rebind-open-portrait
+wait 1
+# five MenuDowns - right arms - walk to HARD DROP
+pad right down
+wait 2
+pad right up
+wait 2
+pad right down
+wait 2
+pad right up
+wait 2
+pad right down
+wait 2
+pad right up
+wait 2
+pad right down
+wait 2
+pad right up
+wait 2
+pad right down
+wait 2
+pad right up
+wait 2
+check rebind-at-harddrop-portrait
+wait 1
+pad b down
+wait 2
+pad b up
+wait 2
+check rebind-capture-armed-portrait
+wait 1
+# the shoulder names the portrait binding
+pad r1 down
+wait 2
+pad r1 up
+wait 2
+check rebind-harddrop-r1-portrait
+wait 1
+# back out through the turned roles: A leaves both screens
+pad a down
+wait 2
+pad a up
+wait 2
+check controls-portrait-custom
+wait 1
+pad a down
+wait 2
+pad a up
+wait 2
+check title-portrait-custom
+wait 1
+# the round on the rebound portrait table; the cursor sits on CONTROLS, so
+# one MenuUp - the left arm - reaches START GAME
+pad left down
+wait 2
+pad left up
+wait 2
+pad b down
+wait 2
+pad b up
+wait 2
+check playing-portrait-rebound
+wait 1
+# the freed grip-up arm drops nothing
+pad left down
+wait 2
+pad left up
+wait 2
+check portrait-dpad-left-dead
+wait 1
+# the stick reading that reaches the freed arm drops nothing either
+stick x -32767
+wait 4
+check portrait-stick-up-dead
+wait 1
+stick x 0
+wait 2
+# the shoulder drops in the turned frame
+pad r1 down
+wait 2
+pad r1 up
+wait 2
+check portrait-r1-drops
+wait 1
+# quit through the turned pause and title roles
+pad start down
+wait 2
+pad start up
+wait 2
+check paused-portrait-rebound
+wait 1
+pad left down
+wait 2
+pad left up
+wait 2
+check paused-portrait-at-quit-again
+wait 1
+pad b down
+wait 2
+pad b up
+wait 2
+check title-portrait-after-round
+wait 1
+pad right down
+wait 2
+pad right up
+wait 2
+pad right down
+wait 2
+pad right up
+wait 2
+pad right down
+wait 2
+pad right up
+wait 2
+check title-portrait-at-quit
+check quit-confirmed
+pad b down
+wait 2
+pad b up
+wait 2

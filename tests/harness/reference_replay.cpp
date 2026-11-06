@@ -140,6 +140,7 @@ struct Command {
   enum class Kind : std::uint8_t {
     Key,
     Pad,
+    Stick,
     Wait,
     Stall,
     Detach,
@@ -154,6 +155,7 @@ struct Command {
   Kind kind;
   bool pressed = false;
   int value = 0;
+  int axisValue = 0;
   std::string name;
   std::string text;
 };
@@ -222,6 +224,24 @@ bool parseScriptLine(const std::string& raw, std::vector<Command>* commands,
       }
       command.kind = Command::Kind::Pad;
     }
+  } else if (verb == "stick") {
+    // "stick <x|y> <value>": the axis words are the two readings of the left
+    // stick, resolved through the same deadzoned translation the game's SDL
+    // layer applies, so the two streams stay comparable (task T86).
+    const bool isX = name == "x";
+    const bool isY = name == "y";
+    if (!isX && !isY) {
+      return fail("unknown stick axis name");
+    }
+    const std::string tail =
+        nameEnd == std::string::npos ? "" : rest.substr(nameEnd + 1);
+    const std::size_t tailEnd = tail.find_first_of(" \t");
+    const std::string state = tail.substr(0, tailEnd);
+    if (!stackfall::parseScriptAxisValue(state.c_str(), &command.axisValue)) {
+      return fail("stick needs a value from -32768 to 32767");
+    }
+    command.kind = Command::Kind::Stick;
+    command.value = isX ? 0 : 1;
   } else if (verb == "wait" || verb == "stall") {
     // The one shared rule of the two mirrored parsers: the count runs
     // through the core's bounded parser, so neither copy can turn a huge
@@ -485,6 +505,18 @@ int main(int argc, char** argv) {
   std::uint64_t ticks = 0;
   bool running = true;
   bool padAttached = true;
+  // The thumbstick of the one pad a script may use (task T86): the D-pad
+  // control each axis last deflected to, or kNoControl at rest. The game's
+  // SDL layer derives the same transitions from real axis events, so this
+  // mirror derives them from the values the script names.
+  int stickArms[2] = {stackfall::kNoControl, stackfall::kNoControl};
+  // The game forgets the stick's deflected arms wherever it forgets the
+  // held levels and pending edges - a binding change and the orientation
+  // turn - so this mirror does the same on the same edges.
+  const auto forgetStickArms = [&stickArms]() {
+    stickArms[0] = stackfall::kNoControl;
+    stickArms[1] = stackfall::kNoControl;
+  };
   while (running) {
     // Pump: commands in order until the next pending wait completes. A quit
     // only asks the loop to leave; the rest of this frame - its tick and its
@@ -548,11 +580,44 @@ int main(int argc, char** argv) {
                              control, true, bindings, portraitTables);
           break;
         }
+        case Command::Kind::Stick: {
+          if (!padAttached) {
+            break;  // the detached pad no longer exists; the game ignores it
+          }
+          const auto axis = static_cast<stackfall::StickAxis>(command.value);
+          const int arm =
+              stackfall::controllerControlOfStickAxis(axis, command.axisValue);
+          if (arm == stickArms[command.value]) {
+            break;  // the same arm, or the same rest: no transition
+          }
+          if (stickArms[command.value] != stackfall::kNoControl) {
+            applyScriptControl(adapter, kPadSource,
+                               stackfall::DeviceKind::Controller,
+                               stickArms[command.value], false, bindings,
+                               portraitTables);
+          }
+          stickArms[command.value] = arm;
+          if (arm == stackfall::kNoControl) {
+            break;
+          }
+          if (captureRow >= 0) {
+            // A deflection names no control, so a capture never takes it and
+            // it never reaches the adapter either (task T86).
+            break;
+          }
+          applyScriptControl(adapter, kPadSource,
+                             stackfall::DeviceKind::Controller, arm, true,
+                             bindings, portraitTables);
+          break;
+        }
         case Command::Kind::Stall:
           break;  // a tick-per-frame session has no catch-up to force
         case Command::Kind::Detach:
           adapter.dropSource(kPadSource);
           padAttached = false;
+          // The stick state dies with the pad, exactly as the game's
+          // forgetStickOf() does on controller removal.
+          forgetStickArms();
           break;
         case Command::Kind::Attach:
           // The replug of task T066: a fresh handle with a fresh instance id,
@@ -624,6 +689,7 @@ int main(int argc, char** argv) {
         table[action][0] = captureControl;
         table[action][1] = stackfall::kNoControl;
         adapter.clearHeldAndPending();
+        forgetStickArms();
         std::fprintf(stderr, "reference: binding applied\n");
       }
     }
@@ -675,6 +741,7 @@ int main(int argc, char** argv) {
       if (row == stackfall::kRebindRestoreRow) {
         bindings = stackfall::defaultControlBindings();
         adapter.clearHeldAndPending();
+        forgetStickArms();
         std::fprintf(stderr, "reference: bindings restored to defaults\n");
       } else if (row >= 0 && row < stackfall::kRebindableActionCount) {
         captureRow = row;
@@ -701,6 +768,7 @@ int main(int argc, char** argv) {
         std::fprintf(stderr, "reference: capture cancelled by the turn\n");
       }
       adapter.clearHeldAndPending();
+      forgetStickArms();
       std::fprintf(stderr,
                    "reference: orientation %s (options row %d, applied in "
                    "this session)\n",

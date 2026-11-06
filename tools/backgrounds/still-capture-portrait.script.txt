@@ -1,0 +1,142 @@
+# Still chapter capture session, portrait half (docs/backgrounds, task T079):
+# the same ladder of four-line clears through the rotated key table of task
+# T055 - `z` rotates clockwise, `key left` hard drops - on the turned canvas
+# from a saved orientation=portrait, so the four designs draw in their own
+# 544x960 layout zones.
+#
+#   still-1..still-4  the play frame of levels 1 through 4, 544x960
+check still-title
+wait 1
+key enter down
+wait 2
+key enter up
+wait 2
+wait 0
+fixture tall-stack-ready
+wait 2
+key c down
+wait 2
+key c up
+wait 2
+check still-1
+wait 2
+wait 40
+check still-1b
+wait 2
+fixture four-line-ready
+wait 2
+key z down
+wait 2
+key z up
+wait 2
+key left down
+wait 2
+key left up
+wait 10
+fixture four-line-ready
+wait 2
+key z down
+wait 2
+key z up
+wait 2
+key left down
+wait 2
+key left up
+wait 10
+fixture four-line-ready
+wait 2
+key z down
+wait 2
+key z up
+wait 2
+key left down
+wait 2
+key left up
+wait 10
+wait 45
+fixture tall-stack-ready
+wait 2
+key c down
+wait 2
+key c up
+wait 2
+check still-2
+wait 2
+wait 60
+check still-2b
+wait 2
+fixture four-line-ready
+wait 2
+key z down
+wait 2
+key z up
+wait 2
+key left down
+wait 2
+key left up
+wait 10
+fixture four-line-ready
+wait 2
+key z down
+wait 2
+key z up
+wait 2
+key left down
+wait 2
+key left up
+wait 10
+wait 50
+fixture tall-stack-ready
+wait 2
+key c down
+wait 2
+key c up
+wait 2
+check still-3
+wait 2
+wait 60
+check still-3b
+wait 2
+fixture four-line-ready
+wait 2
+key z down
+wait 2
+key z up
+wait 2
+key left down
+wait 2
+key left up
+wait 10
+fixture four-line-ready
+wait 2
+key z down
+wait 2
+key z up
+wait 2
+key left down
+wait 2
+key left up
+wait 10
+fixture four-line-ready
+wait 2
+key z down
+wait 2
+key z up
+wait 2
+key left down
+wait 2
+key left up
+wait 10
+wait 50
+fixture tall-stack-ready
+wait 2
+key c down
+wait 2
+key c up
+wait 2
+check still-4
+wait 2
+wait 60
+check still-4b
+wait 2
+quit

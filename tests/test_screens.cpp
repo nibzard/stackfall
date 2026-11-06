@@ -6,8 +6,9 @@
 // Every screen, cursor, and transition of section 4.7 is checked without SDL:
 // TITLE (Start Game / Controls / Options / Quit over the high score),
 // CONTROLS, OPTIONS (SOUND / GHOST / GRID / HOLD / NEXT PIECES / GRAYSCALE /
-// ORIENTATION / MUSIC; cursor only; the values are platform state) with its
-// MUSIC_OPTIONS page behind the MUSIC row, PLAYING, the
+// ORIENTATION / MUSIC / BACKGROUNDS; cursor only; the values are platform
+// state) with its MUSIC_OPTIONS page behind the MUSIC row and its
+// BACKGROUNDS page behind the BACKGROUNDS row (task T084), PLAYING, the
 // PAUSED overlay (Resume / Restart / Quit to Title with
 // every counter frozen exactly), and GAME_OVER (final values, record note,
 // Play Again / Title). The session seed stream and the screen determinism of
@@ -33,9 +34,12 @@ using stackfall::Game;
 using stackfall::GameTestPeer;
 using stackfall::InputFrame;
 using stackfall::MenuFrame;
+using stackfall::kBackgroundOptionsItemCount;
 using stackfall::kMusicOptionsItemCount;
+using stackfall::kOptionsBackgroundsRow;
 using stackfall::kOptionsItemCount;
 using stackfall::kOptionsMusicRow;
+using stackfall::kOptionsPieceDesignsRow;
 using stackfall::PieceId;
 using stackfall::Scene;
 using stackfall::TickInput;
@@ -329,24 +333,31 @@ void test_title_options_round_trip() {
   g.tick(gameplay(pressPause()));
   SC_CHECK(g.scene() == Scene::Options);
 
-  // The cursor walks every one of the eight rows and wraps at both ends: down
-  // reaches GHOST, GRID, HOLD, NEXT PIECES, GRAYSCALE, ORIENTATION, and MUSIC,
-  // down again wraps back to SOUND, and up wraps from SOUND straight to MUSIC
-  // (tasks T044, T055, and T062).
+  // The cursor walks every one of the ten rows and wraps at both ends: down
+  // reaches GHOST, GRID, HOLD, NEXT PIECES, GRAYSCALE, ORIENTATION, MUSIC,
+  // BACKGROUNDS, and PIECE DESIGNS, down again wraps back to SOUND, and up
+  // wraps from SOUND straight to PIECE DESIGNS (tasks T044, T055, T062,
+  // T084, and T095).
   for (int row = 1; row < kOptionsItemCount; ++row) {
     g.tick(session(menuDown()));
     SC_CHECK(g.optionsSelection() == row);
   }
-  SC_CHECK(kOptionsItemCount == 8);
+  SC_CHECK(kOptionsItemCount == 10);
   SC_CHECK(kOptionsMusicRow == 7);
+  SC_CHECK(kOptionsBackgroundsRow == 8);
+  SC_CHECK(kOptionsPieceDesignsRow == 9);
   g.tick(session(menuDown()));
-  SC_CHECK(g.optionsSelection() == 0);  // wraps past MUSIC
+  SC_CHECK(g.optionsSelection() == 0);  // wraps past PIECE DESIGNS
   g.tick(session(menuUp()));
-  SC_CHECK(g.optionsSelection() == 7);  // wraps back up past SOUND
+  SC_CHECK(g.optionsSelection() == kOptionsPieceDesignsRow);  // up past SOUND
 
   // Select on a setting row changes nothing in the core: the row values are
   // platform state (specification section 7), so the screen stays put and the
-  // cursor holds.
+  // cursor holds. The walk back up crosses BACKGROUNDS before MUSIC.
+  g.tick(session(menuUp()));
+  SC_CHECK(g.optionsSelection() == kOptionsBackgroundsRow);  // BACKGROUNDS
+  g.tick(session(menuUp()));
+  SC_CHECK(g.optionsSelection() == 7);  // MUSIC
   g.tick(session(menuUp()));
   SC_CHECK(g.optionsSelection() == 6);  // ORIENTATION
   g.tick(session(menuSelect()));
@@ -439,6 +450,76 @@ void test_music_options_page() {
   g.tick(session(menuSelect()));
   SC_CHECK(g.scene() == Scene::MusicOptions);
   SC_CHECK(g.musicSelection() == 0);
+}
+
+// The backgrounds page behind the BACKGROUNDS row (task T084,
+// docs/BACKGROUND_IMPLEMENTATION.md player options): select on the
+// BACKGROUNDS row opens it, its two rows take the same cursor moves, select
+// changes nothing in the core for the same reason as the options screen, and
+// back returns to the options screen with the cursor still on the
+// BACKGROUNDS row, so B followed by A reopens the page. The opening select
+// of a fresh session lands on the MODE row again.
+void test_background_options_page() {
+  Game g;
+  g.openTitle(21);
+  g.tick(session(menuDown()));
+  g.tick(session(menuDown()));
+  g.tick(session(menuSelect()));  // OPTIONS
+  SC_CHECK(kBackgroundOptionsItemCount == 2);
+  for (int row = 0; row < kOptionsBackgroundsRow; ++row) {
+    g.tick(session(menuDown()));
+  }
+  SC_CHECK(g.optionsSelection() == kOptionsBackgroundsRow);
+
+  // The opening select belongs to the options screen, exactly as the music
+  // page's does.
+  g.tick(session(menuSelect()));
+  SC_CHECK(g.scene() == Scene::BackgroundOptions);
+  SC_CHECK(g.backgroundsSelection() == 0);  // MODE is the opening row
+
+  // The screen takes no gameplay input, exactly like the options screen.
+  g.tick(gameplay(pressPause()));
+  SC_CHECK(g.scene() == Scene::BackgroundOptions);
+
+  // The cursor walks the two rows and wraps at both ends.
+  g.tick(session(menuDown()));
+  SC_CHECK(g.backgroundsSelection() == 1);  // DESIGN
+  g.tick(session(menuDown()));
+  SC_CHECK(g.backgroundsSelection() == 0);  // wraps past DESIGN
+  g.tick(session(menuUp()));
+  SC_CHECK(g.backgroundsSelection() == 1);  // wraps back up past MODE
+
+  // Select changes nothing in the core: the background mode and the
+  // preferred design are platform state (specification section 7).
+  g.tick(session(menuSelect()));
+  SC_CHECK(g.scene() == Scene::BackgroundOptions);
+  SC_CHECK(g.backgroundsSelection() == 1);
+
+  // Back returns to the options screen on the BACKGROUNDS row, so A reopens
+  // the page on its opening row.
+  g.tick(session(menuBack()));
+  SC_CHECK(g.scene() == Scene::Options);
+  SC_CHECK(g.optionsSelection() == kOptionsBackgroundsRow);
+  g.tick(session(menuSelect()));
+  SC_CHECK(g.scene() == Scene::BackgroundOptions);
+  SC_CHECK(g.backgroundsSelection() == 0);
+
+  // Back twice leaves the whole settings stack: the title keeps its cursor
+  // on the OPTIONS item, and a fresh session starts the page over.
+  g.tick(session(menuBack()));
+  g.tick(session(menuBack()));
+  SC_CHECK(g.scene() == Scene::Title);
+  SC_CHECK(g.titleSelection() == 2);
+  g.openTitle(22);
+  g.tick(session(menuDown()));
+  g.tick(session(menuDown()));
+  g.tick(session(menuSelect()));
+  for (int row = 0; row < kOptionsBackgroundsRow; ++row) {
+    g.tick(session(menuDown()));
+  }
+  g.tick(session(menuSelect()));
+  SC_CHECK(g.scene() == Scene::BackgroundOptions);
+  SC_CHECK(g.backgroundsSelection() == 0);
 }
 
 // ---------------------------------------------------------------------------
@@ -793,6 +874,7 @@ void run_screens_tests() {
   test_title_quit();
   test_title_options_round_trip();
   test_music_options_page();
+  test_background_options_page();
   test_pause_overlay_resume_paths();
   test_pause_overlay_restart_and_quit_to_title();
   test_pause_controls_round_trip();

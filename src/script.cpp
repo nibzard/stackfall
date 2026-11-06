@@ -27,4 +27,44 @@ bool parseScriptCount(const char* text, int* out) {
   return true;
 }
 
+bool parseScriptAxisValue(const char* text, int* out) {
+  if (text == nullptr || text[0] == '\0') {
+    return false;
+  }
+  bool negative = false;
+  const char* digits = text;
+  if (digits[0] == '-') {
+    negative = true;
+    ++digits;
+  }
+  if (digits[0] == '\0') {
+    return false;  // a bare minus sign names no value
+  }
+  // The accumulator stays inside the positive 16-bit range, so the one
+  // negative value beyond it, -32768, is accepted by magnitude: 32768 fits
+  // the wide accumulator and only the final range check sees the difference.
+  std::int64_t value = 0;
+  for (const char* p = digits; *p != '\0'; ++p) {
+    if (*p < '0' || *p > '9') {
+      return false;
+    }
+    value = value * 10 + static_cast<std::int64_t>(*p - '0');
+    if (value > static_cast<std::int64_t>(kMaxScriptAxisValue) + 1) {
+      return false;
+    }
+  }
+  if (negative) {
+    // The negative side reaches one further than the positive one:
+    // -32768 is a real SDL axis reading and 32768 is not.
+    if (value > -static_cast<std::int64_t>(kMinScriptAxisValue)) {
+      return false;
+    }
+    value = -value;
+  } else if (value > kMaxScriptAxisValue) {
+    return false;
+  }
+  *out = static_cast<int>(value);
+  return true;
+}
+
 }  // namespace stackfall

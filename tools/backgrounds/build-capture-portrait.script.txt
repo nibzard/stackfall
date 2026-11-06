@@ -1,0 +1,427 @@
+# Build chapter capture session, portrait half (docs/backgrounds, task T081):
+# the same ladder of four-line clears through the rotated key table of task
+# T055 - `z` rotates clockwise, `key left` hard drops - on the turned canvas
+# from a saved orientation=portrait, so the four structured designs draw in
+# their own 544x960 layout zones, three clock phases per level.
+#
+#   build-9..build-12    the play frame of levels 9 through 12, 544x960
+#   build-9b..build-12b  the same levels 64 ticks later on the clock
+#   build-9c..build-12c  and 64 ticks later still
+check build-title
+wait 1
+key enter down
+wait 2
+key enter up
+wait 2
+wait 0
+# 20 more cycles: 80 lines reach level 9
+fixture four-line-ready
+wait 2
+key z down
+wait 2
+key z up
+wait 2
+key left down
+wait 2
+key left up
+wait 10
+fixture four-line-ready
+wait 2
+key z down
+wait 2
+key z up
+wait 2
+key left down
+wait 2
+key left up
+wait 10
+fixture four-line-ready
+wait 2
+key z down
+wait 2
+key z up
+wait 2
+key left down
+wait 2
+key left up
+wait 10
+fixture four-line-ready
+wait 2
+key z down
+wait 2
+key z up
+wait 2
+key left down
+wait 2
+key left up
+wait 10
+fixture four-line-ready
+wait 2
+key z down
+wait 2
+key z up
+wait 2
+key left down
+wait 2
+key left up
+wait 10
+fixture four-line-ready
+wait 2
+key z down
+wait 2
+key z up
+wait 2
+key left down
+wait 2
+key left up
+wait 10
+fixture four-line-ready
+wait 2
+key z down
+wait 2
+key z up
+wait 2
+key left down
+wait 2
+key left up
+wait 10
+fixture four-line-ready
+wait 2
+key z down
+wait 2
+key z up
+wait 2
+key left down
+wait 2
+key left up
+wait 10
+fixture four-line-ready
+wait 2
+key z down
+wait 2
+key z up
+wait 2
+key left down
+wait 2
+key left up
+wait 10
+fixture four-line-ready
+wait 2
+key z down
+wait 2
+key z up
+wait 2
+key left down
+wait 2
+key left up
+wait 10
+fixture four-line-ready
+wait 2
+key z down
+wait 2
+key z up
+wait 2
+key left down
+wait 2
+key left up
+wait 10
+fixture four-line-ready
+wait 2
+key z down
+wait 2
+key z up
+wait 2
+key left down
+wait 2
+key left up
+wait 10
+fixture four-line-ready
+wait 2
+key z down
+wait 2
+key z up
+wait 2
+key left down
+wait 2
+key left up
+wait 10
+fixture four-line-ready
+wait 2
+key z down
+wait 2
+key z up
+wait 2
+key left down
+wait 2
+key left up
+wait 10
+fixture four-line-ready
+wait 2
+key z down
+wait 2
+key z up
+wait 2
+key left down
+wait 2
+key left up
+wait 10
+fixture four-line-ready
+wait 2
+key z down
+wait 2
+key z up
+wait 2
+key left down
+wait 2
+key left up
+wait 10
+fixture four-line-ready
+wait 2
+key z down
+wait 2
+key z up
+wait 2
+key left down
+wait 2
+key left up
+wait 10
+fixture four-line-ready
+wait 2
+key z down
+wait 2
+key z up
+wait 2
+key left down
+wait 2
+key left up
+wait 10
+fixture four-line-ready
+wait 2
+key z down
+wait 2
+key z up
+wait 2
+key left down
+wait 2
+key left up
+wait 10
+fixture four-line-ready
+wait 2
+key z down
+wait 2
+key z up
+wait 2
+key left down
+wait 2
+key left up
+wait 10
+wait 45
+fixture tall-stack-ready
+wait 2
+key c down
+wait 2
+key c up
+wait 2
+check build-9
+wait 2
+wait 54
+fixture tall-stack-ready
+wait 2
+key c down
+wait 2
+key c up
+wait 2
+check build-9b
+wait 2
+wait 54
+fixture tall-stack-ready
+wait 2
+key c down
+wait 2
+key c up
+wait 2
+check build-9c
+wait 2
+wait 54
+wait 2
+# 3 more cycles: 92 lines reach level 10
+fixture four-line-ready
+wait 2
+key z down
+wait 2
+key z up
+wait 2
+key left down
+wait 2
+key left up
+wait 10
+fixture four-line-ready
+wait 2
+key z down
+wait 2
+key z up
+wait 2
+key left down
+wait 2
+key left up
+wait 10
+fixture four-line-ready
+wait 2
+key z down
+wait 2
+key z up
+wait 2
+key left down
+wait 2
+key left up
+wait 10
+wait 45
+fixture tall-stack-ready
+wait 2
+key c down
+wait 2
+key c up
+wait 2
+check build-10
+wait 2
+wait 54
+fixture tall-stack-ready
+wait 2
+key c down
+wait 2
+key c up
+wait 2
+check build-10b
+wait 2
+wait 54
+fixture tall-stack-ready
+wait 2
+key c down
+wait 2
+key c up
+wait 2
+check build-10c
+wait 2
+wait 54
+wait 2
+# 3 more cycles: 104 lines reach level 11
+fixture four-line-ready
+wait 2
+key z down
+wait 2
+key z up
+wait 2
+key left down
+wait 2
+key left up
+wait 10
+fixture four-line-ready
+wait 2
+key z down
+wait 2
+key z up
+wait 2
+key left down
+wait 2
+key left up
+wait 10
+fixture four-line-ready
+wait 2
+key z down
+wait 2
+key z up
+wait 2
+key left down
+wait 2
+key left up
+wait 10
+wait 45
+fixture tall-stack-ready
+wait 2
+key c down
+wait 2
+key c up
+wait 2
+check build-11
+wait 2
+wait 54
+fixture tall-stack-ready
+wait 2
+key c down
+wait 2
+key c up
+wait 2
+check build-11b
+wait 2
+wait 54
+fixture tall-stack-ready
+wait 2
+key c down
+wait 2
+key c up
+wait 2
+check build-11c
+wait 2
+wait 54
+wait 2
+# 3 more cycles: 116 lines reach level 12
+fixture four-line-ready
+wait 2
+key z down
+wait 2
+key z up
+wait 2
+key left down
+wait 2
+key left up
+wait 10
+fixture four-line-ready
+wait 2
+key z down
+wait 2
+key z up
+wait 2
+key left down
+wait 2
+key left up
+wait 10
+fixture four-line-ready
+wait 2
+key z down
+wait 2
+key z up
+wait 2
+key left down
+wait 2
+key left up
+wait 10
+wait 45
+fixture tall-stack-ready
+wait 2
+key c down
+wait 2
+key c up
+wait 2
+check build-12
+wait 2
+wait 54
+fixture tall-stack-ready
+wait 2
+key c down
+wait 2
+key c up
+wait 2
+check build-12b
+wait 2
+wait 54
+fixture tall-stack-ready
+wait 2
+key c down
+wait 2
+key c up
+wait 2
+check build-12c
+wait 2
+wait 54
+wait 2
+quit

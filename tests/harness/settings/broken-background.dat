@@ -1,0 +1,13 @@
+version=1
+sound=on
+ghost=on
+grid=on
+hold=on
+next=5
+grayscale=off
+orientation=landscape
+music=auto
+musicvolume=6
+effectsvolume=8
+background=fixed
+backgroundid=99

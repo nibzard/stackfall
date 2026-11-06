@@ -52,7 +52,8 @@ tests/harness/run.sh
 ```
 
 It builds `stackfall` and `stackfall_reference`, runs the headless `ctest`
-suites first, then drives twenty-four sessions through the real SDL application
+suites first, then drives thirty-three sessions through the real SDL
+application
 under `SDL_VIDEODRIVER=dummy` with the SDL dummy audio device, a fixed seed,
 an explicit save directory, a frame bound, and a process timeout:
 
@@ -71,20 +72,47 @@ an explicit save directory, a frame bound, and a process timeout:
   a tick, whose queued press the per-tick input log must show spent of its
   gameplay edge. The desktop keyboard defaults ride the same session: X
   rotates one clockwise step and Space hard drops.
+- `stick-pad` (T86): the landscape thumbstick session on the developer
+  virtual controller. The Y axis carries the D-pad arms' menu roles, so the
+  stick walks the title menu both ways before A starts the round. The round
+  then moves the piece one column with X negative and one back with X
+  positive, holds the piece still through a reading of 7999 on both axes,
+  moves it again at the deadzone boundary 8000 itself, soft drops two cells
+  with Y positive and hard drops with Y negative, and closes with a D-pad
+  and a keyboard move that prove neither changed. The checker pins the
+  direction and the arithmetic from the records and the ordered action bits
+  of the round's per-tick input log, so a dead or inverted axis fails it
+  whatever the reference says.
+- `stick-portrait` (T86): the turned thumbstick session on the developer
+  virtual controller. A landscape session walks to the ORIENTATION row and
+  selects it with the stick deflected across the press - X negative, the
+  D-pad's left arm - so the turn must spend the deflected arm with every
+  held level and pending edge, which the input-log probe names. The turned
+  session then walks the title on the stick's X axis, plays a round whose
+  physical down reading moves the piece left, physical up moves it right,
+  physical right soft drops, and physical left hard drops - the portrait
+  table of section 5, reading by reading - with B, A, and Y rotating and
+  holding beside the stick, X carrying nothing, and a deadzone reading
+  holding the turned round too. The session turns back to landscape and to
+  portrait again, so the saved preference it leaves is portrait, and the
+  quit runs through the turned roles.
+- `harddrop-rebind` (T87): the staged hard-drop rebind session. See the
+  staged paragraph below.
 - `normal-game-clears`: a planned game from an empty board with rotations,
   taps, hold, soft drop, delayed auto-shift, one line clear, and a pause.
 - `options-ghost`: the options screen round trip. A first round runs with
   the ghost at its on default, then the session opens OPTIONS, moves to the
   GHOST row, selects it to turn the ghost off, returns to the title, and
   plays a second round from the same empty board.
-- `options-six-keyboard`, `options-six-pad` (T045, T055, and T062): the
-  eight-row options screen on both inputs. Each session reaches every row,
-  wraps past MUSIC back to SOUND, and changes the four settings of the
-  expansion - GRID off, HOLD off, NEXT PIECES cycled, GRAYSCALE on - while
-  the ORIENTATION and MUSIC rows are reached but never selected, so both
-  sessions stay landscape and never open the music settings page. The pad
-  session then plays a round in which its own hold inputs, Y and the left
-  shoulder, change nothing while HOLD is off.
+- `options-six-keyboard`, `options-six-pad` (T045, T055, T062, T084, and
+  T095): the ten-row options screen on both inputs. Each session reaches
+  every row, wraps past PIECE DESIGNS back to SOUND, and changes the four
+  settings of the expansion - GRID off, HOLD off, NEXT PIECES cycled,
+  GRAYSCALE on - while the ORIENTATION, MUSIC, BACKGROUNDS, and PIECE
+  DESIGNS rows are reached but never selected, so both sessions stay
+  landscape, keep the designs off, and never open a submenu. The
+  pad session then plays a round in which its own hold inputs, Y and the
+  left shoulder, change nothing while HOLD is off.
 - `music-settings`, `music-settings-pad` (T062): the music settings page
   behind the MUSIC row, on both inputs. Each session opens the page from the
   MUSIC row, takes one select per row - the MUSIC mode cycles Auto ->
@@ -97,6 +125,45 @@ an explicit save directory, a frame bound, and a process timeout:
   saved. The checker compares every checkpoint with the reference replay
   and pins the four-row page layout from screenshots, the exact saved
   bytes, and the input-log lines.
+- `backgrounds-keyboard` (T084): the backgrounds page behind the
+  BACKGROUNDS row on the keyboard. The MODE ring walks Auto -> Off ->
+  Fixed, the DESIGN row walks every stable ID 1 through 20 with the wrap
+  back to 1 and ends on 7 - each select of the walk a saved Fixed ID - and
+  the mode then steps Auto and lands on Off with the preferred design kept,
+  before back returns to the options screen on the BACKGROUNDS row. Every
+  checkpoint pins the two-row page layout from pixels, the input log
+  carries the whole design ring in order, and the saved file holds
+  `background=off` and `backgroundid=7`.
+- `backgrounds-pad` (T084): the same page on the developer virtual
+  controller, with the same-session application the acceptance names: the
+  round opened after the mode landed Off draws the legacy flat wallpaper on
+  its first play frame, the round opened after Fixed draws the retained
+  design 2 on the next play frame of the same session, and the round opened
+  after Auto draws the level 1 design with its corner ink - the Auto
+  boundary - all proven from probe pixels of the quiet span and the guard
+  gaps. The options cursor keeps the BACKGROUNDS row across the round
+  trips, and the file ends at `auto` with the retained design 2.
+- `backgrounds-relaunch` (T084): the staged backgrounds session. See the
+  next paragraph.
+- `piece-designs-keyboard` (T095): the PIECE DESIGNS row of the options
+  screen on the keyboard, tenth after BACKGROUNDS. One select turns the
+  per-piece in-cell marks on, a round over the labeled `all-pieces` fixture
+  draws every mark in color, the same select walks the value off for a
+  control round over the same fixture, and a final visit turns it back on,
+  so the saved file ends at `piecedesigns=on` and the input log carries both
+  directions. The checker reads one settled cell of every piece type from
+  the captured frame - the interior holds only the palette fill and dark
+  shade, the dark pixels form the mark, and no two pieces share one - and
+  the plain frame proves the flat cell draws no dark pixel at all.
+- `piece-designs-pad` (T095): the same row and the same fixture round on
+  the developer virtual controller, the input path of `scene-cycle-pad`,
+  ending with the saved `piecedesigns=on`.
+- `piece-designs-gray` (T095): the marks where color is gone. One options
+  visit turns GRAYSCALE and PIECE DESIGNS on together, the fixture frame
+  captures every mark in gray, and the same session then turns portrait
+  through the ORIENTATION row and captures the turned frame, so the checker
+  reads all seven marks through the fixed rotation of task T055 too; the
+  quit runs through the turned menu roles of the portrait table.
 - `hold-off` (T045): HOLD off, a round whose C and Left Shift presses move
   nothing and spend no lock while the Hold group draws nothing at all, then
   HOLD back on for a round that proves the once-per-piece rule survived.
@@ -154,7 +221,7 @@ to leave none - the marker for a stage that exercises no settings write. The
 driver snapshots the settings and controls files before and after every
 stage, the reference replays each stage against the files it started from,
 and the checker compares every stage's records with its own reference
-stream. The seven staged sessions are:
+stream. The nine staged sessions are:
 
 - `options-relaunch`: four keyboard processes, each selecting one of the four
   new rows once and quitting. The snapshot after every stage is one exact
@@ -176,6 +243,24 @@ stream. The seven staged sessions are:
   stage after the first loads that record - while the checker reads each
   stage's screenshots and requires exactly its count of previews in queue
   order, the first at full color and the rest dim.
+- `backgrounds-relaunch` (T084): three keyboard stages over one save
+  directory. Stage one starts from `settings=fixed-seven-portrait.dat` -
+  portrait, `background=fixed`, `backgroundid=7` - so the relaunch opens the
+  backgrounds page with the saved FIXED and DESIGN 7 values at the portrait
+  metrics (the checker reads the turned bands from screenshots), moves the
+  preference to 8, and its first play frame draws the saved design 7 in
+  portrait, proven from base-field probe pixels of the tall frame. Stage two
+  starts from `settings=broken-background.dat`, whose `backgroundid=99` sits
+  outside the catalog, so the whole file is damaged under the recovery
+  policy: the session opens on every default - the startup input-log lines
+  name `background start=auto` and `backgroundid start=1` - changes nothing,
+  and the file must still hold its exact broken bytes, because a load never
+  rewrites the settings. Stage three starts from
+  `settings=legacy-music-eleven.dat`, the eleven-line file of the music era:
+  every saved value loads, the three new lines fill with the Auto, design
+  1, and piece-designs Off defaults, and one MODE select saves Off and
+  upgrades the file to the current fourteen-line canonical form with every
+  legacy value kept.
 - `portrait-keyboard`, `portrait-pad` (T055, T068): two stages over one save
   directory each. Stage one runs landscape, walks to the seventh OPTIONS row,
   ORIENTATION, and selects it with a direction held across the press - key
@@ -211,6 +296,26 @@ stream. The seven staged sessions are:
   through the customization screen and back, plays a round on the defaults -
   D carries nothing, Space hard drops - and leaves the damaged file
   byte-identical to how it found it, because nothing customized anything.
+- `harddrop-rebind` (T87): three pad stages over one save directory, the
+  first marked `settings=none`. Stage one plays the task T067 defaults with
+  the stick's edge rule pinned from both sides of the deadzone - a 7999
+  reading and a wobble across it drop nothing, one full deflection drops
+  once, a held deflection drops nothing more - then rebinds HARD DROP to
+  the face button X, to the right shoulder R1, and, on the keyboard table,
+  to D, and plays the rebound tables: the freed D-pad up, the stick reading
+  that reaches it, and X all settle nothing, while R1 and D drop. Stage two
+  relaunches on that file - its startup log names custom bindings - plays
+  the loaded tables, turns the session portrait through the ORIENTATION
+  row, and proves the untouched portrait defaults still hard drop from the
+  grip's up arm with the same edge rule, so the landscape rebind leaked
+  into no other table. It then rebinds the portrait HARD DROP to R1 through
+  the turned menu roles and plays the rebound portrait table. Stage three
+  relaunches onto the saved orientation and the saved custom tables, proves
+  the persisted rebind in a round, and ends on RESTORE DEFAULTS, whose
+  snapshot is the exact section 5 bytes again, played once more before the
+  quit. The checker pins every capture's input-log line, the freed triggers
+  settling nothing, the drop-edge count of each round, the controls-file
+  bytes after every stage, and the quiet rebind page in both orientations.
 
 The T055 and T068 portrait sessions add their own proofs to the checker: the
 play frame read from pixels through the rotation (portrait x=71..472,
@@ -239,8 +344,8 @@ its eighth with MUSIC (T062).
 
 The T045 sessions add their own pixel and file proofs to the checker: the
 options page itself (heading, one text line per row with the accent marker on
-the highlighted row, footer, and nothing under the footer, so the eight rows
-fit the canvas), the Hold group hidden to the last pixel while HOLD is off
+the highlighted row, footer, and nothing under the footer, so every row of
+the page fits the canvas), the Hold group hidden to the last pixel while HOLD is off
 and drawn with the stashed piece's exact shape and shade while it is on, the
 preview slots' shapes and shades against the record's queue, the grayscale
 play scene (every piece pixel of the well gray, the text and the board frame
@@ -270,7 +375,8 @@ the section 5 defaults when the file is absent or damaged) and swaps its own
 binding tables on the same capture edges the game applies, so a session with
 custom tables compares against a reference that drives the same ones. The
 checker pins, per session: the scene walk onto the customization screen and
-back on both inputs; the menu-cursor state at every step of the nine rows;
+back on both inputs; the menu-cursor state at every step of the nine rows
+of the customization screen;
 the input-log evidence lines of an applied capture, a rejected capture that
 names the action that holds the control, a cancelled capture, and a restore;
 the exact `controls.dat` bytes before and after every staged change; the
@@ -290,6 +396,35 @@ A reused run id - `HARNESS_RUN_ID` here, `T024_RUN_ID` in
 `tests/harness/t024.sh` - removes that run directory before the run starts,
 so a rerun cannot inherit the earlier pass's saved high score or its
 evidence.
+
+### Parallel ctest runs
+
+Every harness and gate script runs `ctest` serially, with no `-j`. A manual
+`ctest -j4` is also safe: the `stackfall_tests` and `stackfall_tests_seed`
+entries share a CTest `RESOURCE_LOCK`, so the two whole-suite runs - which
+both time the record writer's real waits (`tests/test_record_writer.cpp`)
+- never overlap. The record-writer checks themselves tolerate a loaded
+machine: the submit ceiling is half the injected 80 ms write, which the old
+synchronous path still fails by 2x, and the one check that needs a write to
+be in flight blocks that write on a latch instead of racing the clock. This
+is the repair of the one-time parallel flake of task T093 (Papercut
+pc_01M6NVGZY80XPVSZW5317AGBQ4): a loaded first `-j4` run of a fresh Debug
+build reported three record-writer failures in `stackfall_tests_seed` that
+a serial rerun cleared.
+
+The audio suite's callback ceiling (`tests/test_audio_sdl.cpp`) no longer
+races the scheduler either, for the same reason (task T096, which
+reproduced the sibling flake under `taskset -c 0-3 ctest -j4` against 24
+busy loops): the wall clock it printed measures the load a host carries as
+readily as the mix, and a starved run read a p99 of 105 percent of the
+buffer while its median stayed near 0.05 ms. The pin now reads the
+calling thread's own CPU clock, which preemption cannot inflate, so host
+load cannot trip it and the half-buffer ceiling is unchanged; a genuinely
+more expensive mix still misses the ceiling by far. The wall percentiles
+keep printing for `notes/performance.md`, and the second printed line names
+the clock the pin read, so a host without a POSIX thread clock - which
+falls back to the wall clock and stays load-sensitive - says so in its own
+output.
 
 ### Developer options of the game binary
 
@@ -329,6 +464,8 @@ wall clock batched frames. The script language (`tests/harness/scripts/`):
 ```
 key <name> down|up    push a keyboard event into the SDL queue
 pad <name> down|up    press a virtual pad button
+stick <x|y> <value>   set the virtual pad's left-stick axis reading,
+                      -32768..32767; 0 rests the stick in the deadzone
 wait <ticks>          hold the script until that many ticks ran
 stall <ms>            delay the frame, forcing a catch-up batch
 detach                detach the virtual controller
@@ -339,6 +476,11 @@ shot <name>           record one screenshot, no observation
 quit                  leave the main loop cleanly
 echo <text>           log a marker line
 ```
+
+The `stick` command (T86) names the exact reading the virtual pad reports,
+so a script can hold the deadzone boundary and the far ends of an axis. The
+value runs through the one bounded signed parser of `stackfall/script.hpp`,
+shared with the reference replay exactly as the `wait` count is.
 
 A `check` flushes after its frame's tick and render, so the record and the
 image describe the state that was drawn; put a `wait` between a check and the
@@ -654,6 +796,505 @@ T019 package check, which reads the same header.
 Environment variables: `T035_BUILD_DIR` (default `build`), `T035_RUN_ID`
 (default `t035-version-<date>`), `T035_TIMEOUT_S` (default 120), and
 `T035_SKIP_BUILD=1` to reuse the desktop build.
+
+## T078: Background renderer and clock
+
+The procedural level backgrounds of `docs/backgrounds` split across two
+suites. Both build with the ordinary `ctest` pass; neither needs a display.
+
+- The headless suite `run_backgrounds_tests` of `tests/test_backgrounds.cpp`
+  links the core alone. It pins the approved catalog of twenty designs
+  against `docs/backgrounds/level-XX.md` (names, palettes, chapters, motion,
+  transitions, budgets, the rising intensity arc), the componentwise caps of
+  the brief, the cosmetic `hash32` against the `h32()` values of
+  `tools/backgrounds/designs.py`, the presentation clock (advance, the
+  per-frame clamp, freeze that drops time, resume without a jump, reset, the
+  bounded wrap), the clipping layer (no shape inside the well or frame,
+  accents only in the loud margins, canvas clamping), the wallpaper state
+  machine (Off, Auto with its level clamp, Fixed, cuts, stepped fades with
+  their exact integer colors, mid-fade restarts, round resets), and the
+  independence of the wallpaper from gameplay randomness: two rounds on
+  different seeds diverge while their wallpaper streams stay identical.
+- `run_background_checks` of `tests/test_renderer_sdl.cpp` pins the SDL
+  half: `backgroundZones()` equals the design package mask of
+  `docs/backgrounds/index.md` in both orientations, the play scene paints a
+  design's base outside the well and frame at exact pixels, Off keeps the
+  legacy flat `#10121A` pixels at any level, Fixed holds one design across
+  level changes, a cut lands in one draw, a fade steps through its record's
+  visible steps with the clock freeze holding them, pause and game-over
+  keep the selected wallpaper beneath the veil, grayscale keeps the
+  wallpaper palette, the menu pages keep the flat ground, and a same-session
+  orientation turn rebuilds the geometry without changing the landscape
+  bytes.
+
+The chapter grammars of T079 through T083 land in `paintGrammar()` of
+`src/backgrounds.cpp`. The Still chapter landed with T079, so the level 1
+play scene carries the corner steps of Still ground instead of the legacy
+flat pixels; the suites that pin the board, the HUD, and the letterbox on
+the flat ground run in background mode Off (`useFlatPlayGround()`), and
+`run_background_checks` pins the level 1 pixels themselves. The designs of
+the Pressure and Peak chapters have not landed; they paint their base
+field alone. The
+options submenu and the saved mode land with T084; the full visual,
+behavioral, and cost validation is T085.
+
+## T079: The Still chapter
+
+Levels 1 through 4 draw their approved grammars, ported formula by formula
+from `tools/backgrounds/designs.py` so both orientations reproduce the
+design package's plates pixel for pixel. Three checks hold them:
+
+- `run_backgrounds_still_checks()` of `tests/test_backgrounds.cpp` pins each
+  design's plate against its record on both orientations - the corner steps
+  of Still ground (160 x 121 and 62 percent of that, landscape and portrait
+  sizes exact), the rule row and the under-bands of First light (440, 448,
+  456 landscape; 784, 792, 800 portrait), the 28 hash-ranked stars of
+  Distant stars (a digest over the whole approved stream, per-margin counts,
+  the color and size split, and anchors), and the eight strata of Quiet
+  strata with their stepped ends (40 elements landscape, 36 portrait). The
+  same suite holds the chapter contract: the emitted fills stay inside the
+  budget class, the accent colors stay under two percent of the canvas and
+  inside the loud margins, nothing above the secondary cap draws outside
+  them, the stream is byte-identical at six arbitrary clock values
+  including the 32-bit wrap, and adjacent levels stay distinct at the
+  one-eighth review scale of the design package.
+- `run_background_checks()` of `tests/test_renderer_sdl.cpp` pins the same
+  designs in the real frame, both orientations: the corner ink at exact
+  pixels through the portrait rotation, the rule cut by the frame ring, the
+  star anchors of the approved placement, the strata rows and their steps,
+  the quiet strips under the secondary cap, a whole turned frame redrawn
+  byte-identically after forty seconds of presentation clock, and the
+  Off-mode suites above keeping the legacy flat pixels.
+- `tools/backgrounds/still_check.py` reads the real captures of
+  `tools/backgrounds/still-capture.script.txt` and its portrait twin: two
+  scripted sessions walk the level ladder the only way the rules allow -
+  four-line clears of the `four-line-ready` fixture, twelve lines to level
+  2, twenty to level 3, thirty-two to level 4 - and write two frames per
+  level about a second apart on the presentation clock. The check reads the
+  BMPs through the renderer's rotation, pins the record pixels, holds the
+  caps over the regions the wallpaper owns alone, proves no wallpaper color
+  reaches the opaque well, proves the loud margins byte-identical between
+  each level's two frames while the round itself moved on, and compares the
+  adjacent levels at the one-eighth scale over the whole captured frame.
+
+The captures are evidence, not fixtures: they land under
+`build/agent-checks/<run-id>/`, and the script pair is retained so the run
+reproduces. The run also builds `still-review-sheet.png`, the eight frames
+beside the approved mockups at one-eighth scale (the portrait frames turned
+back for a like-for-like read), for the visual pass against the approved
+direction; a re-run of both sessions against the final binary reproduced
+every frame byte for byte.
+
+## T080: The Stir chapter
+
+Levels 5 through 8 draw their approved grammars with their one moving
+layer each, ported formula by formula from `tools/backgrounds/
+designs.py` with the displacement carried at milli-pixel precision
+through the wrap and rounded once at the end, halves to even, so both
+orientations reproduce the design package's plates pixel for pixel at
+every whole-millisecond clock. Three checks hold them:
+
+- `run_backgrounds_stir_checks()` of `tests/test_backgrounds.cpp` pins
+  each design's plate and fill stream against its record on both
+  orientations - the 56 stars and 10 static dust flecks of Slow drift
+  (a digest over the approved stream, per-margin counts, anchors, the
+  272 s landscape and 15639 s portrait wrap returns, and the exact
+  round-to-even steps at the 250, 750, and 1250 ms halves), the 18 zone
+  rectangles and 120 rising dither squares of Dither dusk (the 278 s and
+  407 s seamless wrap returns), the 14 towers, 28 roofs, and 54 or 168
+  breathing windows of Sleeping skyline (the swell one through the
+  middle half of the 8 s cycle, quiet at its exact-half edges 2000 and
+  6000 ms, the bottom row of every window holding), and the four or six
+  scanline bursts and four bars of Low signal (the 10/3 s texture
+  return). The chapter contract holds the caps, the accent share under
+  two percent at rest and mid-motion, the small-element budget, one
+  moving layer per design, the stream a pure function of the clock
+  across the 32-bit wrap, the review-scale mark density rising over the
+  Still chapter in both orientations, and distinctness at one-eighth
+  scale across the chapter boundary and inside the chapter.
+- `run_background_checks()` of `tests/test_renderer_sdl.cpp` pins the
+  same designs in the real frame: the star anchors of level 5 at clock
+  zero sinking one pixel over half a second with the dust still, the
+  dusk zones and caps of level 6 at exact pixels with a patch square
+  lifting, the corner tower, roofs, and a breathing window of level 7
+  swelling at 4 s into the cycle, and the bars and scrolling rules of
+  level 8, in landscape and through the portrait rotation. The veil,
+  grayscale, and portrait-zone suites that read a flat margin moved to
+  the not-yet-landed design 9; grayscale now compares the whole margin
+  byte for byte with the pieces graying inside the well alone.
+- `tools/backgrounds/stir_check.py` reads the real captures of
+  `tools/backgrounds/stir-capture.script.txt` and its portrait twin: two
+  scripted sessions walk the level ladder to levels 5 through 8 and
+  write three frames per level, 62 ticks apart, over the tall-stack
+  board. The check solves the one frame offset K of
+  `clock = floor((tick + K) * 50/3) ms` jointly over every frame, then
+  requires each frame's loud margins to equal the design package's own
+  plate at that exact clock - so the captures pin the designs at six
+  known phases of their motion - beside the caps, the accent share, the
+  well purity, the motion between the phases, and the adjacent levels
+  at one-eighth scale over the whole captured frame.
+
+The captures are evidence, not fixtures: they land under
+`build/agent-checks/<run-id>/`, and the script pair is retained so the
+run reproduces. A bridge check painted both orientations of all four
+designs through the runtime and through the design package's own
+grammars at 2536 clock values - every 7 ms of the first two seconds,
+the rounding and pulse edges, the wrap spans, and the 32-bit clock wrap
+- and compared the full canvases pixel for pixel: zero differing
+pixels. Contract correction of the task, following the First light
+precedent: the tower-height share of Sleeping skyline is
+`0.10 + 0.24 * (1 - corner closeness)`, which the machinery, mockups,
+and runtime draw; the record prose mistyped 0.30. Fixed in
+`docs/backgrounds/level-07.md` and in the generator.
+
+## T081: The Build chapter
+
+Levels 9 through 12 draw their approved grammars with their one moving
+layer each - a sinking tick field, a breathing core pulse, a rising
+ribbon layer, and one shared diagonal drift - ported formula by formula
+from `tools/backgrounds/designs.py`, the band staircase through the
+package's floor-division phase and both drift axes at once through
+`exactDots()`, so both orientations reproduce the design package's
+plates pixel for pixel at every whole-millisecond clock. Three checks
+hold them:
+
+- `run_backgrounds_build_checks()` of `tests/test_backgrounds.cpp` pins
+  each design's plate and fill stream against its record on both
+  orientations - the two twelve-step staircases of Fracture (24 seam
+  blocks of the record's step width beside 24 offset ledges, 44 whole
+  ticks that sink 3 px/s over their margin span while the staircases
+  hold still, and the 544 s landscape and 802 s portrait wrap returns),
+  the sixteen right-angle paths of Circuit hush (64 traces or 62 in the
+  narrow portrait margins, 16 square nodes, 6 lit cores that swell to
+  3 x 3 px through the middle half of the 7 s cycle - quiet at the
+  exact-half edges 1750 and 5250 ms - and the 7 s cycle return), the
+  three stepped ribbons of Band aurora (nine staircase bands of 162
+  landscape or 45 portrait segments at rest, eight riding ticks, the
+  4 px/s rise audited between adjacent 250 ms probes, a whole-pass
+  repaint bound that a wrap pop would break, and the 29347.5 s and
+  132996.5 s least-common-multiple stream returns), and the stars and
+  trails of Long trails (72 stars in the ranked 40/32 size split, 72
+  staircase steps of 3 x 1 px walking 4 px left and 2 px down, 12 accent
+  heads, the shared 2.4/3.2 px/s diagonal pinned by exact digests and a
+  plate-difference bound per quarter second, and the 1360 s landscape
+  return). The chapter contract holds the caps, the accent share under
+  two percent at rest and mid-motion, the element ceilings through whole
+  motion passes (92, 86, 180, 156 landscape; 95, 84, 98, 158 portrait),
+  one moving layer per design, the stream a pure function of the clock
+  far along it and across its 32-bit wrap, the arc over the landscape
+  plates - Build at least the review-scale marks of Stir, more elements,
+  and a faster peak speed - and distinctness at one-eighth scale across
+  the chapter boundary and inside the chapter.
+- `run_background_checks()` of `tests/test_renderer_sdl.cpp` pins the
+  same designs in the real frame, both orientations: the seam, ledge,
+  and tick pixels of level 9 with the ticks sunk one pixel at 333 ms
+  while the staircase holds, a node core of level 10 swelled to 3 x 3 px
+  at 4 s into the cycle and quiet again at 3 s, the staircase of level
+  11 with its lifts of 0, 1, 2, 1, 0 times 8 px risen one pixel at
+  250 ms - its ribbons cross the guard gaps at their secondary shade -
+  and the diagonal of level 12 moved a pixel left and down at 333 ms,
+  through the portrait rotation. The veil, grayscale, and portrait-zone
+  suites that read a flat margin moved to the not-yet-landed design 13.
+- `tools/backgrounds/build_check.py` reads the real captures of
+  `tools/backgrounds/build-capture.script.txt` and its portrait twin:
+  two scripted sessions walk the level ladder to levels 9 through 12 and
+  write three frames per level, 64 ticks apart, over the tall-stack
+  board. The check solves the one frame offset K of
+  `clock = floor((tick + K) * 50/3) ms` jointly over every frame, then
+  requires each frame's loud margins to equal the design package's own
+  plate at that exact clock - the captures pin the designs at twelve
+  known phases of their motion - beside the swell phases of the pulse,
+  the caps, the accent share, the well purity, the HUD strip free of
+  the chapter's accent shades, guard gaps that change only inside the
+  design's own shades, and the adjacent levels at one-eighth scale over
+  the whole captured frame: 210 checks, no failures, K = 0 in both
+  orientations.
+
+The captures are evidence, not fixtures: they land under
+`build/agent-checks/<run-id>/`, and the script pair is retained so the
+run reproduces; a re-run of both sessions against the final binary
+reproduced every frame byte for byte, the title frames apart, which
+carry the persisted high score. A bridge check painted both
+orientations of all four designs through the runtime and through the
+design package's own grammars at 4240 clock values - every 7 ms of the
+first two seconds, the pulse and rounding edges, the wrap spans, and
+random clocks across the full 32-bit range - and compared the full
+canvases pixel for pixel: zero differing pixels. The visual pass read
+the full-resolution frames and the one-eighth review sheet beside the
+approved mockups: each motif reads at a glance, no shape forms a
+letter, a digit, an arrow, or a tetromino cluster, every mark is an
+axis-aligned rectangle or a staircase of them, and the board and HUD
+stay the brightest planes of the frame. Contract corrections of the
+task: the Band aurora wrap phase must carry the ribbon's own extent -
+one extent below the base row, so a ribbon leaves the top edge fully
+before re-entering below the bottom edge every 161.25 s landscape and
+276.5 s portrait; the record prose popped all three ribbons back at
+their base rows at the wrap - and the Long trails drift note's periods
+are 12.2 s per bottom strip height, 24.6 s per side margin width, and
+170 s per landscape height. Fixed in `docs/backgrounds/level-11.md`,
+`docs/backgrounds/level-12.md`, and in the generator.
+
+## T082: The Pressure chapter
+
+Levels 13 through 16 draw their approved grammars with their one moving
+layer each - a scrolling rule set, a falling 160-flake field, a
+phase-mirrored band stack sliding left, and a breathing contour nest -
+ported formula by formula from `tools/backgrounds/designs.py`, the
+guide spacing through the package's floor-division placement, the pulse
+through exact integer millionths of a pixel, and the leftward slide
+through a negatively advancing offset, so both orientations reproduce
+the design package's plates pixel for pixel at every whole-millisecond
+clock. Three checks hold them:
+
+- `run_backgrounds_pressure_checks()` of `tests/test_backgrounds.cpp`
+  pins each design's plate and fill stream against its record on both
+  orientations - the twenty-two staircase lines of Deep grid (24
+  scrolling rules over the horizon offsets 6, 11, 18, 27, 38 and 51 px
+  at the mid row, 40 guide segments stepping toward the canvas center,
+  10 accent nodes that hold still, the 5 px/s displacement audited over
+  adjacent 250 ms probes, and the 108.8 s landscape and 160.4 s
+  portrait wrap returns), the ranked field of Fine snow (exactly 160
+  flakes in the 87/73 and 82/78 landscape splits, three frame-split
+  static bands that paint after the field exactly as the package
+  orders, digests at six probes including the count-breathing frames
+  where an accent flake straddles a margin edge, a quarter-second
+  repaint bound of the falling footprint, and the 272 s landscape and
+  5213 s portrait returns), the seven bands of Undertow (252 visible
+  staircase segments landscape and 63 portrait in the 1:2:1 lift
+  distribution, 28 and 31 foam ticks that hold their slots, the one
+  shared velocity proven between the 250 ms and 500 ms probes where
+  every segment moves one pixel left while the re-cut edge pieces
+  anchor an edge, and the 120 s period return), and the nine broken
+  contours of Slow pulse (72 bars in the manifest with the frame ring
+  splitting the wide ones, 12 landscape and 4 portrait corner tips,
+  the swell quiet at the exact phase edges 83/84 and 7916/7917 ms and
+  at the 24 px crest of 4000 ms, and the 8 s cycle return). The
+  chapter contract holds the caps, the accent share under two percent
+  at rest and mid-motion, the element ceilings through whole motion
+  passes (74, 167, 287, 97 landscape; 74, 168, 101, 36 portrait), one
+  moving layer per design, the stream a pure function of the clock far
+  along it and across its 32-bit wrap, the arc over the landscape
+  plates - Pressure at 155 review-scale marks per 1000 against Build's
+  65, 153 elements per design against 126, and a faster peak speed -
+  and distinctness at one-eighth scale across the chapter boundary and
+  inside it.
+- `run_background_checks()` of `tests/test_renderer_sdl.cpp` pins the
+  same designs in the real frame, both orientations: the rule, guide,
+  and node pixels of level 13 with the rule set scrolled one pixel
+  down at 200 ms while the guides hold, a dim and a bright flake of
+  level 14 sunk three pixels at 500 ms over its three static bands,
+  the staircase and foam of level 15 slid three pixels left at 500 ms
+  with the bands crossing the guard gaps at their secondary shade, and
+  the bars, openings, and corner tips of level 16 swelled to inset 34
+  at 4 s into the cycle and back at rest at 8 s - the outer contour's
+  own opening hiding under the board well, read instead at the second
+  contour - through the portrait rotation. The veil, grayscale, and
+  portrait-zone suites that read a flat margin moved to the
+  not-yet-landed design 17.
+- `tools/backgrounds/pressure_check.py` reads the real captures of
+  `tools/backgrounds/pressure-capture.script.txt` and its portrait
+  twin: two scripted sessions walk the level ladder to levels 13
+  through 16 and write three frames per level, 64 ticks apart, over
+  the tall-stack board. The check solves the one frame offset K of
+  `clock = floor((tick + K) * 50/3) ms` jointly over every frame, then
+  requires each frame's loud margins to equal the design package's own
+  plate at that exact clock - the captures pin the designs at twelve
+  known phases of their motion - beside the swell phases of the pulse,
+  the caps, the accent share, the well purity, the HUD strip free of
+  the chapter's accent shades, guard gaps that change only inside the
+  design's own shades, and the adjacent levels at one-eighth scale over
+  the whole captured frame: 210 checks, no failures, K = 0 in both
+  orientations.
+
+The captures are evidence, not fixtures: they land under
+`build/agent-checks/<run-id>/`, and the script pair is retained so the
+run reproduces. A bridge check painted both orientations of all four
+designs through the runtime and through the design package's own
+grammars at 69336 clock values - every 2 ms of the first two seconds,
+every 7 ms through the twentieth, 50 ms steps through the wrap spans,
+the pulse and rounding edges, the exact halves of the 5 and 6 px/s
+displacements, the 32-bit clock wrap, and 3000 random clocks across
+the full range - and compared the canvases pixel for pixel outside the
+board frame: zero differing pixels. The visual pass read the
+full-resolution frames and the one-eighth review sheet beside the
+approved mockups: each motif reads at a glance - the receding grid,
+the snow field, the two-current wave stack, the breathing contour
+nest - no shape forms a letter, a digit, an arrow, or a tetromino
+cluster, every mark is an axis-aligned rectangle or a staircase of
+them, and the board and HUD stay the brightest planes of the frame.
+Contract correction of the task: the Undertow slide direction - the
+generator's offset advanced positively, sliding the staircase right
+against its own declared velocity, its record, and the approved
+concept, which all name the leftward 6 px/s slide. Fixed in
+`docs/backgrounds/level-15.md` through the generator
+(`tools/backgrounds/designs.py`, `records.py`), noted in the index
+alongside the earlier corrections; the retained t = 0 mockups never
+moved.
+
+## T083: The Peak chapter
+
+Levels 17 through 20 draw their approved grammars with their one
+moving layer each - 190 embers rising at 7 px/s past static stepped
+columns, 200 rain dashes with four stepped trails falling at 8 px/s
+as one combined layer, 30 broken bands pressing inward 54 px on the
+12 s triangle, and 280 debris fragments at the outer edges falling at
+10 px/s past static slabs - ported formula by formula from
+`tools/backgrounds/designs.py`, the ranked placement through the
+package's hash rank, the columns, trails, and slabs through its own
+staircase arithmetic. Two rounding depths carry the motion: the drift
+of the embers, dashes, and fragments runs through exact integer
+millionths of a pixel, the wrap rounding the whole `home + wrapped`
+position over each margin's height plus the element's own extent, so
+an element straddling a margin edge crosses as one piece; the inward
+press of the bands runs through IEEE-754 doubles - `std::fmod` of the
+12 s phase and `std::nearbyint` of `54 * triangle(t)` - because the
+exact-half clocks of the 54 px pulse land on inexact phases where
+CPython's round of the double product is the only bit-exact match.
+The integer micro-precision of levels 7 and 16 stops one short of
+that. Three checks hold them:
+
+- `run_backgrounds_peak_checks()` of `tests/test_backgrounds.cpp`
+  pins each design's plate and fill stream against its record on both
+  orientations - the 190 embers of Rising ember over their static
+  stepped columns (the 544.0 s landscape and 31278.0 s portrait wrap
+  returns, the 7 px/s rise audited between adjacent probes), the 200
+  dashes and four stepped trails of Storm lines as one layer (the
+  68.75 s and 4545 s returns, the changed-pixel bound of the falling
+  field), the 30 bands of Compression (press digests at the twelve
+  exact-half clocks of the cycle, the quiet window through 55 ms and
+  from 11945 ms with the first press step at 56 ms, the 54 px crest
+  at the half cycle, the 12 s return), and the 280 fragments of
+  Collapse over their slabs (the 55.1 s and 3721.4 s returns, the
+  outer-biased ranking that keeps the middle clear) - plus the
+  chapter contract: the caps, the accent
+  share under two percent at rest and mid-motion, the element
+  ceilings through whole motion passes (268, 220, 301, and 292 fills
+  landscape; 261, 222, 80, and 293 portrait - Compression's 260
+  placed elements sit inside the 300-element budget while the frame
+  ring's clip splits its wide bars, the documented primitive
+  expansion), one moving layer per design, the stream a pure function
+  of the clock far along it and across its 32-bit wrap, the arc over
+  the landscape plates - Peak at 166 review-scale marks per 1000
+  against Pressure's 155, 267 elements per design against 153, and
+  the faster peak speed, 10 px/s against 6 - and distinctness at
+  one-eighth scale across the chapter boundary and inside it.
+- `run_backgrounds_checks()` of `tests/test_renderer_sdl.cpp` pins
+  the same designs in the real frame, both orientations: an ember
+  pair of level 17 risen four pixels at 500 ms over its static
+  columns, a dim and a bright dash of level 18 sunk two pixels at
+  250 ms beside its stepped trail, the bars, the well cut, and the
+  tick of level 19 pressed to the 54 px crest at 6 s and back at rest
+  at 12 s, and a debris pair of level 20 fallen five pixels at 500 ms
+  over its slabs, through the portrait rotation. The Fixed-mode,
+  fade, and pause suites that read a flat margin now read base-only
+  windows of the landed grammars - the 48 x 48 block of design 20
+  clear of the ranked fragments, the 40 x 40 block of design 17 above
+  its columns.
+- `tools/backgrounds/peak_check.py` reads the real captures of
+  `tools/backgrounds/peak-capture.script.txt` and its portrait twin:
+  two scripted sessions walk the level ladder to levels 17 through 20
+  and write three frames per level, 62 ticks apart, over the
+  tall-stack board. The check solves the one frame offset K of
+  `clock = floor((tick + K) * 50/3) ms` jointly over every frame,
+  then requires each frame's loud margins to equal the design
+  package's own plate at that exact clock - the double-rounded press
+  included - beside the press phases 31, 22, and 12 of the three
+  captured pulse frames, the caps, the accent share, the well purity,
+  the HUD strip free of the chapter's accent shades with the scene's
+  own dim text shade #8A94AC the one documented exception, guard gaps
+  that change only inside the design's own shades, and the adjacent
+  levels at one-eighth scale over the whole captured frame: 210
+  checks, no failures, K = 0 in both orientations.
+
+The captures are evidence, not fixtures: they land under
+`build/agent-checks/peak-capture/`, and the dated record
+`build/agent-checks/t083-peak-2026-11-05/` holds the copies, the
+review sheets, and the re-run sets that prove the frames reproduce
+byte for byte. A bridge check painted both orientations of all four
+designs through the runtime and through the design package's own
+grammars at 16648 (level, orientation, clock) plates - every
+millisecond of the first 260 ms, every 7 ms through the 12 s cycles,
+the exact-half neighborhoods of the 7, 8, and 10 px/s drifts and the
+54 px press, the wrap spans, the late clocks, and the 32-bit wrap -
+and compared the fill streams element for element: zero mismatches.
+Both capture sessions re-ran against the final binary: 26 of 26
+frames byte-identical, title frames included. The visual pass read
+the full-resolution frames, the one-eighth review sheet beside the
+approved mockups, and the twenty-level thumbnail arc with level 17
+beside level 9: each motif reads at a glance - the rising specks
+over stepped columns, the rain field with its stepped trails, the
+closing band ring, the edge debris over slabs - no shape forms a
+letter, a digit, an arrow, or a tetromino cluster, the warm tones
+live in the tiny ember marks alone, and the board and HUD stay the
+brightest planes of the frame. Contract corrections of the task, both
+in level 18: the Storm-lines cell pitch is 16 px, which the
+generator, the retained mockups, and the runtime all draw against
+the record prose's 22 px, and its dashes wrap over the margin height
+plus the tallest dash's 6 px exactly as its trails do, not at the
+bare margin span. Fixed in `tools/backgrounds/designs.py` and
+regenerated through `records.py` into `docs/backgrounds/level-18.md`,
+noted in the index alongside the earlier corrections.
+
+## T085: Integrated background validation
+
+The one command is `tools/backgrounds/t085.sh` (phases: `generate capture
+focus determinism legacy perf gates`; name a subset to rerun just those,
+`SKIP_CAPTURE=1` reuses the captures in the run directory). Everything
+lands under `build/backgrounds/t085/` (ignored build output); the evidence
+report is the T085 section of `notes/agent-testing.md`, the cost tables the
+T085 section of `notes/performance.md`. The phase scripts live beside the
+driver: `catalog_gen.py` (every scripted session, a pure function of its
+name), `catalog_check.py` (the integrated acceptance check),
+`focus_session.sh` with `focus_check.py` (the X11 focus probe under
+`xvfb-run`, `openbox`, and `xdotool`), `determinism_runs.sh`,
+`legacy_off_compare.sh` (the private temporary tree of revision `cd54ba2`,
+registered in the Looper resource cleanup file), and `perf_runs.sh` (the
+Release build in `build-rel`).
+
+What the capture phase drives, all through the real SDL application under
+the dummy driver at `--tick-per-frame`:
+
+- `catalog-landscape`, `catalog-portrait`: the ladder walk of
+  `catalog_gen.py` clears four lines a cycle to level 20, so Auto crosses
+  every design change on the way. Every level contributes its entry
+  transition (three stepped samples for a fade, the landed frame for a
+  cut), a settled frame, a second frame 62 ticks later, and - for a pulse
+  design - a third phase 186 ticks on, with fixture reloads inside the
+  wide waits so peak gravity cannot top the board out. Past level 20: two
+  more cycles (the level cap), a 96-frame pause, a resume, and a restart.
+  The landscape walk starts from a fresh save; the portrait walk from the
+  legacy settings form without background fields, which must land on Auto
+  as well.
+- `pair` staged four ways: Fixed 17 and Fixed 20, each with grayscale on
+  and off, and Off - one play frame each, so the grayscale pairs prove the
+  wallpaper bytes hold while the pieces change and Off proves the legacy
+  flat alone remains.
+- `orientation`: Fixed design 20 (the fastest drift) across three turns of
+  the ORIENTATION row at one unbroken clock.
+- `rapid-modes`: five MODE selects and seventeen DESIGN selects back to
+  back on the developer virtual controller, then the play frame.
+
+`catalog_check.py` reads those captures and holds, per frame, the plate
+equality against the design package at one solved presentation clock, the
+fade arithmetic (the runtime's own integer blend, truncating division
+included), the caps and the two-percent accent share on the complete
+canvas, well purity, the static proofs of levels 1 through 4, the motion
+proofs (one moving layer) of levels 5 through 20, the pause freeze with a
+resume that banks no jump, the restart cut, the cap, the orientation clock
+continuity, the rapid ring result, and the arc distinctness at the
+one-eighth review scale. It writes the two captured twenty-level thumbnail
+sheets. The current pass: 968 checks, 0 failures.
+
+The remaining phases: `focus` minimizes the real window under a window
+manager and proves the wallpaper clock froze and resumed without a jump;
+`determinism` replays one scripted round to level 20 under a fresh save,
+Off, Auto, and Fixed 17 and compares the stripped observation streams byte
+for byte; `legacy` rebuilds the pre-backgrounds revision `cd54ba2` in a
+private temporary tree and compares every frame of a scripted round
+against Background Off; `perf` records the draw counts, the work-mode wall
+times, and the paced frame-time percentiles of the same workload under
+Off, Fixed 17 through 20, and Auto in both orientations; `gates` runs the
+Debug and Release CTest suites and the full unattended harness.
 
 ## Final handoff
 

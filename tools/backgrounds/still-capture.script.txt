@@ -1,0 +1,154 @@
+# Still chapter capture session (docs/backgrounds, task T079): real game
+# frames of the four static designs, landscape half.
+#
+# The round walks the level ladder the only way the rules allow - by clearing
+# lines. Each `four-line-ready` fixture replaces the settled board with four
+# rows that miss only column 5, the forced vertical I completes them, and the
+# round clears four lines per cycle: 12 lines after three cycles reaches
+# level 2, 20 lines after five reaches level 3, 32 lines after eight reaches
+# level 4. Each capture waits the record's fade out (0.4 s for level 2,
+# 0.5 s for levels 3 and 4), then loads the tall-stack fixture and holds, so
+# every frame carries the same real HUD over a real board and the designs
+# differ alone.
+#
+#   still-1..still-4  the play frame of levels 1 through 4, 960x544
+#   still-1b..still-4b  the same levels about one second later on the
+#                      presentation clock, for the static proof
+#
+# `c` is hold, `x` rotates clockwise, `space` hard drops on the default
+# keyboard table.
+check still-title
+wait 1
+key enter down
+wait 2
+key enter up
+wait 2
+wait 0
+fixture tall-stack-ready
+wait 2
+key c down
+wait 2
+key c up
+wait 2
+check still-1
+wait 2
+wait 40
+check still-1b
+wait 2
+fixture four-line-ready
+wait 2
+key x down
+wait 2
+key x up
+wait 2
+key space down
+wait 2
+key space up
+wait 10
+fixture four-line-ready
+wait 2
+key x down
+wait 2
+key x up
+wait 2
+key space down
+wait 2
+key space up
+wait 10
+fixture four-line-ready
+wait 2
+key x down
+wait 2
+key x up
+wait 2
+key space down
+wait 2
+key space up
+wait 10
+wait 45
+fixture tall-stack-ready
+wait 2
+key c down
+wait 2
+key c up
+wait 2
+check still-2
+wait 2
+wait 60
+check still-2b
+wait 2
+fixture four-line-ready
+wait 2
+key x down
+wait 2
+key x up
+wait 2
+key space down
+wait 2
+key space up
+wait 10
+fixture four-line-ready
+wait 2
+key x down
+wait 2
+key x up
+wait 2
+key space down
+wait 2
+key space up
+wait 10
+wait 50
+fixture tall-stack-ready
+wait 2
+key c down
+wait 2
+key c up
+wait 2
+check still-3
+wait 2
+wait 60
+check still-3b
+wait 2
+fixture four-line-ready
+wait 2
+key x down
+wait 2
+key x up
+wait 2
+key space down
+wait 2
+key space up
+wait 10
+fixture four-line-ready
+wait 2
+key x down
+wait 2
+key x up
+wait 2
+key space down
+wait 2
+key space up
+wait 10
+fixture four-line-ready
+wait 2
+key x down
+wait 2
+key x up
+wait 2
+key space down
+wait 2
+key space up
+wait 10
+wait 50
+fixture tall-stack-ready
+wait 2
+key c down
+wait 2
+key c up
+wait 2
+check still-4
+wait 2
+wait 60
+check still-4b
+wait 2
+quit

@@ -37,6 +37,7 @@
 #include <cstdint>
 #include <string>
 
+#include "stackfall/backgrounds.hpp"
 #include "stackfall/bindings.hpp"
 #include "stackfall/music.hpp"
 #include "stackfall/types.hpp"
@@ -170,38 +171,47 @@ class HighScoreStore {
 };
 
 // ---------------------------------------------------------------------------
-// The settings file (tasks T013, T039, T044, and T055, specification section
-// 6.3). The preferences of the player persist beside the high score, in the
-// same save directory and through the same atomic write, as one more
-// versioned ASCII file with one line per preference:
+// The settings file (tasks T013, T039, T044, T055, T062, T084, and T095,
+// specification section 6.3). The preferences of the player persist beside
+// the high score, in the same save directory and through the same atomic
+// write, as one more versioned ASCII file with one line per preference:
 //
 //   version=1\nsound=on\nghost=on\ngrid=on\nhold=on\nnext=5\ngrayscale=off\n
-//   orientation=landscape\n
+//   orientation=landscape\nmusic=auto\nmusicvolume=6\neffectsvolume=8\n
+//   background=auto\nbackgroundid=1\npiecedesigns=off\n
 //
 // `sound=off` starts the session muted, `ghost=off` hides the ghost landing
 // preview, `grid=off` removes the faint board grid, `hold=off` ignores every
 // hold input and hides the Hold preview, `next=1..5` draws that many Next
 // previews in queue order, `grayscale=on` draws the play scene without color,
-// and `orientation=portrait` turns the scene and the controls a quarter for
+// `orientation=portrait` turns the scene and the controls a quarter for
 // the sideways grip of task T055 - at startup here and again on the options
-// row that selects it (task T068). Every other
+// row that selects it (task T068) - the background lines of task T084
+// carry the wallpaper mode `background=auto|off|fixed` and the preferred
+// design `backgroundid=1..20` the BACKGROUNDS page changes, and
+// `piecedesigns=on` draws the per-piece in-cell marks of task T095 inside
+// every filled cell. Every other
 // outcome, including a missing, unreadable, or damaged file, starts every
 // preference at its default (sound, ghost, grid, and hold on, five previews,
-// grayscale off, landscape), so a broken settings file can only cost the
-// preferences and never the game. The format rules follow the high-score
-// record: the exact canonical rendering of the values, nothing more and
-// nothing less.
+// grayscale off, landscape, the Auto music pool with its two volume steps,
+// the Auto wallpaper with design 1, and the piece designs off), so a broken
+// settings file can only cost the preferences and never the game. The format
+// rules follow the high-score record: the exact canonical rendering of the
+// values, nothing more and nothing less.
 //
 // The grid, hold, next, and grayscale lines are new (T044), the orientation
-// line newer still (T055), and the music mode and both volume lines newest
-// (T062); a settings file written before them carries only some of the lines.
-// Every format change so far only appended whole lines, so the parser accepts
-// any prefix of the canonical key order and fills the preferences a legacy
-// file does not name with the defaults above - an upgrade never loses a
-// saved sound, ghost, or orientation choice - and the next save rewrites the
-// file in the current ten-preference form. That is why the format version
-// stays 1, exactly as the high-score record's does: no version 1 file has
-// ever carried a different meaning for a line.
+// line newer still (T055), the music mode and both volume lines newer
+// (T062), the background lines newer again (T084), and the piece designs
+// line newest (T095); a settings file written
+// before them carries only some of the lines. Every format change so far
+// only appended whole lines, so the parser accepts any prefix of the
+// canonical key order that shipped as a complete file and fills the
+// preferences a legacy file does not name with the defaults above - an
+// upgrade never loses a saved sound, ghost, orientation, or background
+// choice - and the next save rewrites the file in the current
+// thirteen-preference form. That is why the format version stays 1, exactly
+// as the high-score record's does: no version 1 file has ever carried a
+// different meaning for a line.
 // ---------------------------------------------------------------------------
 
 // The settings file's name inside the save directory.
@@ -220,10 +230,18 @@ inline constexpr int kSettingsVolumeMax = 10;
 inline constexpr int kSettingsMusicVolumeDefault = 6;
 inline constexpr int kSettingsEffectsVolumeDefault = 8;
 
-// The ten player preferences of one session, in settings-file line order.
-// The defaults are the recovery values of a damaged file: every toggle on,
-// five Next previews, color on, landscape, the Auto music pool, and the two
-// volume defaults above.
+// The background-preference bounds (task T084): the preferred design cycles
+// the twenty stable design IDs of the approved catalog, and 1, Still ground,
+// is the default and the recovery value. The names restate the catalog's own
+// bounds, so the settings file and the design package cannot drift.
+inline constexpr int kSettingsBackgroundFirst = backgrounds::kDesignFirstId;
+inline constexpr int kSettingsBackgroundLast = backgrounds::kDesignLastId;
+
+// The thirteen player preferences of one session, in settings-file line
+// order. The defaults are the recovery values of a damaged file: every toggle
+// on, five Next previews, color on, landscape, the Auto music pool, the two
+// volume defaults above, the Auto wallpaper over design 1, and the piece
+// designs off.
 struct SettingsValues {
   bool soundOn = true;
   bool ghostOn = true;
@@ -235,19 +253,23 @@ struct SettingsValues {
   MusicMode musicMode = MusicMode::Auto;
   int musicVolume = kSettingsMusicVolumeDefault;
   int effectsVolume = kSettingsEffectsVolumeDefault;
+  backgrounds::Mode backgroundMode = backgrounds::Mode::Auto;
+  int backgroundId = kSettingsBackgroundFirst;
+  bool pieceDesignsOn = false;
 };
 
 // Reads `bytes` as the settings file. Accepts exactly the canonical
-// renderings: every strict prefix of the ten preference lines, from the
-// two-line sound-only era to the full form, each line exactly as
+// renderings: every complete-file prefix of the thirteen preference lines,
+// from the two-line sound-only era to the full form, each line exactly as
 // formatSettingsFile writes it; a prefix leaves every preference it does not
-// name at its default. Rejects unsupported mode names and volumes outside
-// 0..10 along with every other deviation (MUSIC.md, persistence and
-// compatibility). Returns false and leaves *values untouched on anything
-// else.
+// name at its default. Rejects unsupported mode names, volumes outside 0..10,
+// background modes outside auto/off/fixed, and background IDs outside 1..20
+// along with every other deviation (MUSIC.md, persistence and compatibility;
+// tasks T084 and T095). Returns false and leaves *values untouched on
+// anything else.
 bool parseSettingsFile(const std::string& bytes, SettingsValues* values);
 
-// Renders the canonical settings file of the ten preferences.
+// Renders the canonical settings file of the thirteen preferences.
 std::string formatSettingsFile(const SettingsValues& values);
 
 // The outcome of a settings load: the preference states to use and how they
@@ -271,11 +293,11 @@ class SettingsStore {
   const std::string& directory() const { return directory_; }
   std::string filePath() const;
 
-  // Reads the seven preferences. Each stays at its default unless a valid
-  // file changes it.
+  // Reads the preferences. Each stays at its default unless a valid file
+  // changes it, and a valid file restores all thirteen.
   SettingsResult load() const;
 
-  // Writes all seven preferences through the same atomic sequence as the
+  // Writes all thirteen preferences through the same atomic sequence as the
   // record. A save always writes the current canonical form, so a legacy file
   // upgrades on its next save.
   SaveStatus save(const SettingsValues& values) const;

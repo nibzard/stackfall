@@ -1,5 +1,7 @@
 # Generated build output. Covers every CMake build directory, including
-# build/ (Debug) and build-rel/ (Release performance runs).
+# build/ (Debug) and build-rel/ (Release performance runs), and the
+# regenerated artifacts of tools/backgrounds (captures, plates,
+# manifests, phases, check results) under build/backgrounds/.
 build*/
 
 # Runtime session log of a game started inside the repository

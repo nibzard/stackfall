@@ -20,15 +20,23 @@
 //     power loss costs at most the write in flight (task T052's bound).
 //
 // The timing checks bound generous margins rather than chasing the measured
-// numbers: a sink that sleeps 80 milliseconds must not cost the caller more
-// than a tenth of it, which holds by two orders of magnitude on the slowest
-// machine this suite runs on and still fails the old synchronous path.
+// numbers: a sink that sleeps 80 milliseconds must not cost the caller half
+// of it, which holds by orders of magnitude on the slowest machine this
+// suite runs on and still fails the old synchronous path, which paid the
+// full sleep. The margins absorb the one-time parallel ctest flake of task
+// T093: a `ctest -j4` run under load may preempt this thread for tens of
+// milliseconds mid-submit or hold it past a running write, so the ceiling
+// leaves room for that preemption and the one check that needs a write to
+// be still in flight blocks that write on a latch instead of racing the
+// clock.
 
 #include <atomic>
 #include <chrono>
+#include <condition_variable>
 #include <cstdint>
 #include <cstdio>
 #include <filesystem>
+#include <mutex>
 #include <string>
 #include <thread>
 #include <vector>
@@ -99,6 +107,64 @@ class SlowSink {
   SaveStatus status_ = SaveStatus::Ok;
 };
 
+// A sink that blocks inside the write until the case releases it, so a case
+// can prove a write is in flight instead of betting that the wall clock has
+// not yet reached the sink's sleep end - the bet a loaded parallel ctest
+// run lost once (task T093).
+class BlockedSink {
+ public:
+  stackfall::RecordSaveFunction function() {
+    return [this](std::uint64_t score) {
+      std::unique_lock<std::mutex> lock(mutex_);
+      ++calls_;
+      value_ = score;
+      running_ = true;
+      runningSignal_.notify_all();
+      releaseSignal_.wait(lock, [this] { return released_; });
+      ++finished_;
+      return SaveStatus::Ok;
+    };
+  }
+
+  // Returns when the write is running inside the sink.
+  void waitUntilRunning() {
+    std::unique_lock<std::mutex> lock(mutex_);
+    runningSignal_.wait(lock, [this] { return running_; });
+  }
+
+  // Lets every blocked write finish.
+  void release() {
+    std::lock_guard<std::mutex> guard(mutex_);
+    released_ = true;
+    releaseSignal_.notify_all();
+  }
+
+  int calls() const {
+    std::lock_guard<std::mutex> guard(mutex_);
+    return calls_;
+  }
+
+  int finished() const {
+    std::lock_guard<std::mutex> guard(mutex_);
+    return finished_;
+  }
+
+  std::uint64_t value() const {
+    std::lock_guard<std::mutex> guard(mutex_);
+    return value_;
+  }
+
+ private:
+  mutable std::mutex mutex_;
+  std::condition_variable runningSignal_;
+  std::condition_variable releaseSignal_;
+  int calls_ = 0;
+  int finished_ = 0;
+  std::uint64_t value_ = 0;
+  bool running_ = false;
+  bool released_ = false;
+};
+
 // ---------------------------------------------------------------------------
 // Cases.
 // ---------------------------------------------------------------------------
@@ -115,7 +181,10 @@ void submit_does_not_wait_for_storage() {
       std::chrono::duration_cast<std::chrono::milliseconds>(
           std::chrono::steady_clock::now() - started)
           .count();
-  SC_CHECK(elapsedMs < 8);  // a tenth of the 80 ms write it started
+  // Half of the 80 ms write it started: the old synchronous path paid the
+  // sink's full sleep and fails this by 2x, while a preempted caller of a
+  // loaded `ctest -j` run still passes (task T093's flake).
+  SC_CHECK(elapsedMs < 40);
   SC_CHECK(writer.flush() == SaveStatus::Ok);
   SC_CHECK(sink.calls() == 1);
 }
@@ -194,17 +263,27 @@ void failed_write_reports_its_status() {
 }
 
 // The gameplay thread's per-frame poll empties the completed queue: what it
-// takes is gone, and what has not completed stays for a later frame.
+// takes is gone, and what has not completed stays for a later frame. The
+// sink blocks inside the write until this case releases it, so the first
+// poll runs while the write is provably in flight; the old form bet on the
+// 80 ms sleep not having elapsed yet and lost that bet once under a loaded
+// parallel ctest run (task T093).
 void poll_empties_completed_writes() {
   SaveDir dir;
   RecordWriter writer(dir.str());
-  SlowSink sink;
+  BlockedSink sink;
   writer.setSinkForTest(sink.function());
   writer.submit(100, 1);
-  SC_CHECK(writer.pollCompleted().empty());  // the 80 ms write is running
+  sink.waitUntilRunning();
+  SC_CHECK(writer.pollCompleted().empty());  // the blocked write is in flight
+  sink.release();
   SC_CHECK(writer.flush() == SaveStatus::Ok);
+  SC_CHECK(sink.finished() == 1);
   const std::vector<RecordWrite> first = writer.pollCompleted();
   SC_CHECK(first.size() == 1);
+  SC_CHECK(first[0].score == 100);
+  SC_CHECK(first[0].tick == 1);
+  SC_CHECK(first[0].status == SaveStatus::Ok);
   SC_CHECK(writer.pollCompleted().empty());
 }
 

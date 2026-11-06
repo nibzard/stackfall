@@ -179,6 +179,9 @@ void Game::tick(const TickInput& input) {
     case Scene::Rebind:
       tickRebind(input.menu);
       return;
+    case Scene::BackgroundOptions:
+      tickBackgroundOptions(input.menu);
+      return;
     case Scene::Paused:
       tickPaused(input);
       return;
@@ -233,11 +236,12 @@ void Game::tickControls(const MenuFrame& menu) {
 void Game::tickOptions(const MenuFrame& menu) {
   // Back returns to the title; the title cursor stays on the OPTIONS item,
   // so B followed by A reopens the screen on the same row. A select on the
-  // MUSIC row opens the music settings page (task T062); on any other row a
+  // MUSIC row opens the music settings page (task T062) and a select on the
+  // BACKGROUNDS row the backgrounds page (task T084); on any other row a
   // select changes nothing here, because the row values are platform state
   // the core never holds (specification section 7), so the platform layer
   // reads the highlighted row and applies the change itself. The cursor
-  // wraps over the eight rows (tasks T044 and T062).
+  // wraps over the nine rows (tasks T044, T062, and T084).
   if (menu.backPressed) {
     scene_ = Scene::Title;
     return;
@@ -245,6 +249,11 @@ void Game::tickOptions(const MenuFrame& menu) {
   if (menu.selectPressed && optionsCursor_ == kOptionsMusicRow) {
     scene_ = Scene::MusicOptions;
     musicCursor_ = 0;
+    return;
+  }
+  if (menu.selectPressed && optionsCursor_ == kOptionsBackgroundsRow) {
+    scene_ = Scene::BackgroundOptions;
+    backgroundsCursor_ = 0;
     return;
   }
   moveCursor(optionsCursor_, kOptionsItemCount, menu);
@@ -262,6 +271,20 @@ void Game::tickMusicOptions(const MenuFrame& menu) {
     return;
   }
   moveCursor(musicCursor_, kMusicOptionsItemCount, menu);
+}
+
+void Game::tickBackgroundOptions(const MenuFrame& menu) {
+  // Back returns to the options screen; the options cursor stays on the
+  // BACKGROUNDS row, so B followed by A reopens the page on the same row
+  // (task T084). A select changes nothing here: the background mode and the
+  // preferred design are platform state the core never holds, so the
+  // platform layer reads the highlighted row and applies the change itself.
+  // The cursor wraps over the two rows.
+  if (menu.backPressed) {
+    scene_ = Scene::Options;
+    return;
+  }
+  moveCursor(backgroundsCursor_, kBackgroundOptionsItemCount, menu);
 }
 
 void Game::tickPaused(const TickInput& input) {
@@ -622,6 +645,8 @@ int Game::optionsSelection() const { return optionsCursor_; }
 int Game::musicSelection() const { return musicCursor_; }
 
 int Game::rebindSelection() const { return rebindCursor_; }
+
+int Game::backgroundsSelection() const { return backgroundsCursor_; }
 
 Scene Game::rebindOrigin() const { return rebindFrom_; }
 

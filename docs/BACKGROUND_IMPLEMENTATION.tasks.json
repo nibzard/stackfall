@@ -1,0 +1,169 @@
+[
+  {
+    "id": "T077",
+    "title": "Retain the approved background designs and contracts",
+    "priority": 2,
+    "status": "todo",
+    "depends_on": [
+      "T075"
+    ],
+    "files": [
+      "docs/BACKGROUND_IMPLEMENTATION.md",
+      "docs/backgrounds"
+    ],
+    "details": "Follow up on active T075 after its design package lands. Reconcile its 20 designs with the owner's approved imagegen set, without discarding completed design work. Intake sources are /home/agent/stackfall/output/background-mocks/originals/level-01.png through level-20.png, gallery/concepts.json and gallery/prompts.md under that same background-mocks directory; /tmp/operator-background-brief.md; and /home/agent/stackfall/docs/BACKGROUND_IMPLEMENTATION.md. Copy only these relevant references and requirements into tracked docs/backgrounds/reference/ and docs/BACKGROUND_IMPLEMENTATION.md so later worktrees need no /tmp file, primary-workspace file, or hosted link. Keep the approved level mapping: 1 Still ground, 2 First light, 3 Distant stars, 4 Quiet strata, 5 Slow drift, 6 Dither dusk, 7 Sleeping skyline, 8 Low signal, 9 Fracture, 10 Circuit hush, 11 Band aurora, 12 Long trails, 13 Deep grid, 14 Fine snow, 15 Undertow, 16 Slow pulse, 17 Rising ember, 18 Storm lines, 19 Compression, 20 Collapse. Finalize exact deterministic grammars, role palettes, protected regions, counts, motion, orientation adaptation, and cut or stepped-fade rules for every level. Reconcile the proposed names, intensities, and motion with T075; adjust geometry or density as needed to meet the brief without changing each approved motif. Document the authoritative rectangle geometry when a generated plate differs. Use componentwise brightness caps and define accent-coverage accounting. Acceptance: the full set is locally available under tracked paths, includes both orientation masks and the chapter overview, and lets an implementer draw each design without guessing. Do not copy credentials or AXINBOX result files. Add the retained project requirement paths to source_files through Looper's supported plan reconciliation, never private snapshots. Owner approval: 2026-11-05, approved imagegen gallery and request to implement all backgrounds with saved Auto, Off, and Fixed options. Follow docs/BACKGROUND_IMPLEMENTATION.md after T077 retains it in the repository; the same plan is submitted through looper add-plan for worker context. Use procedural rectangles only, without runtime image assets or shaders. Keep the real board/HUD geometry and palette; generated plates are references, not exact captures. Never change gameplay rules, random state, input mappings, or high-score data. Do not reopen completed tasks."
+  },
+  {
+    "id": "T078",
+    "title": "Build the procedural background renderer and clock",
+    "priority": 2,
+    "status": "todo",
+    "depends_on": [
+      "T077"
+    ],
+    "files": [
+      "CMakeLists.txt",
+      "include/stackfall/backgrounds.hpp",
+      "src/backgrounds.cpp",
+      "include/stackfall/renderer_sdl.hpp",
+      "src/renderer_sdl.cpp",
+      "src/main.cpp",
+      "tests/test_backgrounds.cpp",
+      "tests/test_renderer_sdl.cpp"
+    ],
+    "details": "Implement a stable 1..20 background catalog and a bounded renderer API for the finalized contracts. Draw only solid axis-aligned rectangles. Derive landscape and portrait clipping from renderer geometry, exclude the well and frame before drawing, and cap all background colors behind HUD at #2A3146. Largest fields stay #0A0C13..#1C2130, secondary shapes at or below #2A3146, accents at or below #8A94AC and at most 2% of the canvas. Support at most 300 small elements or 40 bands per design; document actual emitted primitive and transition costs. Use deterministic cosmetic seeds independent of gameplay randomness. Keep the draw function read-only. Advance a bounded presentation clock without changing simulation timing; pause and focus loss freeze motion and fades, resume has no time jump, and new rounds reset predictably. Implement cuts and visible stepped fades of at most 1s without doubling the draw budget. Support same-session orientation changes with the existing input-clearing boundary. Keep menu backgrounds and letterboxes unchanged; preserve the selected wallpaper beneath pause/game-over overlays. Grayscale mode keeps the wallpaper palette. Off must use the old flat #10121A clear and skip pattern/animation work. Acceptance: meaningful unit and SDL checks cover clipping, independent determinism, clock freeze/reset, integer-step fades, bounds, and orientation. No asset loading, per-frame heap allocation, or unbounded retained state. Owner approval: 2026-11-05, approved imagegen gallery and request to implement all backgrounds with saved Auto, Off, and Fixed options. Follow docs/BACKGROUND_IMPLEMENTATION.md after T077 retains it in the repository; the same plan is submitted through looper add-plan for worker context. Use procedural rectangles only, without runtime image assets or shaders. Keep the real board/HUD geometry and palette; generated plates are references, not exact captures. Never change gameplay rules, random state, input mappings, or high-score data. Do not reopen completed tasks."
+  },
+  {
+    "id": "T079",
+    "title": "Implement Still backgrounds for levels 1 through 4",
+    "priority": 2,
+    "status": "todo",
+    "depends_on": [
+      "T078"
+    ],
+    "files": [
+      "include/stackfall/backgrounds.hpp",
+      "src/backgrounds.cpp",
+      "docs/backgrounds",
+      "tests/test_backgrounds.cpp",
+      "tests/test_renderer_sdl.cpp"
+    ],
+    "details": "Implement the approved Still chapter: 1 Still ground (almost empty field and dark corner steps), 2 First light (one low dim horizontal line), 3 Distant stars (sparse square stars), 4 Quiet strata (eight broad sediment bands). Use the retained exact contracts and palettes. All four backgrounds must remain completely static at arbitrary clock values. Adapt one grammar to both orientations while concentrating density at the outer margins. Acceptance: capture real 960x544 and 544x960 game frames for each level; compare against the approved direction; check draw regions, palettes, counts, and distinction at one-eighth scale. Assert identical draw output across multiple times. Record final contract or fixture changes in docs/backgrounds. Keep the existing board, HUD, and pieces intact. Owner approval: 2026-11-05, approved imagegen gallery and request to implement all backgrounds with saved Auto, Off, and Fixed options. Follow docs/BACKGROUND_IMPLEMENTATION.md after T077 retains it in the repository; the same plan is submitted through looper add-plan for worker context. Use procedural rectangles only, without runtime image assets or shaders. Keep the real board/HUD geometry and palette; generated plates are references, not exact captures. Never change gameplay rules, random state, input mappings, or high-score data. Do not reopen completed tasks."
+  },
+  {
+    "id": "T080",
+    "title": "Implement Stir backgrounds for levels 5 through 8",
+    "priority": 2,
+    "status": "todo",
+    "depends_on": [
+      "T079"
+    ],
+    "files": [
+      "include/stackfall/backgrounds.hpp",
+      "src/backgrounds.cpp",
+      "docs/backgrounds",
+      "tests/test_backgrounds.cpp",
+      "tests/test_renderer_sdl.cpp"
+    ],
+    "details": "Implement 5 Slow drift (sparse falling square stars), 6 Dither dusk (dark rectangular dither patches), 7 Sleeping skyline (stepped towers with subdued windows), and 8 Low signal (low-contrast scanline groups). Follow final T077 records, not unverified generated pixel counts. Proposed motion is respectively 2px/s downward drift, 2px/s upward patch drift, an 8s window pulse, and 3px/s downward scanline scroll; refine only when needed to satisfy the contract. At most one moving layer; no blinking, abrupt visible wrapping, or changes brighter than the caps. Acceptance: real captures for each design in both orientations and representative clock phases; mechanical checks for caps, protected zones, accent coverage and budgets; motion tests for speed and continuity; chapter visibly adds activity over Still without distracting from pieces. Owner approval: 2026-11-05, approved imagegen gallery and request to implement all backgrounds with saved Auto, Off, and Fixed options. Follow docs/BACKGROUND_IMPLEMENTATION.md after T077 retains it in the repository; the same plan is submitted through looper add-plan for worker context. Use procedural rectangles only, without runtime image assets or shaders. Keep the real board/HUD geometry and palette; generated plates are references, not exact captures. Never change gameplay rules, random state, input mappings, or high-score data. Do not reopen completed tasks."
+  },
+  {
+    "id": "T081",
+    "title": "Implement Build backgrounds for levels 9 through 12",
+    "priority": 2,
+    "status": "todo",
+    "depends_on": [
+      "T080"
+    ],
+    "files": [
+      "include/stackfall/backgrounds.hpp",
+      "src/backgrounds.cpp",
+      "docs/backgrounds",
+      "tests/test_backgrounds.cpp",
+      "tests/test_renderer_sdl.cpp"
+    ],
+    "details": "Implement 9 Fracture (stepped outer cracks), 10 Circuit hush (orthogonal paths and square nodes), 11 Band aurora (three broad stepped ribbons), and 12 Long trails (square stars and stepped meteor trails). Preserve the approved individual motifs and final palettes. Proposed motion: 3px/s ticks along cracks, a 7s node pulse, 4px/s upward ribbon drift, and 4px/s total diagonal drift for one combined trail/star layer. Draw no letters, numbers, arrows, tetromino-like decorations, smooth curves or gradients. Acceptance: real game captures for all four in both orientations; validate multiple motion phases, right-angle primitives, clipping, caps, counts, and accent coverage; check readability with normal and grayscale pieces. Record any contract corrections and the distinction between neighboring designs. Owner approval: 2026-11-05, approved imagegen gallery and request to implement all backgrounds with saved Auto, Off, and Fixed options. Follow docs/BACKGROUND_IMPLEMENTATION.md after T077 retains it in the repository; the same plan is submitted through looper add-plan for worker context. Use procedural rectangles only, without runtime image assets or shaders. Keep the real board/HUD geometry and palette; generated plates are references, not exact captures. Never change gameplay rules, random state, input mappings, or high-score data. Do not reopen completed tasks."
+  },
+  {
+    "id": "T082",
+    "title": "Implement Pressure backgrounds for levels 13 through 16",
+    "priority": 2,
+    "status": "todo",
+    "depends_on": [
+      "T081"
+    ],
+    "files": [
+      "include/stackfall/backgrounds.hpp",
+      "src/backgrounds.cpp",
+      "docs/backgrounds",
+      "tests/test_backgrounds.cpp",
+      "tests/test_renderer_sdl.cpp"
+    ],
+    "details": "Implement 13 Deep grid (stepped receding margin grid), 14 Fine snow (dense tiny square particles), 15 Undertow (interlocking stepped wave bands), and 16 Slow pulse (broken nested rectangular contours). Keep geometry clear near the board and behind HUD. Proposed motion: 5px/s downward grid scroll, 6px/s falling particles, one whole band layer at 6px/s left, and one ring layer expanding at 6px/s with an 8s pulse. Opposing static band contours in Undertow must not become two moving layers. Acceptance: both orientations captured for all four, intermediate-phase constraints pass, drift remains at most 10px/s, pulses at least 4s, and transitions obey caps and budget. Show a rise from Build using density and motion, without brighter large areas. Owner approval: 2026-11-05, approved imagegen gallery and request to implement all backgrounds with saved Auto, Off, and Fixed options. Follow docs/BACKGROUND_IMPLEMENTATION.md after T077 retains it in the repository; the same plan is submitted through looper add-plan for worker context. Use procedural rectangles only, without runtime image assets or shaders. Keep the real board/HUD geometry and palette; generated plates are references, not exact captures. Never change gameplay rules, random state, input mappings, or high-score data. Do not reopen completed tasks."
+  },
+  {
+    "id": "T083",
+    "title": "Implement Peak backgrounds for levels 17 through 20",
+    "priority": 2,
+    "status": "todo",
+    "depends_on": [
+      "T082"
+    ],
+    "files": [
+      "include/stackfall/backgrounds.hpp",
+      "src/backgrounds.cpp",
+      "docs/backgrounds",
+      "tests/test_backgrounds.cpp",
+      "tests/test_renderer_sdl.cpp"
+    ],
+    "details": "Implement 17 Rising ember (tiny muted warm accents), 18 Storm lines (rain dashes and stepped trails), 19 Compression (broken bands pressing inward), and 20 Collapse (dense isolated rectangular debris at outer edges). Keep warm tones in tiny accents only; no glow, flames, full-field noise, or tetromino clusters. Proposed motion is respectively 7px/s upward, 8px/s downward in a single combined layer, 9px/s inward bands, and 10px/s downward debris. Retain final contracts near 190, 200, 30 bands, and 280 small elements where allowed by actual primitive accounting. Acceptance: all eight orientation frames plus representative phases and transitions are validated; highest density stays within caps and budget; compare level 17 with level 9 and review the full 20-level thumbnail arc. Every catalog ID has its own complete implementation; no placeholder or fallback may stand in for an approved motif. Owner approval: 2026-11-05, approved imagegen gallery and request to implement all backgrounds with saved Auto, Off, and Fixed options. Follow docs/BACKGROUND_IMPLEMENTATION.md after T077 retains it in the repository; the same plan is submitted through looper add-plan for worker context. Use procedural rectangles only, without runtime image assets or shaders. Keep the real board/HUD geometry and palette; generated plates are references, not exact captures. Never change gameplay rules, random state, input mappings, or high-score data. Do not reopen completed tasks."
+  },
+  {
+    "id": "T084",
+    "title": "Add saved Auto, Off, and Fixed background options",
+    "priority": 2,
+    "status": "todo",
+    "depends_on": [
+      "T083"
+    ],
+    "files": [
+      "include/stackfall/storage.hpp",
+      "src/storage.cpp",
+      "include/stackfall/game.hpp",
+      "src/game.cpp",
+      "include/stackfall/renderer_sdl.hpp",
+      "src/renderer_sdl.cpp",
+      "src/main.cpp",
+      "tests/test_storage.cpp",
+      "tests/test_screens.cpp",
+      "tests/test_renderer_sdl.cpp",
+      "tests/harness",
+      "docs/SPEC.md",
+      "README.md"
+    ],
+    "details": "Add a BACKGROUNDS row to OPTIONS and a compact submenu using the existing keyboard and controller menu controls. Provide Background mode Auto/Off/Fixed, default Auto, and Preferred background with every stable ID 1..20 and its name, default 1 Still ground. Changing the preferred ID preserves the mode. Auto follows the current level (clamped 1..20) using the design's transition. Off restores only the old flat #10121A wallpaper, keeps board/grid/frame/HUD/pieces intact, and skips background animation and pattern work. Fixed keeps the selected design across level changes, rounds, and relaunches; level changes must not restart its clock or fade. Fixed backgrounds may animate according to their own contract. Switching to Off or Auto retains the preferred ID. Apply changes on the next play frame in the same session without a restart or new game. Keep names and every menu row readable in both orientations; every ID is reachable with both inputs. Back returns with the cursor on BACKGROUNDS. Save mode and preferred ID atomically on change; extend version-1 canonical settings consistently, accept all valid legacy forms using new defaults, preserve every old preference, reject unknown modes and out-of-range IDs under the established recovery policy, and never write during load. Acceptance: meaningful storage and end-to-end menu scenarios cover both inputs/orientations, Auto boundaries, every Fixed ID, Off, immediate changes, relaunch, corrupted settings, and preference retention. Update specification and player documentation, without changing controls or other options. Owner approval: 2026-11-05, approved imagegen gallery and request to implement all backgrounds with saved Auto, Off, and Fixed options. Follow docs/BACKGROUND_IMPLEMENTATION.md after T077 retains it in the repository; the same plan is submitted through looper add-plan for worker context. Use procedural rectangles only, without runtime image assets or shaders. Keep the real board/HUD geometry and palette; generated plates are references, not exact captures. Never change gameplay rules, random state, input mappings, or high-score data. Do not reopen completed tasks."
+  },
+  {
+    "id": "T085",
+    "title": "Validate all backgrounds, options, and rendering cost",
+    "priority": 2,
+    "status": "todo",
+    "depends_on": [
+      "T084"
+    ],
+    "files": [
+      "tests/test_backgrounds.cpp",
+      "tests/test_renderer_sdl.cpp",
+      "tests/test_regression.cpp",
+      "tests/harness",
+      "tools/backgrounds",
+      "docs/backgrounds",
+      "docs/SPEC.md",
+      "docs/AGENT_TESTING.md",
+      "README.md",
+      "notes/agent-testing.md",
+      "notes/performance.md"
+    ],
+    "details": "Run integrated acceptance on the full 20-design catalog and saved options, then repair failures. Capture all 40 exact-size orientation views through the real game harness and a 20-level thumbnail sheet. Check emitted commands as well as complete images: base and secondary caps, protected regions, no well/frame writes, accent coverage <=2%, primitive budgets including transitions, static levels 1..4, one moving layer, drift <=10px/s, pulse cycles >=4s, visible stepped fades <=1s, and no abrupt motion resets. Sample intermediate motion and transition phases. Compare normal and grayscale pieces, ghost, and previews against the unchanged background palette. Exercise Auto, Off, every Fixed ID, level cap, restart, pause/resume, focus loss, rapid mode changes, persistence, and repeated orientation changes through keyboard and virtual controller. Identical seed/input replays must keep the same state hashes, scores, and piece sequences in all modes; Off preserves legacy play pixels except the intentional menu additions. Run relevant Debug/Release CTest and harness gates; review intentional new fixtures. Measure worst-case levels 17..20 and transitions in both orientations against Off with the same workload; record draw counts, allocation/memory behavior, CPU, and frame-time percentiles. Host tests must not claim physical RG503 pacing. Update docs and record evidence. Existing T076 owns the final playable visual review and revisions; do not duplicate it or claim player attention was proven by pixel checks. Keep device and release-publication gates unchanged. Owner approval: 2026-11-05, approved imagegen gallery and request to implement all backgrounds with saved Auto, Off, and Fixed options. Follow docs/BACKGROUND_IMPLEMENTATION.md after T077 retains it in the repository; the same plan is submitted through looper add-plan for worker context. Use procedural rectangles only, without runtime image assets or shaders. Keep the real board/HUD geometry and palette; generated plates are references, not exact captures. Never change gameplay rules, random state, input mappings, or high-score data. Do not reopen completed tasks."
+  }
+]

@@ -42,6 +42,8 @@ const char* observationSceneName(Scene scene) {
       return "musicoptions";
     case Scene::Rebind:
       return "rebind";
+    case Scene::BackgroundOptions:
+      return "backgrounds";
     case Scene::Playing:
       return "playing";
     case Scene::Paused:
@@ -123,6 +125,10 @@ std::string observationLine(const std::string& checkName, const Game& game) {
     case Scene::MusicOptions:
       text += "music:";
       text += std::to_string(game.musicSelection());
+      break;
+    case Scene::BackgroundOptions:
+      text += "backgrounds:";
+      text += std::to_string(game.backgroundsSelection());
       break;
     case Scene::Rebind:
       text += "rebind:";

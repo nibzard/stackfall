@@ -1,0 +1,154 @@
+# Backgrounds-relaunch stage one (T084, docs/AGENT_TESTING.md): the relaunch
+# that applied the saved pair orientation=portrait, background=fixed,
+# backgroundid=7 at startup. The portrait keyboard table moves the menus -
+# key left and key right move the cursor, Enter confirms, Esc goes back - so
+# the page opens on its MODE row with the saved FIXED and DESIGN 7 values,
+# one select on the DESIGN row moves the preference to 8, and the round that
+# follows draws the fixed design 7 wallpaper in portrait on its first play
+# frame, before the session quits through the title menu. A `wait` follows
+# every check.
+check title-start-portrait
+wait 1
+key right down
+wait 2
+key right up
+wait 2
+key right down
+wait 2
+key right up
+wait 2
+check title-at-options
+wait 1
+key enter down
+wait 2
+key enter up
+wait 2
+check options-open
+wait 1
+key right down
+wait 2
+key right up
+wait 2
+key right down
+wait 2
+key right up
+wait 2
+key right down
+wait 2
+key right up
+wait 2
+key right down
+wait 2
+key right up
+wait 2
+key right down
+wait 2
+key right up
+wait 2
+key right down
+wait 2
+key right up
+wait 2
+key right down
+wait 2
+key right up
+wait 2
+key right down
+wait 2
+key right up
+wait 2
+check options-backgrounds-row
+wait 1
+key enter down
+wait 2
+key enter up
+wait 2
+check backgrounds-page-portrait-open
+wait 1
+key right down
+wait 2
+key right up
+wait 2
+check backgrounds-design-row-portrait
+wait 1
+key enter down
+wait 2
+key enter up
+wait 2
+check backgrounds-design-08-portrait
+wait 1
+key esc down
+wait 2
+key esc up
+wait 2
+key esc down
+wait 2
+key esc up
+wait 2
+check title-back
+wait 1
+# START GAME: the title cursor returns to its START GAME item - key left is
+# the portrait menu up - and the relaunch draws the saved fixed design 7 in
+# portrait on the first play frame
+key left down
+wait 2
+key left up
+wait 2
+key left down
+wait 2
+key left up
+wait 2
+check title-at-start
+wait 1
+key enter down
+wait 2
+key enter up
+wait 2
+check playing-fixed-7-portrait
+wait 1
+# the pause overlay on the rotated menu roles, and out through QUIT TO TITLE
+key enter down
+wait 2
+key enter up
+wait 2
+check paused-for-exit
+wait 1
+key right down
+wait 2
+key right up
+wait 2
+key right down
+wait 2
+key right up
+wait 2
+key right down
+wait 2
+key right up
+wait 2
+check pause-quit-item
+wait 1
+key enter down
+wait 2
+key enter up
+wait 2
+check title-after-round
+wait 1
+key right down
+wait 2
+key right up
+wait 2
+key right down
+wait 2
+key right up
+wait 2
+key right down
+wait 2
+key right up
+wait 2
+check title-at-quit
+wait 1
+check quit-confirmed
+key enter down
+wait 2
+key enter up
+wait 2

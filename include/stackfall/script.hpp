@@ -24,4 +24,17 @@ constexpr int kMaxScriptCount = 3600000;
 // or hand-edited script cannot reach a delay with a value nobody vetted.
 bool parseScriptCount(const char* text, int* out);
 
+// The widest axis reading a script may name: the largest value of a signed
+// 16-bit SDL axis, 32767, and its smallest, -32768. A `stick` command names
+// the exact value the virtual pad reports, so the deadzone boundary of
+// specification section 5 stays testable from a session script.
+constexpr int kMaxScriptAxisValue = 32767;
+constexpr int kMinScriptAxisValue = -32768;
+
+// Parses the numeric argument of `stick <axis> <value>`: an optional minus
+// sign, strict decimal digits, and a value inside the signed 16-bit SDL axis
+// range. Returns false and leaves `out` untouched on any other input, so a
+// fuzzed count cannot become a surprising axis reading either.
+bool parseScriptAxisValue(const char* text, int* out);
+
 }  // namespace stackfall

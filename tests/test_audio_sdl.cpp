@@ -39,6 +39,7 @@
 #if defined(_WIN32)
 #include <process.h>
 #else
+#include <time.h>
 #include <unistd.h>
 #endif
 
@@ -926,12 +927,46 @@ void testMusicBusOnTheDevice() {
   audio.close();
 }
 
+// Both clocks of the callback measurement as nanoseconds from an arbitrary
+// fixed epoch, so the measured loop subtracts start from end. The wall clock
+// names what a loaded host does to the thread; the thread's own CPU clock
+// names the mix's cost, because preemption adds no CPU time to it. A host
+// without a POSIX thread clock falls back to the wall clock and stays
+// load-sensitive there.
+long long wallClockNs() {
+  return std::chrono::duration_cast<std::chrono::nanoseconds>(
+             std::chrono::steady_clock::now().time_since_epoch())
+      .count();
+}
+
+long long threadCpuNs() {
+#if defined(CLOCK_THREAD_CPUTIME_ID)
+  timespec ts{};
+  clock_gettime(CLOCK_THREAD_CPUTIME_ID, &ts);
+  return static_cast<long long>(ts.tv_sec) * 1000000000LL + ts.tv_nsec;
+#else
+  return wallClockNs();
+#endif
+}
+
+const char* threadCpuClockName() {
+#if defined(CLOCK_THREAD_CPUTIME_ID)
+  return "thread CPU clock";
+#else
+  return "wall clock (no thread CPU clock on this host)";
+#endif
+}
+
 // The desktop half of MUSIC.md's performance evidence: the callback cost of
 // the full two-bus mix - the densest catalogue track at high intensity with
 // every cue voice active - measured at the device's own buffer size. The
-// p50 and p99 print for notes/performance.md; the assert is deliberately
-// generous (half the buffer), because a shared build machine varies while a
-// real overrun would miss it by far more.
+// wall p50 and p99 print for notes/performance.md; the assert is deliberately
+// generous (half the buffer), because a real overrun would miss it by far
+// more. The pin itself reads the thread's CPU clock, not the wall clock: a
+// parallel ctest run starved for CPU deschedules the thread mid-mix and its
+// wall p99 measures the load the host carries, not the mix (task T096
+// reproduced 8.1 ms on a 0.044 ms p50 with the p50 unchanged). CPU time
+// holds the cost alone, so the ceiling stays where it was.
 void testMusicCallbackCost() {
   AudioDriver audio;
   if (!openDummyDevice(audio)) {
@@ -954,29 +989,40 @@ void testMusicCallbackCost() {
   for (int block = 0; block < 50; ++block) {
     audio.mixFrames(buffer.data(), frames);
   }
-  std::vector<long long> nanos;
+  std::vector<long long> wallNs;
+  std::vector<long long> cpuNs;
   for (int block = 0; block < 2000; ++block) {
     if (block % 5 == 0) {
       for (const SoundCue cue : kAllSoundCues) {
         audio.play(cue);
       }
     }
-    const auto start = std::chrono::steady_clock::now();
+    const long long wallStart = wallClockNs();
+    const long long cpuStart = threadCpuNs();
     audio.mixFrames(buffer.data(), frames);
-    const auto end = std::chrono::steady_clock::now();
-    nanos.push_back(
-        std::chrono::duration_cast<std::chrono::nanoseconds>(end - start).count());
+    const long long cpuEnd = threadCpuNs();
+    const long long wallEnd = wallClockNs();
+    wallNs.push_back(wallEnd - wallStart);
+    cpuNs.push_back(cpuEnd - cpuStart);
   }
-  std::sort(nanos.begin(), nanos.end());
-  const long long p50 = nanos[nanos.size() / 2];
-  const long long p99 = nanos[nanos.size() * 99 / 100];
+  std::sort(wallNs.begin(), wallNs.end());
+  std::sort(cpuNs.begin(), cpuNs.end());
+  const long long p50 = wallNs[wallNs.size() / 2];
+  const long long p99 = wallNs[wallNs.size() * 99 / 100];
+  const long long cpuP99 = cpuNs[cpuNs.size() * 99 / 100];
   const long long bufferNs = frames * 1000000000LL / audio.sampleRate();
   std::printf(
       "audio: music callback at %d Hz, %zu frames (%.2f ms buffer): "
       "p50 %.3f ms, p99 %.3f ms (%.0f%% of the buffer)\n",
       audio.sampleRate(), frames, bufferNs / 1e6, p50 / 1e6, p99 / 1e6,
       100.0 * p99 / bufferNs);
-  SC_CHECK(p99 * 2 < bufferNs);  // half the buffer, generous by design
+  std::printf(
+      "audio: music callback pin on the %s: p99 %.3f ms (%.0f%% of the "
+      "buffer)\n",
+      threadCpuClockName(), cpuP99 / 1e6, 100.0 * cpuP99 / bufferNs);
+  // Half the buffer, generous by design, and now measured as work: a real
+  // overrun still misses it by far, a loaded host no longer trips it.
+  SC_CHECK(cpuP99 * 2 < bufferNs);
   audio.close();
 }
 

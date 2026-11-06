@@ -5,9 +5,9 @@
 //
 //   * kKeyboardScancodes maps the rebindable keyboard controls of
 //     stackfall/bindings.hpp onto SDL scancodes for desktop play and tests.
-//   * kControllerButtons maps the ten rebindable controller controls onto SDL
-//     game controller buttons. If the physical RG503 markings disagree with
-//     the SDL button letters across layouts, change this table only
+//   * kControllerButtons maps the eleven rebindable controller controls onto
+//     SDL game controller buttons. If the physical RG503 markings disagree
+//     with the SDL button letters across layouts, change this table only
 //     (specification section 5).
 //
 // The gameplay actions those controls perform live in the ControlBindings the
@@ -72,19 +72,22 @@ constexpr SDL_Scancode kKeyboardScancodes[kKeyboardControlCount] = {
     SDL_SCANCODE_Z,         // kKeyboardKeyZ
 };
 
-// The controller half, in ControllerControl order: the ABXY cluster, the left
-// shoulder, Start, and the four D-pad arms of the RG503 layout.
+// The controller half, in ControllerControl order: the ABXY cluster, both
+// shoulders, Start, and the four D-pad arms of the RG503 layout. The right
+// shoulder joined the rebindable list with task T87, so a hard-drop rebind
+// can leave Up for a free shoulder button.
 constexpr SDL_GameControllerButton kControllerButtons[kControllerControlCount] = {
-    SDL_CONTROLLER_BUTTON_A,             // kControllerButtonA
-    SDL_CONTROLLER_BUTTON_B,             // kControllerButtonB
-    SDL_CONTROLLER_BUTTON_X,             // kControllerButtonX
-    SDL_CONTROLLER_BUTTON_Y,             // kControllerButtonY
-    SDL_CONTROLLER_BUTTON_LEFTSHOULDER,  // kControllerButtonL1
-    SDL_CONTROLLER_BUTTON_START,         // kControllerButtonStart
-    SDL_CONTROLLER_BUTTON_DPAD_UP,       // kControllerButtonUp
-    SDL_CONTROLLER_BUTTON_DPAD_DOWN,     // kControllerButtonDown
-    SDL_CONTROLLER_BUTTON_DPAD_LEFT,     // kControllerButtonLeft
-    SDL_CONTROLLER_BUTTON_DPAD_RIGHT,    // kControllerButtonRight
+    SDL_CONTROLLER_BUTTON_A,              // kControllerButtonA
+    SDL_CONTROLLER_BUTTON_B,              // kControllerButtonB
+    SDL_CONTROLLER_BUTTON_X,              // kControllerButtonX
+    SDL_CONTROLLER_BUTTON_Y,              // kControllerButtonY
+    SDL_CONTROLLER_BUTTON_LEFTSHOULDER,   // kControllerButtonL1
+    SDL_CONTROLLER_BUTTON_RIGHTSHOULDER,  // kControllerButtonR1 (task T87)
+    SDL_CONTROLLER_BUTTON_START,          // kControllerButtonStart
+    SDL_CONTROLLER_BUTTON_DPAD_UP,        // kControllerButtonUp
+    SDL_CONTROLLER_BUTTON_DPAD_DOWN,      // kControllerButtonDown
+    SDL_CONTROLLER_BUTTON_DPAD_LEFT,      // kControllerButtonLeft
+    SDL_CONTROLLER_BUTTON_DPAD_RIGHT,     // kControllerButtonRight
 };
 
 // The name of the virtual pad, stable storage for the SDL descriptor.
@@ -147,7 +150,12 @@ int controllerControlOfButton(SDL_GameControllerButton button) {
 int mapControllerButton(SDL_GameControllerButton button,
                         Orientation orientation, const ControlBindings& bindings,
                         GameAction* actions) {
-  const int control = controllerControlOfButton(button);
+  return mapControllerControl(controllerControlOfButton(button), orientation,
+                              bindings, actions);
+}
+
+int mapControllerControl(int control, Orientation orientation,
+                         const ControlBindings& bindings, GameAction* actions) {
   if (control == kNoControl) {
     return 0;
   }
@@ -275,12 +283,32 @@ void SdlInput::handleEvent(const SDL_Event& event) {
       }
       break;
     }
+    case SDL_CONTROLLERAXISMOTION: {
+      // The analog thumbstick (task T86). Only the left stick's two axes are
+      // controls of the layout; the right stick and the triggers reach
+      // nothing. Every other axis of the event is ignored here, exactly as a
+      // button outside the eleven-button layout is.
+      StickAxis axis;
+      if (event.caxis.axis == SDL_CONTROLLER_AXIS_LEFTX) {
+        axis = StickAxis::X;
+      } else if (event.caxis.axis == SDL_CONTROLLER_AXIS_LEFTY) {
+        axis = StickAxis::Y;
+      } else {
+        break;
+      }
+      handleControllerAxis(static_cast<int>(event.caxis.which), axis,
+                           event.caxis.value);
+      break;
+    }
     case SDL_CONTROLLERDEVICEREMOVED:
       // The disconnected pad stops contributing: its held buttons cannot
       // stick and its unconsumed press edges cannot fire later
       // (specification section 5). A capture in flight survives the loss:
-      // the next press of whichever pad is attached names the control.
+      // the next press of whichever pad is attached names the control. The
+      // stick state dies with the pad, so a replug starts from a resting
+      // reading instead of an arm the new instance never deflected.
       adapter_.dropSource(static_cast<int>(event.cdevice.which));
+      forgetStickOf(static_cast<int>(event.cdevice.which));
       break;
     case SDL_WINDOWEVENT:
       if (event.window.event == SDL_WINDOWEVENT_FOCUS_LOST) {
@@ -288,7 +316,9 @@ void SdlInput::handleEvent(const SDL_Event& event) {
         // down when the window lost focus, so every held level clears. A
         // button still held through refocus must be pressed again. Press
         // edges the window already received stay queued: the player really
-        // pressed them (specification section 11, item 19).
+        // pressed them (specification section 11, item 19). The stick keeps
+        // its deflected arms: it is still deflected, and its next motion -
+        // unlike a button's - carries its own release in the axis reading.
         std::printf("Window focus lost; every held button cleared\n");
         adapter_.releaseAllHeld();
       }
@@ -296,6 +326,88 @@ void SdlInput::handleEvent(const SDL_Event& event) {
     default:
       break;
   }
+}
+
+// ---------------------------------------------------------------------------
+// The analog thumbstick (task T86). An axis is a continuous reading, so the
+// state below turns it into the same transitions a D-pad arm produces: the
+// arm a reading resolves to is pressed when the reading first points at it
+// and released when it stops pointing there, and the adapter's held levels,
+// pending edges, and with them DAS and the edge-once rule behave exactly as
+// they do for the arm itself.
+// ---------------------------------------------------------------------------
+
+void SdlInput::applyControllerControl(int source, int control, bool pressed) {
+  GameAction actions[2];
+  const int count =
+      mapControllerControl(control, orientation_, bindings_, actions);
+  for (int i = 0; i < count; ++i) {
+    onButton(source, actions[i], pressed);
+  }
+}
+
+SdlInput::StickState* SdlInput::stickOf(int source) {
+  for (int i = 0; i < kMaxTrackedSticks; ++i) {
+    if (sticks_[i].source == source) {
+      return &sticks_[i];
+    }
+  }
+  for (int i = 0; i < kMaxTrackedSticks; ++i) {
+    if (sticks_[i].source == kFreeStickSlot) {
+      sticks_[i].source = source;
+      for (int axis = 0; axis < kStickAxisCount; ++axis) {
+        sticks_[i].arms[axis] = kNoControl;
+      }
+      return &sticks_[i];
+    }
+  }
+  return nullptr;  // the stick table is full; the extra device is ignored
+}
+
+void SdlInput::forgetSticks() {
+  for (int i = 0; i < kMaxTrackedSticks; ++i) {
+    sticks_[i] = StickState{};
+  }
+}
+
+void SdlInput::forgetStickOf(int source) {
+  for (int i = 0; i < kMaxTrackedSticks; ++i) {
+    if (sticks_[i].source == source) {
+      sticks_[i] = StickState{};
+      return;
+    }
+  }
+}
+
+void SdlInput::handleControllerAxis(int source, StickAxis axis, int value) {
+  StickState* stick = stickOf(source);
+  if (stick == nullptr) {
+    return;
+  }
+  int& last = stick->arms[static_cast<int>(axis)];
+  const int arm = controllerControlOfStickAxis(axis, value);
+  if (arm == last) {
+    return;  // the same arm, or the same rest: no transition to report
+  }
+  // Leaving an arm releases it before the new arm presses, so a stick swept
+  // from left to right never holds both directions at once - the same order
+  // two D-pad presses would arrive in.
+  if (last != kNoControl) {
+    applyControllerControl(source, last, false);
+  }
+  last = arm;
+  if (arm == kNoControl) {
+    return;
+  }
+  // A capture waits for the press of a rebindable control (task T066), and a
+  // stick deflection is not one: it names no control, so it changes no
+  // binding and never reaches the adapter either, exactly as a button press
+  // does not while a capture is armed. The release above still runs, so an
+  // arm deflected before the capture armed cannot stay held through it.
+  if (capturing_) {
+    return;
+  }
+  applyControllerControl(source, arm, true);
 }
 
 // ---------------------------------------------------------------------------
@@ -309,11 +421,13 @@ int attachVirtualJoystick() {
   // Type UNKNOWN on purpose: SDL hands GAMECONTROLLER-typed joysticks an
   // auto-generated default mapping, and an unmapped pad is what a mapping
   // test needs as its starting point. The layout itself is a gamepad: the
-  // ten buttons of the section 5 table.
+  // eleven buttons of the section 5 table - the cluster, both shoulders
+  // (the right one since task T87), Start, and the D-pad - and, since task
+  // T86, the left stick's two axes.
   desc.type = SDL_JOYSTICK_TYPE_UNKNOWN;
   desc.vendor_id = kVirtualPadVendorId;
   desc.product_id = kVirtualPadProductId;
-  desc.naxes = 0;
+  desc.naxes = kVirtualAxisCount;
   desc.nbuttons = kVirtualButtonCount;
   desc.nhats = 0;
   desc.name = kVirtualPadName;
@@ -331,10 +445,13 @@ bool addVirtualControllerMapping(int deviceIndex) {
   char guidString[33];
   SDL_JoystickGetGUIDString(guid, guidString, sizeof(guidString));
   // The section 5 subset: every button the game reads, laid out in
-  // VirtualPadButton order.
+  // VirtualPadButton order - the cluster, both shoulders (the right one
+  // since task T87), Start, and the D-pad - and the left stick's two axes
+  // in VirtualPadAxis order (task T86).
   std::string mapping = guidString;
   mapping += ",STACKFALL Virtual Pad,a:b0,b:b1,x:b2,y:b3,leftshoulder:b4,"
-             "start:b5,dpup:b6,dpdown:b7,dpleft:b8,dpright:b9,platform:";
+             "rightshoulder:b5,start:b6,dpup:b7,dpdown:b8,dpleft:b9,"
+             "dpright:b10,leftx:a0,lefty:a1,platform:";
   mapping += SDL_GetPlatform();
   const int result = SDL_GameControllerAddMapping(mapping.c_str());
   if (result < 0) {
@@ -378,6 +495,7 @@ int virtualPadButtonFromName(const char* name) {
       {"x", kVirtualButtonX},
       {"y", kVirtualButtonY},
       {"l1", kVirtualButtonLeftShoulder},
+      {"r1", kVirtualButtonRightShoulder},
       {"start", kVirtualButtonStart},
       {"up", kVirtualButtonDpadUp},
       {"down", kVirtualButtonDpadDown},
@@ -387,6 +505,23 @@ int virtualPadButtonFromName(const char* name) {
   for (const NamedButton& entry : names) {
     if (std::strcmp(entry.name, name) == 0) {
       return entry.button;
+    }
+  }
+  return -1;
+}
+
+int virtualPadAxisFromName(const char* name) {
+  struct NamedAxis {
+    const char* name;
+    int axis;
+  };
+  static const NamedAxis names[] = {
+      {"x", kVirtualAxisLeftX},
+      {"y", kVirtualAxisLeftY},
+  };
+  for (const NamedAxis& entry : names) {
+    if (std::strcmp(entry.name, name) == 0) {
+      return entry.axis;
     }
   }
   return -1;

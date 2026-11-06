@@ -1,0 +1,42 @@
+# Background mockup session (docs/backgrounds, task T075): the one frame
+# whose HUD and board every mockup reuses as its overlay.
+#
+# The frame is a labeled fixture session, the same tall-stack fixture the
+# T027 design review uses, so every one of the 20 mockups carries the same
+# real HUD over the same real board and the designs differ alone:
+#
+#   bg-mockup  the tall stack with the piece in flight, its ghost on the
+#              stack top, a stashed Hold piece, all five Next previews,
+#              and the statistics column of the running round
+#
+# The round scores twice on its own empty board first - two hard drops,
+# the section 4.6 two points per cell - so the statistics column carries a
+# real score instead of zeroes, then the fixture replaces the board.
+#
+# key names follow tests/harness/scripts/design-review-scenes.script.txt;
+# `c` is hold and `space` hard drop on the default keyboard table.
+check bg-title
+wait 1
+key enter down
+wait 2
+key enter up
+wait 2
+check bg-start
+wait 30
+key space down
+wait 2
+key space up
+wait 6
+key space down
+wait 2
+key space up
+wait 6
+fixture tall-stack-ready
+wait 2
+key c down
+wait 2
+key c up
+wait 2
+check bg-mockup
+wait 2
+quit

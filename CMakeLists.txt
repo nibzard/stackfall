@@ -35,8 +35,13 @@ endif()
 # control bindings of task T066 - the control vocabularies, the section 5
 # defaults, and the validity rule - SDL-free so the headless suite, the
 # renderer, the input layer, and the reference replay share one word list.
+# backgrounds.cpp holds the SDL-free half of the procedural level
+# backgrounds (task T078): the approved catalog, the cosmetic hash, the
+# presentation clock, the clipping layer, and the wallpaper state machine,
+# so the headless suite pins them and src/renderer_sdl.cpp adapts them.
 # ---------------------------------------------------------------------------
 add_library(stackfall_core STATIC
+  src/backgrounds.cpp
   src/bindings.cpp
   src/board.cpp
   src/fixture.cpp
@@ -148,6 +153,7 @@ enable_testing()
 
 add_executable(stackfall_tests
   tests/test_main.cpp
+  tests/test_backgrounds.cpp
   tests/test_bindings.cpp
   tests/test_board.cpp
   tests/test_fixture.cpp
@@ -171,6 +177,13 @@ add_test(NAME stackfall_tests COMMAND stackfall_tests)
 # pinned scenario at that seed and requires the same hash twice
 # (specification section 7, section 11 item 18 desktop half).
 add_test(NAME stackfall_tests_seed COMMAND stackfall_tests --seed 987654321)
+# Both entries run the same suite, including the timing-sensitive record
+# writer of tests/test_record_writer.cpp. A shared resource lock keeps them
+# from overlapping under `ctest -j`: running both at once doubled the load
+# the suite times its real waits under and produced the one-time parallel
+# flake of task T093 (Papercut pc_01M6NVGZY80XPVSZW5317AGBQ4).
+set_tests_properties(stackfall_tests stackfall_tests_seed PROPERTIES
+  RESOURCE_LOCK stackfall_suite_timing)
 
 # ---------------------------------------------------------------------------
 # stackfall_music_preview: the offline developer renderer of MUSIC.md phase
@@ -183,6 +196,19 @@ add_executable(stackfall_music_preview
 )
 target_link_libraries(stackfall_music_preview PRIVATE stackfall_core)
 target_compile_features(stackfall_music_preview PRIVATE cxx_std_17)
+
+# ---------------------------------------------------------------------------
+# stackfall_bg_counts: the background draw-count measurement of the
+# performance evidence (task T085). Not a test and not shipped: a counting
+# painter receives every fill the wallpaper layer would emit, per design,
+# per orientation, and through the fade transitions, so the recorded
+# numbers are the emitted commands rather than the records' element counts.
+# ---------------------------------------------------------------------------
+add_executable(stackfall_bg_counts
+  tools/perf/bg_draw_counts.cpp
+)
+target_link_libraries(stackfall_bg_counts PRIVATE stackfall_core)
+target_compile_features(stackfall_bg_counts PRIVATE cxx_std_17)
 
 # ---------------------------------------------------------------------------
 # stackfall_save_probe: the durable-save cost measurement of the performance

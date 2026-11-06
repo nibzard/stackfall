@@ -1,0 +1,11 @@
+version=1
+sound=off
+ghost=off
+grid=on
+hold=on
+next=3
+grayscale=on
+orientation=landscape
+music=focus
+musicvolume=2
+effectsvolume=9

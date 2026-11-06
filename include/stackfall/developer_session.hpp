@@ -33,6 +33,8 @@
 //
 //   key <name> down|up    push a keyboard event into the SDL queue
 //   pad <name> down|up    press a virtual pad button
+//   stick <x|y> <value>   set the virtual pad's left-stick axis reading
+//                         (-32768..32767; 0 rests the stick in the deadzone)
 //   wait <ticks>          hold the script until that many ticks ran
 //   stall <ms>            delay the frame, forcing a catch-up batch
 //   detach                detach the virtual controller
@@ -270,6 +272,7 @@ class DeveloperSession {
       KeyUp,
       PadDown,
       PadUp,
+      Stick,
       Wait,
       Stall,
       Detach,
@@ -282,7 +285,8 @@ class DeveloperSession {
       Echo
     };
     Kind kind;
-    int value = 0;     // scancode, button, ticks, or milliseconds
+    int value = 0;     // scancode, button, axis, ticks, or milliseconds
+    int axisValue = 0;  // the reading a stick command names
     std::string text;  // echo marker, checkpoint, or fixture name
   };
 

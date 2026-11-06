@@ -1,0 +1,144 @@
+# T86 landscape thumbstick session (docs/AGENT_TESTING.md), on the developer
+# virtual controller, seed 20261103. The left stick's X and Y axes resolve to
+# the D-pad arms they point at, so they carry the landscape table's meanings:
+# X moves the piece, Y soft drops downward and hard drops upward, and the Y
+# axis's arms carry the menu roles, so the same stick walks the menus. The
+# deadzone holds every reading below 8000, the boundary itself is a
+# deflection, and the D-pad and the keyboard beside the stick are unchanged.
+# A `wait` follows every check, so no record carries the tick of the input
+# that comes after it.
+check title-first
+wait 1
+# the Y axis carries the D-pad arms' menu roles: a downward reading walks the
+# title cursor to OPTIONS
+stick y 32767
+wait 2
+stick y 0
+wait 2
+stick y 32767
+wait 2
+stick y 0
+wait 2
+check title-at-options
+wait 1
+# an upward reading walks it back to START GAME, and A confirms
+stick y -32767
+wait 2
+stick y 0
+wait 2
+stick y -32767
+wait 2
+stick y 0
+wait 2
+check title-at-start
+wait 1
+pad a down
+wait 2
+pad a up
+wait 2
+check round-start
+wait 1
+# X negative is the left arm: the piece moves one column left on the
+# deflection tick
+stick x -32767
+wait 2
+stick x 0
+wait 2
+check stick-left-moved
+wait 1
+# X positive is the right arm: one column back
+stick x 32767
+wait 2
+stick x 0
+wait 2
+check stick-right-moved
+wait 1
+# a reading inside the deadzone moves nothing on either axis
+stick x 7999
+wait 2
+stick x 0
+wait 2
+check deadzone-x-quiet
+wait 1
+stick y 7999
+wait 2
+stick y 0
+wait 2
+check deadzone-y-quiet
+wait 1
+# the boundary itself is a deflection: 8000 on X moves the piece
+stick x 8000
+wait 2
+stick x 0
+wait 2
+check deadzone-edge-moves
+wait 1
+# Y positive is the down arm: a soft drop of one cell per held tick, with the
+# manual-drop point of section 4.5
+stick y 32767
+wait 2
+stick y 0
+wait 2
+check stick-soft-drop
+wait 1
+# Y negative is the up arm: the stick hard drops, and the piece locks in the
+# same tick
+stick y -32767
+wait 2
+stick y 0
+wait 2
+check stick-hard-drop
+wait 1
+# the D-pad is unchanged beside the stick: its left arm still moves the piece
+pad left down
+wait 2
+pad left up
+wait 2
+check dpad-left-moved
+wait 1
+# the keyboard is unchanged beside the stick: the left arrow still moves it
+key left down
+wait 2
+key left up
+wait 2
+check keyboard-left-moved
+wait 1
+# leave the round through the pause overlay
+pad start down
+wait 2
+pad start up
+wait 2
+check paused
+wait 1
+pad down down
+wait 2
+pad down up
+wait 2
+pad down down
+wait 2
+pad down up
+wait 2
+pad down down
+wait 2
+pad down up
+wait 2
+check paused-at-quit
+wait 1
+pad a down
+wait 2
+pad a up
+wait 2
+check title-return
+wait 2
+# the stick's up arm walks the title cursor up to QUIT, and A confirms it
+stick y -32767
+wait 2
+stick y 0
+wait 2
+check title-at-quit
+wait 1
+check quit-confirmed
+pad a down
+wait 2
+pad a up
+wait 2

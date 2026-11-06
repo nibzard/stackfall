@@ -5,18 +5,29 @@
 **Category:** Original single-player tetromino block-stacking game  
 **Status:** M5 in progress; the platform layer, the rules core, the desktop  
 build, high-score persistence, synthesized sound and the generated  
-twelve-track soundtrack (T062), the ten-setting screen, portrait play with  
+twelve-track soundtrack (T062), the ten-row options screen with its  
+thirteen saved preferences, portrait play with  
 the orientation switch that applies in the running session (T055, T068),  
 the controls customization screen and the D-pad-up hard-drop default  
-(T066, T067), the desktop verification passes (harness, play and design  
+(T066, T067), the analog thumbstick play of the left stick through the
+D-pad arms in both orientations (T086), the desktop verification passes (harness, play and design  
 reviews, stability, performance, the 27-px board layout, and the focused  
-gameplay HUD), and the pause route to the controls screen are integrated  
-and tested headless; the M3 desktop gate passed (T015), the AArch64  
+gameplay HUD), the pause route to the controls screen, the twenty-design  
+procedural level backgrounds with their renderer and clock (T077 through  
+T083), the saved Auto, Off, and Fixed background options of the  
+BACKGROUNDS page (T084), and the per-piece in-cell designs behind the PIECE
+DESIGNS row, off by default (T95) are integrated and tested headless; the
+M3 desktop  
+gate passed (T015), the AArch64  
 binary builds in the PortMaster-aligned environment with hash parity  
 (T016), the PortMaster launcher and install layout are written and checked  
 (T017), and the release package is assembled locally and checked with its  
-version pinned at 1.0.0 (T019, T035), refreshed at the integrated  
-revision so it carries the device-feedback features (T071); device  
+version pinned at 1.0.0 (T019, T035), refreshed at the device-feedback  
+revision (T071), so the assembled archive predates the background wave  
+and the T086, T087, and T095 changes; the end-of-wave ARM64 refresh is  
+pending; the integrated background validation pass of the full catalog,  
+the saved options, and the rendering cost is done (T085); the playable  
+visual review (T076) remains before the background wave closes; device  
 validation and publication remain
 
 Development runs unattended with AI coding agents. Agents run all available
@@ -175,19 +186,23 @@ BOOT -> TITLE -> PLAYING -> GAME_OVER -> TITLE
 
 - **TITLE:** Start Game / Controls / Options / Quit; display saved high score.
 - **CONTROLS:** display mappings. Confirm opens the customization screen of section 5; back returns to the title. Over a paused round the same screen opens from the overlay's Controls item, and back returns to the overlay on the same item.
-- **OPTIONS:** eight rows, SOUND, GHOST, GRID, HOLD, NEXT PIECES, GRAYSCALE,
-  ORIENTATION, and MUSIC. Menu up/down moves the row and wraps at both ends,
-  select changes that row's value - ON or OFF, the count 1, 2, 3, 4, 5 that
-  cycles back to 1 for NEXT PIECES, or LANDSCAPE and PORTRAIT that alternate
-  for ORIENTATION - and back returns to the title with the cursor still on
-  Options. Each row shows its current value. Selecting ORIENTATION turns the
-  running session at once: the canvas composition, the rotated drawing, the
-  input tables, and the row's own value all move together inside the tick
-  that consumed the select, so the row always names the layout on screen and
-  neither a restart nor a relaunch is needed (task T068, building on the
-  next-launch rule T055 shipped). Selecting MUSIC
-  opens the music settings page below. All ten preferences persist in the
-  settings file; see sections 6.3 and 9.
+- **OPTIONS:** ten rows, SOUND, GHOST, GRID, HOLD, NEXT PIECES, GRAYSCALE,
+  ORIENTATION, MUSIC, BACKGROUNDS, and PIECE DESIGNS. Menu up/down moves the
+  row and wraps at both ends, select changes that row's value - ON or OFF,
+  the count 1, 2, 3, 4, 5 that cycles back to 1 for NEXT PIECES, or
+  LANDSCAPE and PORTRAIT that alternate for ORIENTATION - and back returns
+  to the title with the cursor still on Options. Each row shows its current
+  value. Selecting ORIENTATION turns the running session at once: the canvas
+  composition, the rotated drawing, the input tables, and the row's own
+  value all move together inside the tick that consumed the select, so the
+  row always names the layout on screen and neither a restart nor a relaunch
+  is needed (task T068, building on the next-launch rule T055 shipped).
+  Selecting MUSIC opens the music settings page below and selecting
+  BACKGROUNDS the backgrounds page of section 6.5. Selecting PIECE DESIGNS
+  turns the per-piece in-cell marks of section 6.2 on and off in the same
+  tick, and the row defaults to OFF, so the flat cell of the years before
+  the task stays the look a fresh save opens with. All thirteen preferences
+  persist in the settings file; see sections 6.3 and 9.
 - **REBIND:** the customization screen of section 5 (task T066). Menu up/down walks its nine rows - the eight gameplay actions in table order, then RESTORE DEFAULTS - and wraps at both ends. Select arms a capture on an action row and performs the restore on the last row; back cancels an armed capture first and otherwise returns to the screen it came from, title CONTROLS or the pause overlay, with that screen's cursor where it was.
 - **MUSIC_OPTIONS:** the music settings page behind the MUSIC row (task T062),
   with four rows - MUSIC, MUSIC VOLUME, EFFECTS VOLUME, and NEXT TRACK - at
@@ -199,6 +214,17 @@ BOOT -> TITLE -> PLAYING -> GAME_OVER -> TITLE
   changing a setting. Back returns to the options screen with the cursor
   still on the MUSIC row, so B followed by A reopens the page. See section
   6.4 for the soundtrack itself.
+- **BACKGROUND_OPTIONS:** the backgrounds page behind the BACKGROUNDS row
+  (task T084), with two rows - MODE and DESIGN - at the shared menu metrics
+  and the same controls as the options screen. Select on MODE cycles AUTO,
+  OFF, FIXED and back to AUTO; select on DESIGN steps the preferred
+  background through the twenty stable design IDs 1 through 20, wrapping
+  back to 1, and the row names the number and the design. Changing the
+  preferred design never changes the mode: the preference waits until the
+  player selects FIXED, and switching to OFF or AUTO keeps it stored. Back
+  returns to the options screen with the cursor still on the BACKGROUNDS
+  row, so B followed by A reopens the page. See section 6.5 for the
+  wallpaper modes.
 - **PLAYING:** game logic updates, piece input is active.
 - **PAUSED:** overlay with Resume / Restart / Controls / Quit to Title; entire game state and clocks remain frozen. Controls opens the mappings screen over the frozen round, and confirm or back returns to the overlay on the same item without moving a counter; Restart begins a fresh seeded game; Quit to Title abandons the current round.
 - **GAME_OVER:** final score, total lines, level, new-record indication, Play Again / Title. Save the high score when it improves.
@@ -260,6 +286,52 @@ and Esc are their own controls, not cluster buttons, so they keep their
 roles in both orientations. The rotation direction, the final cluster roles,
 and the hard-drop placement are pinned in `notes/design-review.md`.
 
+### The analog thumbstick (task T86)
+
+The RG503's left analog thumbstick reaches the game as the two SDL game
+controller axes `leftx` and `lefty`. Each axis reading resolves to the
+D-pad arm that points the same physical way - a negative X reading to the
+left arm, a positive X reading to the right arm, a negative Y reading to
+the up arm, and a positive Y reading to the down arm - and that arm then
+travels exactly the path a D-pad press travels: the binding table of the
+orientation in force gives it its gameplay action, the fixed menu role of
+the arm rides along, and a rebound table moves the stick with the arm. No
+second mapping exists, so the stick and the D-pad can never disagree about
+what a direction means, in either orientation.
+
+A reading inside the deadzone resolves to no arm at all, so a resting stick
+never drifts. The deadzone is 8000 of SDL's axis units, whose full range is
+-32768 to 32767, and a reading of exactly 8000 or exactly -8000 counts as
+deflected, so the boundary itself is testable. Only the magnitude of each
+axis is read; the two axes are independent, so a diagonal reading holds the
+two arms it points at, and left plus right held together still causes no
+horizontal movement.
+
+The stick is a continuous reading, so the platform layer turns it into the
+same transitions a D-pad arm produces: the arm a reading resolves to is
+pressed when the reading first points at it and released when it stops
+pointing there. A deflection therefore raises a held level for the arms
+that carry levels and one press edge for the arm that carries an edge, so
+delayed auto-shift, the repeat interval, and the once-per-press rule behave
+exactly as the D-pad path does. The two tables that result:
+
+| Stick reading | Resolves to | Landscape action | Portrait action |
+| --- | --- | --- | --- |
+| X negative | D-pad left | Move left | Hard drop, menu up |
+| X positive | D-pad right | Move right | Soft drop, menu down |
+| Y negative | D-pad up | Hard drop, menu up | Move right |
+| Y positive | D-pad down | Soft drop, menu down | Move left |
+
+The right stick and the analog triggers are not controls of the layout: a
+reading from any other axis is ignored, exactly as a button outside the
+eleven-button layout is. The orientation turn and a binding change forget the
+deflected arms with every held level and pending edge, for the reason the
+turn rule of T068 gives, and a controller removal takes its stick with it.
+A deflection is not a press of a rebindable control, so the customization
+screen's capture never takes one and it never reaches a round or a menu
+while a capture is armed. Headless replay hashes do not change: no axis
+event arrives in a rules replay, so the rules core sees nothing new.
+
 ### Controls customization (task T066)
 
 Every gameplay action of the two tables above is rebindable. The CONTROLS
@@ -297,9 +369,37 @@ table raised.
 
 - D-pad left+right held simultaneously causes no horizontal movement. Pressing a new opposite direction resets DAS/ARR state and moves immediately if the opposite key is no longer down.
 - Rotation, hold, hard drop, pause and menu actions are **edge-triggered**. Holding them does not fire repeatedly; horizontal movement uses the tick-based repeat system.
-- The options screen uses the same menu edges and adds no key bindings: menu up/down moves its eight rows, select changes the highlighted value or opens the MUSIC submenu, and back returns to the title. GRID, NEXT PIECES, and GRAYSCALE change no input handling at all. HOLD off makes the platform layer drop every mapped hold edge before the round sees it, so no hold swap happens and no hold lock is spent; HOLD on leaves the once-per-lock rule of section 4.3 untouched. ORIENTATION swaps both mapping tables and the whole composition inside the tick that consumed the select, and it clears every held level and pending edge at the same moment, so the press that selected the row cannot drop or rotate the next piece and cannot leave a direction held into a menu; the stored preference rides the same save, so a relaunch opens on the orientation the session ended with (task T068). MUSIC opens the music settings page of section 4.7, which uses the same edges.
+- The options screen uses the same menu edges and adds no key bindings: menu up/down moves its ten rows, select changes the highlighted value or opens the MUSIC or BACKGROUNDS submenu, and back returns to the title. GRID, NEXT PIECES, GRAYSCALE, and PIECE DESIGNS change no input handling at all. HOLD off makes the platform layer drop every mapped hold edge before the round sees it, so no hold swap happens and no hold lock is spent; HOLD on leaves the once-per-lock rule of section 4.3 untouched. ORIENTATION swaps both mapping tables and the whole composition inside the tick that consumed the select, and it clears every held level and pending edge at the same moment, so the press that selected the row cannot drop or rotate the next piece and cannot leave a direction held into a menu; the stored preference rides the same save, so a relaunch opens on the orientation the session ended with (task T068). MUSIC opens the music settings page of section 4.7 and BACKGROUNDS the backgrounds page, both of which use the same edges.
 - Input processing order within a gameplay tick: pause command; hold (if used, ignore other gameplay actions this tick); rotation; horizontal move/repeat; hard drop (immediately end piece actions for tick); otherwise soft drop or natural gravity; then ground/lock bookkeeping. Process SDL events before simulation, and consume press edges at most once even when the main loop catches up multiple simulation ticks.
 - Let PortMaster handle its platform-wide exit chord; do not capture or override it. Keyboard and gamepad disconnection must not crash the game.
+
+### Hard drop off Up (task T87)
+
+The operator device report of 2026-11-05 asked for a way to move hard drop
+off Up: the D-pad's up arm and the stick reading that reaches it were too
+easy to press by accident. The customization screen above is the answer,
+and task T87 widened it. The rebindable controller controls are now the
+eleven of the layout - the four faces, the two shoulders, Start, and the
+four D-pad arms. The right shoulder R1 joined here: the left shoulder is
+Hold's spare in both default pad tables, so before R1 the
+one-control-one-action rule rejected every shoulder a capture named, and no
+shoulder could ever take hard drop. R1 carries nothing in the defaults of
+either orientation and no menu role, so it is free for any action in both.
+
+Once a capture names the new control, the control it frees stops hard
+dropping entirely. A rebound Up keeps only its fixed menu role, the cursor
+move of the screen in charge, and no other trigger remains: the action
+holds exactly the control the capture took (task T066). The same holds for
+the stick, because a stick reading reaches hard drop only through the D-pad
+arm it resolves to. That path keeps its task T86 edge rule behind the
+deadzone of this section: one hard drop per deflection, none while the
+reading stays deflected, and none at all while the reading sits inside the
+deadzone. When the table no longer binds hard drop to the arm, a full
+deflection carries only the arm's menu role.
+
+The defaults of task T067 did not change, so D-pad up still hard drops
+until the player rebinds it. Files written before T87 name no `r1` and load
+unchanged, under the file rule of section 9.
 
 ## 6. Visual specification
 
@@ -349,7 +449,21 @@ table raised.
 ### 6.2 Draw order
 
 1. Solid background color, then faint grid lines (optional user setting).
-2. Board border and settled cells, using their stored piece colors.
+2. Board border and settled cells, using their stored piece colors. Each
+   filled cell may also draw one per-piece in-cell design (task T95): a
+   small mark of plain rules and squares in the cell's own dark shade,
+   placed in the interior band two pixels inside the cell edges, that names
+   the piece type beside its color - the I piece one wide horizontal rule,
+   O one hollow square, T one plus of two crossing rules, S two squares
+   stacked, Z two squares side by side, J one tall vertical rule, and L one
+   small filled square. The marks come from the same rectangles-and-lines
+   grammar as every other drawing, never leave the cell interior, and stay
+   pairwise distinguishable at the smallest supported cell size in grayscale
+   and in both orientations; the ghost keeps its hollow outline alone, so no
+   landing preview carries a fill. The PIECE DESIGNS row of section 4.7
+   gates them; OFF, the default, restores the plain flat cell exactly, and
+   the setting is a render detail alone - the rules, the input tables, and
+   every observation stream stay unchanged either way.
 3. Ghost (same piece outline or dim fill), only when below the live piece. The player switches it on the options screen; it is on by default.
 4. Active piece.
 5. Hold and Next previews. The first Next preview draws at full color and the
@@ -362,14 +476,16 @@ table raised.
    draws the pieces of the whole play scene - settled cells, the active
    piece, the ghost, and both preview groups - in seven distinct grays while
    the text, the outlines, and the ghost's 3:1 contrast keep their color-mode
-   readability; GRAYSCALE off restores the normal palette exactly.
+   readability; GRAYSCALE off restores the normal palette exactly. With PIECE
+   DESIGNS on, the previews carry the same in-cell marks at their own cell
+   size, so the queue reads by pattern too.
 6. Score/line/level fields of the left column, title, overlays, menus.
 
 All geometry is generated at runtime from integer coordinates, color values and piece masks. No calls to texture/image loading are allowed. UI glyphs use a source-defined **5×7 integer bitmask font**, rendered by filled rectangles (so there are no font files). Draw from a seven-color custom palette with high-contrast outlines, and include a monochrome fallback mode in a later release if needed.
 
 ### 6.3 Sound
 
-Sound is secondary to device compatibility. If enabled, synthesize short PCM tones from mathematical waveforms at initialization for rotation, move/land, clear, four-line clear, and game-over. Do not use `.wav` or `.ogg` assets. A missing audio device must not prevent the game from starting. The options screen carries the on/off toggle, which is the master switch for all audio: SOUND OFF mutes both the cues of this section and the soundtrack of section 6.4, and the last music mode and both volume settings survive a mute. The settings file of section 9 initializes all ten preferences: sound, ghost, grid, hold, next preview count, grayscale, orientation, music mode, and both volume steps. **Sound may be disabled for an early device bring-up, but a complete v1 release should include basic synthesized cues.**
+Sound is secondary to device compatibility. If enabled, synthesize short PCM tones from mathematical waveforms at initialization for rotation, move/land, clear, four-line clear, and game-over. Do not use `.wav` or `.ogg` assets. A missing audio device must not prevent the game from starting. The options screen carries the on/off toggle, which is the master switch for all audio: SOUND OFF mutes both the cues of this section and the soundtrack of section 6.4, and the last music mode and both volume settings survive a mute. The settings file of section 9 initializes all thirteen preferences: sound, ghost, grid, hold, next preview count, grayscale, orientation, music mode, both volume steps, the background mode and preferred design of section 6.5, and the piece designs toggle of section 6.2. **Sound may be disabled for an early device bring-up, but a complete v1 release should include basic synthesized cues.**
 
 ### 6.4 Generated soundtrack
 
@@ -380,6 +496,49 @@ The soundtrack (task T062) is generated code, not assets: no audio file is read 
 - **Engine.** A sample-rate-exact sequencer advances musical time from the sample count alone, so playback never drifts with the 60 Hz game tick; twelve music voices sound beside the five effect voices inside the one audio device, the effect and music buses carry their own volume steps of an eleven-step table (about 2.2 dB per step, step 0 silent), clear and game-over cues duck the music about 4 dB, and one final clamp covers both buses. The main thread talks to the audio callback through a fixed-capacity command queue and latest-value gain controls only.
 - **Scene policy.** Pause fades the music out over 100 ms and freezes it, resume fades back in, game over fades over 250 ms and stops, mode OFF fades over 100 ms and stops the music alone, and track and intensity switches land on bar boundaries through 100 ms fades. The play screen itself stays free of a permanent music label; the music settings page shows the current track title.
 - **Offline and deterministic.** Music state never enters the gameplay state hash or the gameplay randomizer: the soundtrack's shuffle runs on its own generator stream seeded per session, no playback position or shuffle order persists between launches, and replays produce identical gameplay results under every music setting. An offline developer renderer renders any track, intensity, and rate to WAV files as review artifacts only; the game itself never reads one.
+
+### 6.5 Level backgrounds
+
+The play scene carries a procedural wallpaper layer behind the HUD (tasks
+T077 through T083, docs/backgrounds and docs/BACKGROUND_IMPLEMENTATION.md):
+twenty approved designs, one per level ID 1 through 20, each drawn from solid
+axis-aligned rectangles alone - no textures, image loads, or shaders - from
+its own deterministic cosmetic hash, never from the gameplay randomizer. The
+wallpaper draws only outside the opaque well and its frame ring; the loud
+margins may carry accents up to `#8A94AC` while the quiet HUD span stays at
+or below `#2A3146`, so the pieces, the text, and the frame keep their
+readability. A bounded presentation clock drives motion: it advances on
+rendered frames alone, freezes during pause and focus loss, and resumes
+without a time jump, while the fixed 60 Hz simulation never moves.
+
+The player picks one of three modes on the backgrounds page of section 4.7
+(task T084):
+
+- **AUTO** follows the current level, clamped into 1 through 20, and a level
+  change switches designs with the target design's recorded cut or stepped
+  fade. A new round resets the clock and cuts the level's design in.
+- **OFF** restores the legacy flat `#10121A` wallpaper alone: the board, the
+  grid, the frame, the HUD, and the pieces stay exactly as they were, and
+  the game skips all pattern and animation work for the wallpaper.
+- **FIXED** keeps the preferred design at every level, across rounds, and
+  across relaunches. Level changes change nothing: the design, its motion,
+  and its clock continue without a restart or a fade, while the design may
+  animate according to its own record. A new round leaves the clock running
+  unbroken.
+
+The default pair is AUTO over design 1, Still ground. Changing the preferred
+design preserves the mode, and switching to OFF or AUTO retains the preferred
+ID, so the player's choice waits for the next FIXED selection. Every change
+applies on the next play frame of the same session - no restart and no new
+game - and both values persist through the settings file of section 9. The
+menu pages outside the play scene keep their flat ground; the pause and
+game-over overlays retain the selected play wallpaper beneath them. The
+wallpaper never draws inside the well and never enters the gameplay state
+hash, so identical seeds and inputs produce identical rounds under every
+mode. The integrated validation of this section - every design through the
+real game in both orientations, the transitions and clocks, Off against the
+pre-backgrounds pixels, and the rendering cost against Off - is
+`tools/backgrounds/t085.sh` (task T085; see `docs/AGENT_TESTING.md`).
 
 ## 7. Deterministic simulation contract
 
@@ -459,8 +618,8 @@ public:
 - In PortMaster, launcher creates `$GAMEDIR/conf`, exports `XDG_DATA_HOME="$GAMEDIR/conf"`, and optionally passes an explicit save-directory environment variable to avoid ambiguity.
 - High score file uses UTF-8 ASCII, a version field and a decimal score. Example: `version=1\nhigh_score=12345\n`. No JSON library required.
 - The record saves at two moments: the moment a running round's score passes the stored best, and at game over when the round improves it. Every save writes a temporary file in the same directory, flushes and closes it, then renames it into place, so each save is complete on disk before the next tick runs - an abandoned round, a closed window, or a power loss keeps every point up to the piece in play instead of losing a finished best. Detect invalid/partial files and safely recover to high score 0; do not crash.
-- The settings file of the player preferences sits beside the record as `settings.dat` and carries all ten values with the same atomic write: `version=1\nsound=on\nghost=on\ngrid=on\nhold=on\nnext=5\ngrayscale=off\norientation=landscape\nmusic=auto\nmusicvolume=6\neffectsvolume=8\n`. The keys are `sound`, `ghost`, `grid`, and `hold` with `on` or `off`, `next` with `1` through `5`, `grayscale` with `on` or `off`, `orientation` with `landscape` or `portrait`, `music` with `auto`, `arcade`, `groove`, `focus`, or `off`, and `musicvolume` and `effectsvolume` with `0` through `10`. The platform layer writes the whole file each time a preference changes and applies all ten at startup, orientation again on every ORIENTATION select, and a read never rewrites it. A missing, partial, or damaged file recovers to every preference at its default (sound, ghost, grid, and hold on, five previews, grayscale off, landscape, auto music, music volume 6, effects volume 8), so a broken file costs only the settings. A file from before a line existed parses with that preference at its default while keeping its saved values: the two-line file of the sound-only era (`version=1` and `sound`), the three-line file of the sound-and-ghost era (`version=1`, `sound`, and `ghost`), the seven-line file of the grayscale era, and the eight-line file of the orientation era all load that way, and the next save upgrades the file to the ten-line form without losing a saved value. The format version stays 1: no version 1 file has ever carried a different meaning for a line.
-- The custom bindings file sits beside them as `controls.dat` (task T066, section 5) with the same atomic write: `version=1` plus four blocks of eight lines in the fixed order landscape pad, landscape keyboard, portrait pad, portrait keyboard, one line per gameplay action as `<frame>.<device>.<action>=<name>` with two controls joined by `+`, for example `landscape.key.harddrop=space` or `landscape.pad.hold=y+l1`. The action words are `left`, `right`, `down`, `rotatecw`, `rotateccw`, `harddrop`, `hold`, and `pause`; the control words are the canonical names of section 5 (`a` through `z` without `m` and `q`, `left` through `backspace`, and the ten pad buttons `a`, `b`, `x`, `y`, `l1`, `start`, `up`, `down`, `left`, `right`). The platform layer writes the whole file on every applied capture and every RESTORE DEFAULTS, applies it once at startup, and never rewrites it on a read. The file is new in T066 and has no legacy form: a missing file plays the section 5 defaults, and any file that is not the exact canonical rendering of all thirty-three lines - a truncated or reordered line, an unknown word, a padded value, a control serving two actions - recovers every table to those defaults, so a damaged file costs only the customizations.
+- The settings file of the player preferences sits beside the record as `settings.dat` and carries all thirteen values with the same atomic write: `version=1\nsound=on\nghost=on\ngrid=on\nhold=on\nnext=5\ngrayscale=off\norientation=landscape\nmusic=auto\nmusicvolume=6\neffectsvolume=8\nbackground=auto\nbackgroundid=1\npiecedesigns=off\n`. The keys are `sound`, `ghost`, `grid`, `hold`, `grayscale`, and `piecedesigns` with `on` or `off`, `next` with `1` through `5`, `orientation` with `landscape` or `portrait`, `music` with `auto`, `arcade`, `groove`, `focus`, or `off`, `musicvolume` and `effectsvolume` with `0` through `10`, `background` with `auto`, `off`, or `fixed`, and `backgroundid` with `1` through `20`. The platform layer writes the whole file each time a preference changes and applies all thirteen at startup, orientation again on every ORIENTATION select, the background pair again on every BACKGROUNDS select, and a read never rewrites it. A missing, partial, or damaged file recovers to every preference at its default (sound, ghost, grid, and hold on, five previews, grayscale off, landscape, auto music, music volume 6, effects volume 8, the Auto wallpaper over design 1, and the piece designs off), so a broken file costs only the settings. A file from before a line existed parses with that preference at its default while keeping its saved values: the two-line file of the sound-only era (`version=1` and `sound`), the three-line file of the sound-and-ghost era (`version=1`, `sound`, and `ghost`), the seven-line file of the grayscale era, the eight-line file of the orientation era, the eleven-line file of the music era, and the thirteen-line file of the backgrounds era all load that way, and the next save upgrades the file to the current fourteen-line form without losing a saved value. The format version stays 1: no version 1 file has ever carried a different meaning for a line.
+- The custom bindings file sits beside them as `controls.dat` (task T066, section 5) with the same atomic write: `version=1` plus four blocks of eight lines in the fixed order landscape pad, landscape keyboard, portrait pad, portrait keyboard, one line per gameplay action as `<frame>.<device>.<action>=<name>` with two controls joined by `+`, for example `landscape.key.harddrop=space` or `landscape.pad.hold=y+l1`. The action words are `left`, `right`, `down`, `rotatecw`, `rotateccw`, `harddrop`, `hold`, and `pause`; the control words are the canonical names of section 5 (`a` through `z` without `m` and `q`, `left` through `backspace`, and the eleven pad buttons `a`, `b`, `x`, `y`, `l1`, `r1`, `start`, `up`, `down`, `left`, `right`). The right shoulder `r1` joined with task T87; a file written before that task names no `r1`, because a control that holds nothing appears in no line, and loads unchanged. The platform layer writes the whole file on every applied capture and every RESTORE DEFAULTS, applies it once at startup, and never rewrites it on a read. The file is new in T066 and has no legacy form: a missing file plays the section 5 defaults, and any file that is not the exact canonical rendering of all thirty-three lines - a truncated or reordered line, an unknown word, a padded value, a control serving two actions - recovers every table to those defaults, so a damaged file costs only the customizations.
 - Log startup version, architecture, SDL init failures, selected renderer and controller, any save failure and orderly shutdown to `log.txt` through launcher redirection.
 - If controller is absent, keep keyboard playable. If accelerated renderer creation fails, try a basic SDL renderer; if all renderer creation fails, print an actionable error and terminate cleanly.
 - No network permission required, and no telemetry.
@@ -576,6 +735,43 @@ Implement assertions and data-driven tests, including at least:
     per-tick input log must show spent - and play a portrait round whose
     observation stream equals the headless reference replay on the rotated
     tables.
+22. The analog thumbstick (task T86): the left stick's axes resolve to the
+    D-pad arms they point at through the real SDL event path, with the
+    deadzone of section 5 holding every reading below 8000 while the boundary
+    itself moves the piece; the headless suite pins the translation and both
+    orientation tables, the SDL suite drives movement, soft drop, hard drop,
+    the turn, a capture, and a removal on the virtual controller, and staged
+    harness sessions play stick-driven rounds in both orientations whose
+    observation streams equal the headless reference replay, with the
+    per-tick input log carrying the ordered action bits of the mapping in
+    force and the portrait mapping proven reading by reading, so no axis is
+    dead or inverted.
+23. Hard drop off Up (task T87): the right shoulder is a rebindable control
+    of both orientation tables through the real SDL event path, a capture
+    takes it for hard drop in landscape and in portrait, and the freed
+    D-pad up arm and the stick reading that reaches it then carry no
+    gameplay edge at all - only the fixed menu role. The stick's edge rule
+    holds on the defaults too: a reading inside the deadzone fires nothing,
+    and one full deflection fires exactly one hard drop however long it is
+    held. Staged harness sessions rebind hard drop to a face button, to the
+    right shoulder, and to a key, prove the freed triggers dead and the new
+    ones live in both orientations, and relaunch on the saved file; the
+    defaults of task T067 still render and load without the new control
+    word, and legacy files load unchanged.
+24. Per-piece in-cell designs (task T95): the render suites in Debug and
+    Release draw every piece pattern at every drawn cell size - board cells
+    in both orientations, previews, and the active piece - and assert from
+    pixels that each mark stays inside the cell interior, uses only the
+    palette's fill and dark shades, and no two pieces share a shape, while
+    the ghost carries no mark; with the setting off the same interiors hold
+    the flat fill alone. Harness sessions toggle and persist the PIECE
+    DESIGNS row on the keyboard and the pad, and the grayscale session reads
+    one settled cell of every piece type from captured frames in both
+    orientations, so each piece is uniquely identifiable by pattern alone
+    when color is gone; the settings file round-trips the line, its legacy
+    forms load with the designs off, and the enabled path is measured
+    against Off with the shared performance method while the default path
+    shows no regression.
 
 ## 12. Device acceptance checklist
 
@@ -611,6 +807,18 @@ The release is complete only when all of these pass on a real RG503 running ROCK
       button the default freed carries nothing during play, the same D-pad-up
       press still moves the cursor on every menu, and the press that leaves a
       menu never drops the piece of the round that follows.
+- [ ] Analog thumbstick (task T86): the left stick moves the piece and soft
+      drops in both orientations, the physical direction of a reading matches
+      the on-screen direction of the rotated frame in portrait, a resting
+      stick drifts nowhere, the stick up or left reading hard drops where the
+      D-pad arm it points at does, and the face buttons rotate, hold, and
+      confirm beside the stick in portrait.
+- [ ] Hard drop off Up (task T87): the customization screen rebinds HARD
+      DROP to a face button and to the right shoulder in both orientations,
+      the freed D-pad up and a full stick deflection toward it no longer
+      drop a piece, a light stick touch below the deadzone never drops, the
+      custom table survives a relaunch, and RESTORE DEFAULTS returns the
+      task T067 table.
 - [ ] Record-save moment (task T065): the instant a running score passes the
       stored best produces no visible stutter, and the new record still
       persists through a quit and a reboot.

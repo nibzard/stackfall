@@ -1,0 +1,15 @@
+# T87, the staged hard-drop rebind session (docs/AGENT_TESTING.md): three
+# game processes over one save directory. Stage one, marked settings=none,
+# plays the T067 defaults with the stick's edge rule pinned from both sides
+# of the deadzone, then rebinds HARD DROP to the face button X, to the right
+# shoulder R1, and - on the keyboard table - to D, and quits with the custom
+# file saved. Stage two relaunches on that file, plays it, turns the session
+# portrait through the ORIENTATION row, proves the untouched portrait
+# defaults still hard drop from the grip's up arm, rebinds the portrait
+# HARD DROP to R1 through the turned menu roles, and plays the rebound
+# portrait table. Stage three relaunches onto the saved orientation and the
+# saved custom tables, proves the persisted rebind, and ends on RESTORE
+# DEFAULTS, whose file is the section 5 bytes again.
+script=harddrop-rebind-landscape.script.txt settings=none
+script=harddrop-rebind-portrait.script.txt
+script=harddrop-rebind-relaunch.script.txt

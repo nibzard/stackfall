@@ -586,8 +586,710 @@ void check_portrait_controller_drives_game() {
 }
 
 // ---------------------------------------------------------------------------
+// The analog thumbstick (task T86). Every check drives the real SDL axis
+// path: the virtual pad reports a reading, SDL turns it into a
+// SDL_CONTROLLERAXISMOTION event, and SdlInput resolves it to the D-pad arm
+// the reading points at. What each arm then does is the table's business, so
+// these checks pin the axis half - the deadzone, the press and release
+// transitions, the edge-once rule - and the mapping both orientations give
+// the same physical reading.
+// ---------------------------------------------------------------------------
+
+// Reports one virtual pad axis reading through the real SDL update path.
+void padAxis(SDL_Joystick* joystick, int axis, int value) {
+  SDL_JoystickSetVirtualAxis(joystick, axis, static_cast<Sint16>(value));
+}
+
+// Pushes one synthetic controller axis event for an axis outside the left
+// stick, the way a pad with triggers would deliver it.
+void pushForeignAxis(SDL_GameControllerAxis axis, int value) {
+  SDL_Event event;
+  SDL_zero(event);
+  event.type = SDL_CONTROLLERAXISMOTION;
+  event.caxis.which = 0;
+  event.caxis.axis = axis;
+  event.caxis.value = static_cast<Sint16>(value);
+  SDL_PushEvent(&event);
+}
+
+// The landscape stick table: each deflection of an axis takes the action of
+// the D-pad arm it points at, a reading inside the deadzone takes none, and
+// the transitions are one press edge and one release, exactly as the arm
+// itself produces.
+void check_stick_landscape_table() {
+  const int device = stackfall::attachVirtualController();
+  SC_CHECK(device >= 0);
+  if (device < 0) {
+    return;
+  }
+  SDL_GameController* controller = SDL_GameControllerOpen(device);
+  SC_CHECK(controller != nullptr);
+  if (controller == nullptr) {
+    return;
+  }
+  SDL_Joystick* joystick = SDL_GameControllerGetJoystick(controller);
+  SdlInput input;
+
+  struct StickCase {
+    int axis;
+    int value;
+    GameAction held;      // held level while deflected, kNoGameAction for edges
+    GameAction edge;      // gameplay edge on the deflection tick
+    GameAction menuEdge;  // menu edge on the deflection tick
+  };
+  const StickCase cases[] = {
+      {stackfall::kVirtualAxisLeftX, 32767, GameAction::Right, kNoGameAction,
+       kNoGameAction},
+      {stackfall::kVirtualAxisLeftX, -32767, GameAction::Left, kNoGameAction,
+       kNoGameAction},
+      {stackfall::kVirtualAxisLeftY, 32767, GameAction::Down, kNoGameAction,
+       GameAction::MenuDown},
+      {stackfall::kVirtualAxisLeftY, -32767, kNoGameAction, GameAction::HardDrop,
+       GameAction::MenuUp},
+  };
+
+  for (const StickCase& entry : cases) {
+    // The deadzone below the boundary holds nothing, so the deflection that
+    // follows is a real press, not a level the wobble already raised.
+    padAxis(joystick, entry.axis, stackfall::kStickDeadzone - 1);
+    pump(input);
+    SC_CHECK(input.takeTickInput().game.leftHeld == false);
+    padAxis(joystick, entry.axis, 0);
+    pump(input);
+
+    padAxis(joystick, entry.axis, entry.value);
+    pump(input);
+    if (entry.held != kNoGameAction) {
+      SC_CHECK(input.adapter().isHeld(entry.held));
+    }
+    if (entry.edge != kNoGameAction) {
+      SC_CHECK(input.adapter().edgePending(entry.edge));
+    }
+
+    const TickInput tick = input.takeTickInput();
+    SC_CHECK(tick.game.leftHeld == (entry.held == GameAction::Left));
+    SC_CHECK(tick.game.rightHeld == (entry.held == GameAction::Right));
+    SC_CHECK(tick.game.downHeld == (entry.held == GameAction::Down));
+    SC_CHECK(tick.game.hardDropPressed ==
+             (entry.edge == GameAction::HardDrop));
+    SC_CHECK(tick.menu.upPressed == (entry.menuEdge == GameAction::MenuUp));
+    SC_CHECK(tick.menu.downPressed ==
+             (entry.menuEdge == GameAction::MenuDown));
+
+    // The next tick carries no edge again; a deflected arm stays a level.
+    const TickInput next = input.takeTickInput();
+    SC_CHECK(noGameplayEdge(next));
+    SC_CHECK(next.game.leftHeld == tick.game.leftHeld);
+    SC_CHECK(next.game.downHeld == tick.game.downHeld);
+
+    // Resting the stick releases the arm.
+    padAxis(joystick, entry.axis, 0);
+    pump(input);
+    if (entry.held != kNoGameAction) {
+      SC_CHECK(!input.adapter().isHeld(entry.held));
+    }
+    input.takeTickInput();
+  }
+
+  // The deadzone boundary itself counts as deflected, so the exact value of
+  // the constant is pinned on both axes and both directions.
+  padAxis(joystick, stackfall::kVirtualAxisLeftX, stackfall::kStickDeadzone);
+  pump(input);
+  SC_CHECK(input.adapter().isHeld(GameAction::Right));
+  input.takeTickInput();
+  padAxis(joystick, stackfall::kVirtualAxisLeftX, -stackfall::kStickDeadzone);
+  pump(input);
+  SC_CHECK(input.adapter().isHeld(GameAction::Left));
+  input.takeTickInput();
+  padAxis(joystick, stackfall::kVirtualAxisLeftY, stackfall::kStickDeadzone);
+  pump(input);
+  SC_CHECK(input.adapter().isHeld(GameAction::Down));
+  input.takeTickInput();
+  padAxis(joystick, stackfall::kVirtualAxisLeftY, 0);
+  pump(input);
+  SC_CHECK(!input.adapter().isHeld(GameAction::Down));
+  input.takeTickInput();
+
+  // A swept stick releases the arm it leaves before pressing the next, so
+  // left and right are never held together and the arrival tick carries the
+  // new direction alone.
+  padAxis(joystick, stackfall::kVirtualAxisLeftX, -32767);
+  pump(input);
+  SC_CHECK(input.adapter().isHeld(GameAction::Left));
+  input.takeTickInput();
+  padAxis(joystick, stackfall::kVirtualAxisLeftX, 32767);
+  pump(input);
+  SC_CHECK(!input.adapter().isHeld(GameAction::Left));
+  SC_CHECK(input.adapter().isHeld(GameAction::Right));
+  const TickInput swept = input.takeTickInput();
+  SC_CHECK(!swept.game.leftHeld);
+  SC_CHECK(swept.game.rightHeld);
+  padAxis(joystick, stackfall::kVirtualAxisLeftX, 0);
+  pump(input);
+  input.takeTickInput();
+
+  // The two axes are independent: a deflection of one changes nothing about
+  // the level the other holds, so a diagonal reading holds both directions.
+  padAxis(joystick, stackfall::kVirtualAxisLeftX, -32767);
+  pump(input);
+  input.takeTickInput();
+  padAxis(joystick, stackfall::kVirtualAxisLeftY, 32767);
+  pump(input);
+  const TickInput diagonal = input.takeTickInput();
+  SC_CHECK(diagonal.game.leftHeld && diagonal.game.downHeld);
+  padAxis(joystick, stackfall::kVirtualAxisLeftX, 0);
+  pump(input);
+  SC_CHECK(input.adapter().isHeld(GameAction::Down));
+  SC_CHECK(!input.adapter().isHeld(GameAction::Left));
+  input.takeTickInput();
+  padAxis(joystick, stackfall::kVirtualAxisLeftY, 0);
+  pump(input);
+  input.takeTickInput();
+
+  // An axis outside the left stick is not a control of the layout: a trigger
+  // reading changes no level and raises no edge.
+  pushForeignAxis(SDL_CONTROLLER_AXIS_TRIGGERLEFT, 32767);
+  pump(input);
+  const TickInput trigger = input.takeTickInput();
+  SC_CHECK(noGameplayEdge(trigger));
+  SC_CHECK(!trigger.game.leftHeld && !trigger.game.rightHeld &&
+           !trigger.game.downHeld);
+
+  SDL_GameControllerClose(controller);
+  SDL_JoystickDetachVirtual(device);
+}
+
+// The portrait stick table (tasks T055 and T068): the same physical readings
+// take the actions of the same D-pad arms, which the turned frame points
+// somewhere else, so X- hard drops where it moved left in landscape, Y+ moves
+// the piece left, and Y- moves it right. Nothing is dead and nothing is
+// inverted, because the stick resolves to arms and the arms resolve through
+// the portrait table.
+void check_stick_portrait_table() {
+  const int device = stackfall::attachVirtualController();
+  SC_CHECK(device >= 0);
+  if (device < 0) {
+    return;
+  }
+  SDL_GameController* controller = SDL_GameControllerOpen(device);
+  SC_CHECK(controller != nullptr);
+  if (controller == nullptr) {
+    return;
+  }
+  SDL_Joystick* joystick = SDL_GameControllerGetJoystick(controller);
+  SdlInput input;
+  input.setOrientation(stackfall::Orientation::Portrait);
+
+  struct StickCase {
+    int axis;
+    int value;
+    GameAction held;
+    GameAction edge;
+    GameAction menuEdge;
+  };
+  const StickCase cases[] = {
+      // X negative is the D-pad's left arm, the logical up of the turned
+      // grip: hard drop and menu up (task T067).
+      {stackfall::kVirtualAxisLeftX, -32767, kNoGameAction,
+       GameAction::HardDrop, GameAction::MenuUp},
+      // X positive is the right arm: soft drop and menu down.
+      {stackfall::kVirtualAxisLeftX, 32767, GameAction::Down, kNoGameAction,
+       GameAction::MenuDown},
+      // Y positive is the down arm: move left.
+      {stackfall::kVirtualAxisLeftY, 32767, GameAction::Left, kNoGameAction,
+       kNoGameAction},
+      // Y negative is the up arm: move right.
+      {stackfall::kVirtualAxisLeftY, -32767, GameAction::Right, kNoGameAction,
+       kNoGameAction},
+  };
+
+  for (const StickCase& entry : cases) {
+    padAxis(joystick, entry.axis, entry.value);
+    pump(input);
+    if (entry.held != kNoGameAction) {
+      SC_CHECK(input.adapter().isHeld(entry.held));
+    }
+    if (entry.edge != kNoGameAction) {
+      SC_CHECK(input.adapter().edgePending(entry.edge));
+    }
+    const TickInput tick = input.takeTickInput();
+    SC_CHECK(tick.game.leftHeld == (entry.held == GameAction::Left));
+    SC_CHECK(tick.game.rightHeld == (entry.held == GameAction::Right));
+    SC_CHECK(tick.game.downHeld == (entry.held == GameAction::Down));
+    SC_CHECK(tick.game.hardDropPressed ==
+             (entry.edge == GameAction::HardDrop));
+    SC_CHECK(tick.menu.upPressed == (entry.menuEdge == GameAction::MenuUp));
+    SC_CHECK(tick.menu.downPressed ==
+             (entry.menuEdge == GameAction::MenuDown));
+
+    const TickInput next = input.takeTickInput();
+    SC_CHECK(noGameplayEdge(next));
+
+    padAxis(joystick, entry.axis, 0);
+    pump(input);
+    if (entry.held != kNoGameAction) {
+      SC_CHECK(!input.adapter().isHeld(entry.held));
+    }
+    input.takeTickInput();
+  }
+
+  SDL_GameControllerClose(controller);
+  SDL_JoystickDetachVirtual(device);
+}
+
+// The stick drives the real game with the D-pad's own movement rules: the
+// immediate move on the deflection tick, the ten-tick DAS charge, the ARR
+// cadence, soft drop, and hard drop. A keyboard and a D-pad press beside the
+// stick change nothing about it.
+void check_stick_drives_game() {
+  const int device = stackfall::attachVirtualController();
+  SC_CHECK(device >= 0);
+  if (device < 0) {
+    return;
+  }
+  SDL_GameController* controller = SDL_GameControllerOpen(device);
+  SC_CHECK(controller != nullptr);
+  if (controller == nullptr) {
+    return;
+  }
+  SDL_Joystick* joystick = SDL_GameControllerGetJoystick(controller);
+  SdlInput input;
+  Game game;
+  game.start(36);
+  const int startX = game.activePiece().x;
+
+  // Stick left held across three ticks: the press-tick move and no repeat
+  // before the ten-tick DAS charge, exactly as the D-pad behaves.
+  padAxis(joystick, stackfall::kVirtualAxisLeftX, -32767);
+  runBatch(input, game, 3);
+  SC_CHECK(game.activePiece().x == startX - 1);
+  SC_CHECK(game.tickCount() == 3);
+
+  // Nine more ticks of the same deflection reach the first DAS repeat at
+  // tick eleven (DAS 10, section 4.5) - the repeat system reads the held
+  // level the stick raised, not a button of its own.
+  runBatch(input, game, 9);
+  SC_CHECK(game.activePiece().x == startX - 2);
+  SC_CHECK(game.tickCount() == 12);
+  padAxis(joystick, stackfall::kVirtualAxisLeftX, 0);
+  pump(input);
+
+  // Stick right moves the other way one column per press tick.
+  const int afterLeft = game.activePiece().x;
+  padAxis(joystick, stackfall::kVirtualAxisLeftX, 32767);
+  runBatch(input, game, 2);
+  SC_CHECK(game.activePiece().x == afterLeft + 1);
+  padAxis(joystick, stackfall::kVirtualAxisLeftX, 0);
+  pump(input);
+
+  // A deadzone reading moves nothing: the piece holds its column and its
+  // row through the same number of ticks.
+  const int beforeDeadzone = game.activePiece().x;
+  const int beforeDeadzoneY = game.activePiece().y;
+  padAxis(joystick, stackfall::kVirtualAxisLeftX, stackfall::kStickDeadzone - 1);
+  padAxis(joystick, stackfall::kVirtualAxisLeftY, stackfall::kStickDeadzone - 1);
+  runBatch(input, game, 2);
+  SC_CHECK(game.activePiece().x == beforeDeadzone);
+  SC_CHECK(game.activePiece().y == beforeDeadzoneY);
+  padAxis(joystick, stackfall::kVirtualAxisLeftX, 0);
+  padAxis(joystick, stackfall::kVirtualAxisLeftY, 0);
+  pump(input);
+
+  // Stick down soft drops: one cell per held tick with the manual-drop
+  // point, taking priority over natural gravity (section 4.5).
+  const int beforeDrop = game.activePiece().y;
+  const auto scoreBeforeDrop = game.score();
+  padAxis(joystick, stackfall::kVirtualAxisLeftY, 32767);
+  runBatch(input, game, 1);
+  padAxis(joystick, stackfall::kVirtualAxisLeftY, 0);
+  pump(input);
+  SC_CHECK(game.activePiece().y == beforeDrop + 1);
+  SC_CHECK(game.score() == scoreBeforeDrop + 1);
+
+  // Stick up hard drops: the piece locks and a new piece spawns in the same
+  // tick, exactly as a D-pad up press does (task T067).
+  const int cellsBefore = game.board().settledCellCount();
+  padAxis(joystick, stackfall::kVirtualAxisLeftY, -32767);
+  runBatch(input, game, 1);
+  padAxis(joystick, stackfall::kVirtualAxisLeftY, 0);
+  pump(input);
+  SC_CHECK(game.board().settledCellCount() == cellsBefore + 4);
+
+  // The D-pad and the keyboard are unchanged beside the stick: both still
+  // move the piece, and the stick's rest state holds nothing back.
+  const int secondX = game.activePiece().x;
+  padButton(joystick, stackfall::kVirtualButtonDpadRight, true);
+  runBatch(input, game, 2);
+  SC_CHECK(game.activePiece().x == secondX + 1);
+  padButton(joystick, stackfall::kVirtualButtonDpadRight, false);
+  pump(input);
+  const int thirdX = game.activePiece().x;
+  pushKey(SDL_SCANCODE_LEFT, true);
+  runBatch(input, game, 2);
+  SC_CHECK(game.activePiece().x == thirdX - 1);
+  pushKey(SDL_SCANCODE_LEFT, false);
+  pump(input);
+
+  SDL_GameControllerClose(controller);
+  SDL_JoystickDetachVirtual(device);
+}
+
+// The stick drives the turned round on the portrait table, and the face
+// buttons stay playable beside it: the operator's device report of
+// 2026-11-05 is exactly this combination.
+void check_stick_portrait_drives_game() {
+  const int device = stackfall::attachVirtualController();
+  SC_CHECK(device >= 0);
+  if (device < 0) {
+    return;
+  }
+  SDL_GameController* controller = SDL_GameControllerOpen(device);
+  SC_CHECK(controller != nullptr);
+  if (controller == nullptr) {
+    return;
+  }
+  SDL_Joystick* joystick = SDL_GameControllerGetJoystick(controller);
+  SdlInput input;
+  input.setOrientation(stackfall::Orientation::Portrait);
+  Game game;
+  game.start(37);
+  const int startX = game.activePiece().x;
+  const auto startRotation = game.activePiece().rotation;
+
+  // Y positive is the D-pad's down arm, which the turned frame points at the
+  // player's left: the piece moves left, one column on the deflection tick.
+  padAxis(joystick, stackfall::kVirtualAxisLeftY, 32767);
+  runBatch(input, game, 3);
+  SC_CHECK(game.activePiece().x == startX - 1);
+  padAxis(joystick, stackfall::kVirtualAxisLeftY, 0);
+  pump(input);
+
+  // Y negative is the up arm, which points right: the piece moves right.
+  padAxis(joystick, stackfall::kVirtualAxisLeftY, -32767);
+  runBatch(input, game, 2);
+  SC_CHECK(game.activePiece().x == startX);
+  padAxis(joystick, stackfall::kVirtualAxisLeftY, 0);
+  pump(input);
+
+  // X positive is the right arm, the logical down of the turned grip: a soft
+  // drop of one cell with its point.
+  const int beforeDrop = game.activePiece().y;
+  const auto scoreBeforeDrop = game.score();
+  padAxis(joystick, stackfall::kVirtualAxisLeftX, 32767);
+  runBatch(input, game, 1);
+  padAxis(joystick, stackfall::kVirtualAxisLeftX, 0);
+  pump(input);
+  SC_CHECK(game.activePiece().y == beforeDrop + 1);
+  SC_CHECK(game.score() == scoreBeforeDrop + 1);
+
+  // The face buttons beside the stick, on the reversed cluster: B rotates
+  // clockwise, A the other way, and Y holds.
+  padButton(joystick, stackfall::kVirtualButtonB, true);
+  runBatch(input, game, 1);
+  padButton(joystick, stackfall::kVirtualButtonB, false);
+  pump(input);
+  SC_CHECK(rotationSteps(startRotation, game.activePiece().rotation) == 1);
+  padButton(joystick, stackfall::kVirtualButtonA, true);
+  runBatch(input, game, 1);
+  padButton(joystick, stackfall::kVirtualButtonA, false);
+  pump(input);
+  SC_CHECK(rotationSteps(startRotation, game.activePiece().rotation) == 0);
+  const auto pieceBeforeHold = game.activePiece().id;
+  padButton(joystick, stackfall::kVirtualButtonY, true);
+  runBatch(input, game, 1);
+  padButton(joystick, stackfall::kVirtualButtonY, false);
+  pump(input);
+  SC_CHECK(game.activePiece().id != pieceBeforeHold || game.hasHoldPiece());
+
+  // X negative is the left arm, the logical up of the turned grip: the stick
+  // hard drops, the same arm the D-pad hard drops on (task T067).
+  const int cellsBefore = game.board().settledCellCount();
+  padAxis(joystick, stackfall::kVirtualAxisLeftX, -32767);
+  runBatch(input, game, 1);
+  padAxis(joystick, stackfall::kVirtualAxisLeftX, 0);
+  pump(input);
+  SC_CHECK(game.board().settledCellCount() == cellsBefore + 4);
+
+  SDL_GameControllerClose(controller);
+  SDL_JoystickDetachVirtual(device);
+}
+
+// A deflection held across the orientation turn is forgotten with every
+// other level, and the stick's next motion starts from a clean reading: the
+// release that follows the turn cannot clear a level under the new table.
+void check_stick_orientation_turn_clears() {
+  const int device = stackfall::attachVirtualController();
+  SC_CHECK(device >= 0);
+  if (device < 0) {
+    return;
+  }
+  SDL_GameController* controller = SDL_GameControllerOpen(device);
+  SC_CHECK(controller != nullptr);
+  if (controller == nullptr) {
+    return;
+  }
+  SDL_Joystick* joystick = SDL_GameControllerGetJoystick(controller);
+  SdlInput input;
+
+  // Stick left is move left in landscape; the turn re-reads the same
+  // deflection as the portrait table's hard-drop arm, so the level the old
+  // table raised must not survive it.
+  padAxis(joystick, stackfall::kVirtualAxisLeftX, -32767);
+  pump(input);
+  SC_CHECK(input.adapter().isHeld(GameAction::Left));
+  input.takeTickInput();
+  input.setOrientation(stackfall::Orientation::Portrait);
+  SC_CHECK(!input.adapter().isHeld(GameAction::Left));
+  SC_CHECK(!input.adapter().edgePending(GameAction::HardDrop));
+  input.takeTickInput();
+
+  // The stick is still deflected, but no further axis event arrives; when
+  // the player rests it, the release lands on an arm nobody believes in
+  // anymore and clears nothing that was not held.
+  padAxis(joystick, stackfall::kVirtualAxisLeftX, 0);
+  pump(input);
+  SC_CHECK(!input.adapter().edgePending(GameAction::HardDrop));
+  const TickInput rested = input.takeTickInput();
+  SC_CHECK(!rested.game.leftHeld && !rested.game.rightHeld &&
+           !rested.game.downHeld);
+  SC_CHECK(noGameplayEdge(rested));
+
+  // A fresh deflection under the portrait table takes the turned meaning.
+  padAxis(joystick, stackfall::kVirtualAxisLeftY, 32767);
+  pump(input);
+  SC_CHECK(input.adapter().isHeld(GameAction::Left));
+  input.takeTickInput();
+  padAxis(joystick, stackfall::kVirtualAxisLeftY, 0);
+  pump(input);
+  input.takeTickInput();
+
+  SDL_GameControllerClose(controller);
+  SDL_JoystickDetachVirtual(device);
+}
+
+// A capture never takes a stick deflection and the deflection never reaches
+// the adapter while the capture is armed; the arm deflected before it is
+// released cleanly.
+void check_stick_capture_ignored() {
+  const int device = stackfall::attachVirtualController();
+  SC_CHECK(device >= 0);
+  if (device < 0) {
+    return;
+  }
+  SDL_GameController* controller = SDL_GameControllerOpen(device);
+  SC_CHECK(controller != nullptr);
+  if (controller == nullptr) {
+    return;
+  }
+  SDL_Joystick* joystick = SDL_GameControllerGetJoystick(controller);
+  SdlInput input;
+
+  input.beginCapture();
+  padAxis(joystick, stackfall::kVirtualAxisLeftX, -32767);
+  pump(input);
+  const InputCapture capture = input.takeCapture();
+  SC_CHECK(capture.happened == false);
+  SC_CHECK(input.adapter().sourceCount() == 0);
+  const TickInput during = input.takeTickInput();
+  SC_CHECK(!during.game.leftHeld && noGameplayEdge(during));
+  input.cancelCapture();
+
+  // After the capture ends, the still-deflected stick has no pending press
+  // to fire, but the arm it holds releases cleanly on the way back.
+  padAxis(joystick, stackfall::kVirtualAxisLeftX, 0);
+  pump(input);
+  const TickInput rested = input.takeTickInput();
+  SC_CHECK(!rested.game.leftHeld && noGameplayEdge(rested));
+
+  // A deflection after the capture behaves normally again.
+  padAxis(joystick, stackfall::kVirtualAxisLeftX, -32767);
+  pump(input);
+  SC_CHECK(input.adapter().isHeld(GameAction::Left));
+  input.takeTickInput();
+  padAxis(joystick, stackfall::kVirtualAxisLeftX, 0);
+  pump(input);
+  input.takeTickInput();
+
+  SDL_GameControllerClose(controller);
+  SDL_JoystickDetachVirtual(device);
+}
+
+// The disconnected pad takes its stick with it: no arm the stick held stays
+// held, and the replug starts from a resting reading.
+void check_stick_removal() {
+  const int device = stackfall::attachVirtualController();
+  SC_CHECK(device >= 0);
+  if (device < 0) {
+    return;
+  }
+  SDL_GameController* controller = SDL_GameControllerOpen(device);
+  SC_CHECK(controller != nullptr);
+  if (controller == nullptr) {
+    return;
+  }
+  SDL_Joystick* joystick = SDL_GameControllerGetJoystick(controller);
+  SdlInput input;
+
+  padAxis(joystick, stackfall::kVirtualAxisLeftX, -32767);
+  pump(input);
+  SC_CHECK(input.adapter().isHeld(GameAction::Left));
+  input.takeTickInput();
+
+  SDL_GameControllerClose(controller);
+  SDL_JoystickDetachVirtual(device);
+  pump(input);
+  SC_CHECK(!input.adapter().isHeld(GameAction::Left));
+  SC_CHECK(input.adapter().sourceCount() == 0);
+  const TickInput after = input.takeTickInput();
+  SC_CHECK(!after.game.leftHeld && noGameplayEdge(after));
+}
+
+// ---------------------------------------------------------------------------
 // Both devices drive the game; edges survive catch-up exactly once.
 // ---------------------------------------------------------------------------
+
+// Task T87: the player moves the hard-drop trigger off Up and de-sensitizes
+// the Up paths. The proof has three halves, all on the virtual controller:
+//
+//   * on the defaults, a full stick-up deflection is one edge behind the
+//     deadzone - it fires exactly once however long the thumb holds the arm,
+//     and a light reading inside the deadzone fires nothing at all;
+//   * with hard drop rebound to the right shoulder, D-pad up and a full
+//     stick-up deflection stop hard-dropping entirely - no gameplay edge, no
+//     held level, only the fixed MenuUp role the arm always carries - so no
+//     second trigger survives the rebind;
+//   * the turned frame obeys the same rule reading by reading: the portrait
+//     rebind frees the grip's up arm (D-pad left, stick X negative) while the
+//     shoulder drops in portrait too.
+void check_harddrop_rebind_off_up() {
+  const int device = stackfall::attachVirtualController();
+  SC_CHECK(device >= 0);
+  if (device < 0) {
+    return;
+  }
+  SDL_GameController* controller = SDL_GameControllerOpen(device);
+  SC_CHECK(controller != nullptr);
+  if (controller == nullptr) {
+    return;
+  }
+  SDL_Joystick* joystick = SDL_GameControllerGetJoystick(controller);
+  SdlInput input;
+
+  // The defaults first: the stick's up arm is an edge behind the deadzone.
+  padAxis(joystick, stackfall::kVirtualAxisLeftY, -(stackfall::kStickDeadzone - 1));
+  pump(input);
+  const TickInput light = input.takeTickInput();
+  SC_CHECK(noGameplayEdge(light));
+  SC_CHECK(!light.game.downHeld && !light.game.leftHeld &&
+           !light.game.rightHeld);
+  padAxis(joystick, stackfall::kVirtualAxisLeftY, 0);
+  pump(input);
+  input.takeTickInput();
+
+  padAxis(joystick, stackfall::kVirtualAxisLeftY, -32767);
+  pump(input);
+  const TickInput deflected = input.takeTickInput();
+  SC_CHECK(deflected.game.hardDropPressed);
+  SC_CHECK(deflected.menu.upPressed);  // the arm's fixed role rides along
+  for (int held = 0; held < 8; ++held) {
+    // A held deflection is a level, not a repeated edge: the drop fired on
+    // the crossing tick alone, so a light touch that never crosses the
+    // deadzone cannot drop and a full one cannot drop twice.
+    const TickInput stillHeld = input.takeTickInput();
+    SC_CHECK(!stillHeld.game.hardDropPressed);
+    SC_CHECK(noGameplayEdge(stillHeld));
+  }
+  padAxis(joystick, stackfall::kVirtualAxisLeftY, 0);
+  pump(input);
+  input.takeTickInput();
+
+  // The rebind: hard drop leaves Up for the free right shoulder in the
+  // landscape table, exactly the capture the customization screen applies.
+  ControlBindings rebound = defaultControlBindings();
+  ControlTable& landscape =
+      rebound.table(DeviceKind::Controller, Orientation::Landscape);
+  landscape[static_cast<int>(GameAction::HardDrop)][0] =
+      stackfall::kControllerButtonR1;
+  landscape[static_cast<int>(GameAction::HardDrop)][1] = kNoControl;
+  ControlTable& portrait =
+      rebound.table(DeviceKind::Controller, Orientation::Portrait);
+  portrait[static_cast<int>(GameAction::HardDrop)][0] =
+      stackfall::kControllerButtonR1;
+  portrait[static_cast<int>(GameAction::HardDrop)][1] = kNoControl;
+  input.setControlBindings(rebound);
+
+  // The shoulder hard drops on both presses of the pad and deflections of
+  // the stick path's frame - one edge per press, nothing while it is held.
+  padButton(joystick, stackfall::kVirtualButtonRightShoulder, true);
+  pump(input);
+  const TickInput shoulderTick = input.takeTickInput();
+  SC_CHECK(shoulderTick.game.hardDropPressed);
+  SC_CHECK(noGameplayEdge(input.takeTickInput()));
+  padButton(joystick, stackfall::kVirtualButtonRightShoulder, false);
+  pump(input);
+  input.takeTickInput();
+
+  // The freed D-pad arm performs no gameplay action; its menu role is the
+  // egress rule of task T066 and never rebinds.
+  padButton(joystick, stackfall::kVirtualButtonDpadUp, true);
+  pump(input);
+  const TickInput freedArm = input.takeTickInput();
+  SC_CHECK(noGameplayEdge(freedArm));
+  SC_CHECK(!freedArm.game.downHeld && !freedArm.game.leftHeld &&
+           !freedArm.game.rightHeld);
+  SC_CHECK(freedArm.menu.upPressed);
+  padButton(joystick, stackfall::kVirtualButtonDpadUp, false);
+  pump(input);
+  input.takeTickInput();
+
+  // No second trigger on the axis path: a full stick-up deflection crosses
+  // the deadzone, resolves to the freed arm, and carries its menu role alone.
+  padAxis(joystick, stackfall::kVirtualAxisLeftY, -32767);
+  pump(input);
+  const TickInput freedStick = input.takeTickInput();
+  SC_CHECK(noGameplayEdge(freedStick));
+  SC_CHECK(!freedStick.game.downHeld && !freedStick.game.leftHeld &&
+           !freedStick.game.rightHeld);
+  SC_CHECK(freedStick.menu.upPressed);
+  for (int held = 0; held < 8; ++held) {
+    const TickInput stillHeld = input.takeTickInput();
+    SC_CHECK(noGameplayEdge(stillHeld));
+  }
+  padAxis(joystick, stackfall::kVirtualAxisLeftY, 0);
+  pump(input);
+  input.takeTickInput();
+
+  // The turned frame: the grip's up arm is D-pad left, which the stick's
+  // X-negative reading reaches, and the portrait rebind freed it too, so the
+  // shoulder drops in portrait while nothing else does.
+  input.setOrientation(Orientation::Portrait);
+  padAxis(joystick, stackfall::kVirtualAxisLeftX, -32767);
+  pump(input);
+  const TickInput turnedStick = input.takeTickInput();
+  SC_CHECK(noGameplayEdge(turnedStick));
+  SC_CHECK(turnedStick.menu.upPressed);  // the grip's up moves the cursor
+  padAxis(joystick, stackfall::kVirtualAxisLeftX, 0);
+  pump(input);
+  input.takeTickInput();
+  padButton(joystick, stackfall::kVirtualButtonDpadLeft, true);
+  pump(input);
+  const TickInput turnedArm = input.takeTickInput();
+  SC_CHECK(noGameplayEdge(turnedArm));
+  SC_CHECK(turnedArm.menu.upPressed);
+  padButton(joystick, stackfall::kVirtualButtonDpadLeft, false);
+  pump(input);
+  input.takeTickInput();
+  padButton(joystick, stackfall::kVirtualButtonRightShoulder, true);
+  pump(input);
+  SC_CHECK(input.takeTickInput().game.hardDropPressed);
+  padButton(joystick, stackfall::kVirtualButtonRightShoulder, false);
+  pump(input);
+  input.takeTickInput();
+  input.setOrientation(Orientation::Landscape);
+
+  SDL_GameControllerClose(controller);
+  SDL_JoystickDetachVirtual(device);
+}
 
 void check_keyboard_drives_game() {
   SdlInput input;
@@ -1035,6 +1737,14 @@ void check_device_translation_tables() {
            kControllerButtonX);
   SC_CHECK(controllerControlOfButton(SDL_CONTROLLER_BUTTON_LEFTSHOULDER) ==
            kControllerButtonL1);
+  // The right shoulder of task T87, the free shoulder a rebind can take.
+  SC_CHECK(controllerButtonOfControl(stackfall::kControllerButtonR1) ==
+           SDL_CONTROLLER_BUTTON_RIGHTSHOULDER);
+  SC_CHECK(controllerControlOfButton(SDL_CONTROLLER_BUTTON_RIGHTSHOULDER) ==
+           stackfall::kControllerButtonR1);
+  SC_CHECK(stackfall::virtualPadButtonFromName("r1") ==
+           stackfall::kVirtualButtonRightShoulder);
+  SC_CHECK(stackfall::virtualPadButtonFromName("r2") == -1);
   SC_CHECK(controllerControlOfButton(SDL_CONTROLLER_BUTTON_GUIDE) ==
            kNoControl);
 }
@@ -1491,6 +2201,14 @@ int main() {
   check_portrait_keyboard_table();
   check_controller_table();
   check_portrait_controller_table();
+  check_stick_landscape_table();
+  check_stick_portrait_table();
+  check_stick_drives_game();
+  check_stick_portrait_drives_game();
+  check_stick_orientation_turn_clears();
+  check_stick_capture_ignored();
+  check_stick_removal();
+  check_harddrop_rebind_off_up();
   check_portrait_controller_drives_game();
   check_keyboard_drives_game();
   check_controller_drives_game();

@@ -307,6 +307,26 @@ constexpr int kValueScale = 2;
 constexpr int kHintScale = 2;
 constexpr int kControlRowCount = 11;
 
+// The suites that pin the board, the HUD, and the letterbox read them on the
+// flat legacy ground of background mode Off, so their "pure background"
+// expectations stay about the scene partners alone. Since task T079 the
+// level 1 play scene carries the Still ground design instead, and the
+// wallpaper itself - its pixels, its palette caps, and its margins - is
+// pinned by run_background_checks() at the bottom of this file.
+void useFlatPlayGround(Renderer& renderer) {
+  renderer.setBackgroundMode(backgrounds::Mode::Off);
+}
+
+// Advances the wallpaper clock by `ms` in clock-sized chunks: one advance is
+// clamped to 250 ms, so a whole fade needs several calls to run out.
+void advanceBackgroundBy(Renderer& renderer, std::uint32_t ms) {
+  while (ms > 0) {
+    const std::uint32_t chunk = ms > 250 ? 250 : ms;
+    renderer.advanceBackgroundClock(chunk);
+    ms -= chunk;
+  }
+}
+
 // How many cells of the active piece lie inside the visible field.
 int visibleActiveCells(const Game& game) {
   if (!game.hasActivePiece()) {
@@ -365,6 +385,7 @@ void run_board_and_grid_checks() {
   Game game;
   game.start(20261102);
   Renderer renderer(canvas.renderer);
+  useFlatPlayGround(renderer);
 
   renderer.draw(game);
 
@@ -973,6 +994,311 @@ void run_grayscale_checks() {
   SC_CHECK(restored == colorFrame);
 }
 
+// ---------------------------------------------------------------------------
+// The per-piece in-cell designs of task T095: the geometry contract of
+// cellDesign() at every supported cell size, the pixels of the board cells in
+// both orientations and both palettes, the preview cells at their two smaller
+// sizes, and the off default that keeps the plain cell exactly.
+// ---------------------------------------------------------------------------
+
+// The design mask of `id` in a size x size cell: one flag per pixel, true
+// where a mark rectangle covers it.
+using DesignMask = std::vector<std::vector<bool>>;
+
+DesignMask designMask(PieceId id, int size) {
+  DesignMask mask(size, std::vector<bool>(size, false));
+  const CellDesign design = cellDesign(id, size);
+  for (int index = 0; index < design.count; ++index) {
+    const SDL_Rect& mark = design.rects[index];
+    for (int y = mark.y; y < mark.y + mark.h; ++y) {
+      for (int x = mark.x; x < mark.x + mark.w; ++x) {
+        if (x >= 0 && y >= 0 && x < size && y < size) {
+          mask[y][x] = true;
+        }
+      }
+    }
+  }
+  return mask;
+}
+
+// Reads the canvas pixel of portrait (px, py): the portrait pixel (x, y)
+// reaches the device canvas at (y, 543 - x), the rotation the portrait suites
+// pin, so a check written in portrait coordinates reads the same cell the
+// renderer drew.
+SDL_Color portraitPixelAt(const Canvas& canvas, int px, int py) {
+  return pixelAt(canvas, py, kCanvasHeight - 1 - px);
+}
+
+// The interior of a drawn cell holds exactly the two shades a design may use:
+// the palette fill where no mark sits and the palette dark shade where one
+// does. `readPixel` hands over the pixel of interior offset (ix, iy) of the
+// cell whose top-left corner is (x0, y0), in whatever orientation the caller
+// drew. Every interior pixel is pinned, so a mark that moved, shrank, or
+// vanished fails here, in the color and the grayscale palette alike.
+void checkCellInterior(const Canvas& canvas, int x0, int y0, int size,
+                       PieceId id, const CellPalette& palette, bool designsOn,
+                       const char* what) {
+  const DesignMask mask = designMask(id, size);
+  for (int iy = 2; iy < size - 2; ++iy) {
+    for (int ix = 2; ix < size - 2; ++ix) {
+      const SDL_Color got = pixelAt(canvas, x0 + ix, y0 + iy);
+      const bool marked = designsOn && mask[iy][ix];
+      if (!sameColor(got, marked ? palette.dark : palette.fill)) {
+        std::fprintf(stderr,
+                     "  context: %s, interior (%d, %d) is r=%u g=%u b=%u, "
+                     "wanted the %s shade\n",
+                     what, ix, iy, static_cast<unsigned>(got.r),
+                     static_cast<unsigned>(got.g),
+                     static_cast<unsigned>(got.b),
+                     marked ? "dark" : "fill");
+        SC_CHECK(false);
+        return;
+      }
+    }
+  }
+  SC_CHECK(true);
+}
+
+void run_piece_design_checks() {
+  Canvas canvas = makeCanvas(kCanvasWidth, kCanvasHeight);
+  SC_CHECK(canvas.ok);
+  Renderer renderer(canvas.renderer);
+
+  // The geometry contract at every supported cell size - the 12 px portrait
+  // preview, the 15 px landscape preview, the 27 px landscape cell, and the
+  // 40 px portrait cell - plus the small sizes no scene draws but a future
+  // caller might: every mark rectangle sits inside the interior the cell
+  // frame leaves, every supported size gives every piece a mark, and the
+  // seven masks are pairwise distinct, so no two types share a look at any
+  // size. Below an 8 px cell there is no interior a mark fits in and the
+  // design is empty, which draws the plain cell rather than an unpredictable
+  // one.
+  for (const int size : {12, 15, 27, 40, 9, 8}) {
+    std::vector<DesignMask> masks;
+    int empty = 0;
+    for (int index = 0; index < kPieceCount; ++index) {
+      const PieceId id = kAllPieceIds[index];
+      const CellDesign design = cellDesign(id, size);
+      int area = 0;
+      for (int mark = 0; mark < design.count; ++mark) {
+        const SDL_Rect& rect = design.rects[mark];
+        SC_CHECK(rect.w > 0);
+        SC_CHECK(rect.h > 0);
+        SC_CHECK(rect.x >= 2);
+        SC_CHECK(rect.y >= 2);
+        SC_CHECK(rect.x + rect.w <= size - 2);
+        SC_CHECK(rect.y + rect.h <= size - 2);
+        area += rect.w * rect.h;
+      }
+      if (design.count == 0) {
+        ++empty;
+      }
+      SC_CHECK(area <= (size - 4) * (size - 4));
+      masks.push_back(designMask(id, size));
+    }
+    if (size >= 12) {
+      SC_CHECK(empty == 0);  // every type carries a mark at a real cell
+    }
+    for (int a = 0; a < kPieceCount; ++a) {
+      for (int b = a + 1; b < kPieceCount; ++b) {
+        if (size >= 12) {
+          SC_CHECK(masks[a] != masks[b]);  // the distinctness of the table
+        }
+      }
+    }
+  }
+  for (const int size : {7, 6, 5}) {
+    for (int index = 0; index < kPieceCount; ++index) {
+      SC_CHECK(cellDesign(kAllPieceIds[index], size).count == 0);
+    }
+  }
+
+  // One settled cell of every type on the bottom row, so one frame draws all
+  // seven marks at once. The ghost is off for this check because its outline
+  // may cross the same cells; the ghost carries no fill and no mark.
+  Game game;
+  game.start(11);
+  SC_CHECK(game.scene() == Scene::Playing);
+  Board& board = GameTestPeer::board(game);
+  for (int index = 0; index < kPieceCount; ++index) {
+    SC_CHECK(board.settleCell(index, 19, kAllPieceIds[index]));
+  }
+  SC_CHECK(game.board().settledCellCount() == kPieceCount);
+  SC_CHECK(!game.board().rowIsFull(19));
+  renderer.setShowGhost(false);
+
+  // Landscape, the 27 px cell, in both palettes: every interior pixel is the
+  // fill or the dark shade exactly where the design mask says, and the off
+  // default draws no dark pixel inside the interior at all - the plain cell
+  // of the years before the task, pixel for pixel.
+  for (const bool grayscale : {false, true}) {
+    renderer.setGrayscale(grayscale);
+    renderer.setPieceDesigns(false);
+    renderer.draw(game);
+    for (int index = 0; index < kPieceCount; ++index) {
+      const PieceId id = kAllPieceIds[index];
+      const CellPalette& palette =
+          grayscale ? grayscalePalette(id) : cellPalette(id);
+      checkCellInterior(canvas, kBoardOriginX + index * kBoardCellSize,
+                        kBoardOriginY + 19 * kBoardCellSize, kBoardCellSize,
+                        id, palette, false,
+                        grayscale ? "landscape gray off" : "landscape off");
+    }
+    renderer.setPieceDesigns(true);
+    SC_CHECK(renderer.pieceDesigns() == true);
+    renderer.draw(game);
+    for (int index = 0; index < kPieceCount; ++index) {
+      const PieceId id = kAllPieceIds[index];
+      const CellPalette& palette =
+          grayscale ? grayscalePalette(id) : cellPalette(id);
+      checkCellInterior(canvas, kBoardOriginX + index * kBoardCellSize,
+                        kBoardOriginY + 19 * kBoardCellSize, kBoardCellSize,
+                        id, palette, true,
+                        grayscale ? "landscape gray on" : "landscape on");
+      // The mark is visible: at least six interior pixels of the dark shade,
+      // so the cue survives the smallest supported preview cell too.
+      const DesignMask mask = designMask(id, kBoardCellSize);
+      int marked = 0;
+      for (const std::vector<bool>& row : mask) {
+        for (bool flag : row) {
+          marked += flag ? 1 : 0;
+        }
+      }
+      SC_CHECK(marked >= 6);
+    }
+  }
+
+  // Portrait, the 40 px cell, through the rotation: the same interior rule in
+  // portrait coordinates, which proves the mark travels with the cell and not
+  // with the canvas.
+  renderer.setOrientation(Orientation::Portrait);
+  renderer.setGrayscale(true);
+  renderer.setPieceDesigns(true);
+  renderer.draw(game);
+  for (int index = 0; index < kPieceCount; ++index) {
+    const PieceId id = kAllPieceIds[index];
+    const CellPalette& palette = grayscalePalette(id);
+    const int px = kPortraitBoardOriginX + index * kPortraitBoardCellSize;
+    const int py = kPortraitBoardOriginY + 19 * kPortraitBoardCellSize;
+    const DesignMask mask = designMask(id, kPortraitBoardCellSize);
+    for (int iy = 2; iy < kPortraitBoardCellSize - 2; ++iy) {
+      for (int ix = 2; ix < kPortraitBoardCellSize - 2; ++ix) {
+        const SDL_Color got = portraitPixelAt(canvas, px + ix, py + iy);
+        const SDL_Color want = mask[iy][ix] ? palette.dark : palette.fill;
+        if (!sameColor(got, want)) {
+          SC_CHECK(false);
+          return;
+        }
+      }
+    }
+  }
+  SC_CHECK(true);
+
+  // The preview cells at their own smaller sizes: the first Next preview in
+  // landscape (15 px) and the Hold box in portrait (12 px, the smallest
+  // supported cell) carry their piece's mark, so the queue reads by pattern
+  // beside the board. The check recomputes the preview origin from the
+  // section 6.1 rule, as previewCellCenter does for the landscape cell.
+  renderer.setOrientation(Orientation::Landscape);
+  renderer.setGrayscale(false);
+  renderer.setShowGhost(true);
+  stackfall::GameTestPeer::setHoldSlot(game, PieceId::Z);
+  stackfall::GameTestPeer::setHoldLocked(game, false);
+  renderer.draw(game);
+  {
+    const PieceId next = game.queue()[0];
+    const CellPalette& palette = cellPalette(next);
+    for (const Cell& cell : pieceCells(next, Rotation::Spawn)) {
+      const SDL_Point center =
+          previewCellCenter(next, nextSlotBox(0), cell);
+      const int x0 = center.x - kPreviewCellSize / 2;
+      const int y0 = center.y - kPreviewCellSize / 2;
+      checkCellInterior(canvas, x0, y0, kPreviewCellSize, next, palette, true,
+                        "landscape next preview");
+    }
+    const PieceId held = game.holdPieceId();
+    for (const Cell& cell : pieceCells(held, Rotation::Spawn)) {
+      const SDL_Point center = previewCellCenter(held, holdBox(), cell);
+      const int x0 = center.x - kPreviewCellSize / 2;
+      const int y0 = center.y - kPreviewCellSize / 2;
+      checkCellInterior(canvas, x0, y0, kPreviewCellSize, held,
+                        cellPalette(held), true, "landscape hold preview");
+    }
+  }
+  renderer.setOrientation(Orientation::Portrait);
+  renderer.draw(game);
+  {
+    const PieceId held = game.holdPieceId();
+    const CellPalette& palette = cellPalette(held);
+    const std::array<Cell, kCellsPerPiece>& cells =
+        pieceCells(held, Rotation::Spawn);
+    int minX = 4;
+    int maxX = 0;
+    int minY = 4;
+    int maxY = 0;
+    for (const Cell& cell : cells) {
+      minX = cell.x < minX ? cell.x : minX;
+      maxX = cell.x > maxX ? cell.x : maxX;
+      minY = cell.y < minY ? cell.y : minY;
+      maxY = cell.y > maxY ? cell.y : maxY;
+    }
+    const SDL_Rect box = portraitHoldBox();
+    const int cellSize = kPortraitPreviewCellSize;
+    const int originX =
+        box.x + (box.w - (maxX - minX + 1) * cellSize) / 2 - minX * cellSize;
+    const int originY =
+        box.y + (box.h - (maxY - minY + 1) * cellSize) / 2 - minY * cellSize;
+    const DesignMask mask = designMask(held, cellSize);
+    for (const Cell& cell : cells) {
+      const int px = originX + cell.x * cellSize;
+      const int py = originY + cell.y * cellSize;
+      for (int iy = 2; iy < cellSize - 2; ++iy) {
+        for (int ix = 2; ix < cellSize - 2; ++ix) {
+          const SDL_Color got = portraitPixelAt(canvas, px + ix, py + iy);
+          const SDL_Color want = mask[iy][ix] ? palette.dark : palette.fill;
+          if (!sameColor(got, want)) {
+            SC_CHECK(false);
+            return;
+          }
+        }
+      }
+    }
+    SC_CHECK(true);
+  }
+
+  // The ghost keeps its hollow outline under the designs: no fill, no mark,
+  // so the landing preview reads as the shape it always was.
+  renderer.setOrientation(Orientation::Landscape);
+  renderer.setGrayscale(false);
+  renderer.setPieceDesigns(true);
+  renderer.draw(game);
+  {
+    const Piece ghost = game.ghostPiece();
+    SC_CHECK(ghost.y > game.activePiece().y);
+    for (const Cell& cell : boardCells(ghost)) {
+      if (cell.y < 0 || cell.y >= kBoardHeight) {
+        continue;
+      }
+      const SDL_Color fill = pieceFill(game.activePiece().id);
+      const SDL_Color dark = cellPalette(game.activePiece().id).dark;
+      SC_CHECK(countColor(canvas,
+                          SDL_Rect{cellCornerX(cell.x) + 2,
+                                   cellCornerY(cell.y) + 2,
+                                   kBoardCellSize - 4, kBoardCellSize - 4},
+                          fill) == 0);
+      SC_CHECK(countColor(canvas,
+                          SDL_Rect{cellCornerX(cell.x) + 2,
+                                   cellCornerY(cell.y) + 2,
+                                   kBoardCellSize - 4, kBoardCellSize - 4},
+                          dark) == 0);
+    }
+  }
+
+  renderer.setPieceDesigns(false);
+  renderer.setGrayscale(false);
+  SC_CHECK(renderer.pieceDesigns() == false);
+}
+
 void run_preview_checks() {
   Canvas canvas = makeCanvas(kCanvasWidth, kCanvasHeight);
   SC_CHECK(canvas.ok);
@@ -1176,6 +1502,7 @@ void run_focused_hud_checks() {
   Canvas canvas = makeCanvas(kCanvasWidth, kCanvasHeight);
   SC_CHECK(canvas.ok);
   Renderer renderer(canvas.renderer);
+  useFlatPlayGround(renderer);
 
   // The geometry contract of the two groups.
   SC_CHECK(kHudGap == 24);
@@ -1267,6 +1594,7 @@ void run_read_only_and_scaling_checks() {
   Canvas canvas = makeCanvas(kCanvasWidth, kCanvasHeight);
   SC_CHECK(canvas.ok);
   Renderer renderer(canvas.renderer);
+  useFlatPlayGround(renderer);
 
   Game game;
   game.start(987654321);
@@ -1299,6 +1627,7 @@ void run_read_only_and_scaling_checks() {
   Canvas scaled = makeCanvas(1440, 816);
   SC_CHECK(scaled.ok);
   Renderer scaledRenderer(scaled.renderer);
+  useFlatPlayGround(scaledRenderer);
   scaledRenderer.draw(game);
   SC_CHECK(sameColor(pixelAt(scaled, 515, 500), kBackground));
   SC_CHECK(sameColor(pixelAt(scaled, 516, 500), kFrame));
@@ -1312,6 +1641,7 @@ void run_read_only_and_scaling_checks() {
   Canvas letterboxed = makeCanvas(960, 1088);
   SC_CHECK(letterboxed.ok);
   Renderer letterboxedRenderer(letterboxed.renderer);
+  useFlatPlayGround(letterboxedRenderer);
   letterboxedRenderer.draw(game);
   SC_CHECK(sameColor(pixelAt(letterboxed, 5, 5 + 272), kBackground));
   SC_CHECK(sameColor(pixelAt(letterboxed, kBoardOriginX - 1, 271 + 272),
@@ -1390,6 +1720,7 @@ Canvas drawLetterboxedFrame(const Game& game, int width, int height) {
                  SDL_MapRGB(canvas.surface->format, 200, 200, 200));
     beginFrame(canvas.renderer);
     Renderer renderer(canvas.renderer);
+    useFlatPlayGround(renderer);
     renderer.draw(game);
   }
   return canvas;
@@ -1913,15 +2244,15 @@ void run_rebind_screen_checks() {
   SC_CHECK(game.scene() == Scene::Title);
 }
 
-// The options page of tasks T040 and T044: the heading, the six setting rows
-// with every value combination, the accent marker on the highlighted row, and
-// the footer band. The core moves the cursor alone; the values come from the
-// renderer settings, so all 160 combinations of the five toggles and the next
-// count are drawn, and the exact glyph count of the 5x7 table pins each row's
-// string - ON cannot stand in for OFF, and NEXT PIECES 3 cannot stand in for
-// NEXT PIECES 5. The ORIENTATION row names the layout the renderer draws, and
-// a mid-page turn moves the page itself, so the portrait half of that row is
-// drawn and pinned at the portrait metrics (task T068).
+// The options page of tasks T040, T044, and T095: the heading, the setting
+// rows with every value combination, the accent marker on the highlighted
+// row, and the footer band. The core moves the cursor alone; the values come
+// from the renderer settings, so all 320 combinations of the six toggles and
+// the next count are drawn, and the exact glyph count of the 5x7 table pins
+// each row's string - ON cannot stand in for OFF, and NEXT PIECES 3 cannot
+// stand in for NEXT PIECES 5. The ORIENTATION row names the layout the
+// renderer draws, and a mid-page turn moves the page itself, so the portrait
+// half of that row is drawn and pinned at the portrait metrics (task T068).
 void run_options_screen_checks() {
   Canvas canvas = makeCanvas(kCanvasWidth, kCanvasHeight);
   SC_CHECK(canvas.ok);
@@ -1931,15 +2262,21 @@ void run_options_screen_checks() {
 
   // The defaults mirror a session that loaded no settings file: every toggle
   // on, five Next previews, grayscale off, landscape, the Auto music pool,
-  // and both MUSIC.md volume defaults (tasks T044, T055, and T062).
-  SC_CHECK(kOptionsItemCount == 8);
+  // both MUSIC.md volume defaults (tasks T044, T055, and T062), the Auto
+  // wallpaper over design 1 (task T084), and the piece designs off (task
+  // T095).
+  SC_CHECK(kOptionsItemCount == 10);
   SC_CHECK(kOptionsMusicRow == 7);
+  SC_CHECK(kOptionsBackgroundsRow == 8);
+  SC_CHECK(kOptionsPieceDesignsRow == 9);
+  SC_CHECK(kBackgroundOptionsItemCount == 2);
   SC_CHECK(renderer.soundOn() == true);
   SC_CHECK(renderer.showGhost() == true);
   SC_CHECK(renderer.showGrid() == true);
   SC_CHECK(renderer.showHold() == true);
   SC_CHECK(renderer.nextPreviews() == kPreviewCount);
   SC_CHECK(renderer.grayscale() == false);
+  SC_CHECK(renderer.pieceDesigns() == false);
   SC_CHECK(renderer.orientation() == Orientation::Landscape);
   SC_CHECK(renderer.musicMode() == MusicMode::Auto);
   SC_CHECK(renderer.musicVolume() == 6);
@@ -1966,19 +2303,20 @@ void run_options_screen_checks() {
   SC_CHECK(countColor(canvas, heading, kText) > 400);
 
   // Every value combination draws: each row reads its label plus the value of
-  // its renderer setting - ON or OFF for the five toggles, the digit for
+  // its renderer setting - ON or OFF for the six toggles, the digit for
   // NEXT PIECES, the frame the renderer draws for ORIENTATION - and nothing
   // else in a row band is bright or dim, so the exact glyph count pins the
   // string. The landscape half of the table runs here; the portrait half
   // follows the turn below, because one mirror now names the layout and the
   // row cannot disagree with it (task T068).
-  for (int booleans = 0; booleans < 32; ++booleans) {
+  for (int booleans = 0; booleans < 64; ++booleans) {
     for (int next = 1; next <= kPreviewCount; ++next) {
       renderer.setSoundOn((booleans & 1) != 0);
       renderer.setShowGhost((booleans & 2) != 0);
       renderer.setShowGrid((booleans & 4) != 0);
       renderer.setShowHold((booleans & 8) != 0);
       renderer.setGrayscale((booleans & 16) != 0);
+      renderer.setPieceDesigns((booleans & 32) != 0);
       renderer.setNextPreviews(next);
       renderer.draw(game);
       char nextRow[24];
@@ -1992,6 +2330,8 @@ void run_options_screen_checks() {
           (booleans & 16) ? "GRAYSCALE ON" : "GRAYSCALE OFF",
           "ORIENTATION LANDSCAPE",
           "MUSIC AUTO",
+          "BACKGROUNDS AUTO",
+          (booleans & 32) ? "PIECE DESIGNS ON" : "PIECE DESIGNS OFF",
       };
       for (int index = 0; index < kOptionsItemCount; ++index) {
         const int y = kOptionsMenuY + index * kMenuItemHeight;
@@ -2036,10 +2376,10 @@ void run_options_screen_checks() {
     }
   }
   // The page turned, it did not draw twice: portrait rows end at portrait
-  // y=551 and the footer starts at 880, so the device columns between them
+  // y=617 and the footer starts at 880, so the device columns between them
   // hold nothing at all while the landscape rows they overlap used to carry
   // every row's text.
-  SC_CHECK(areaIsOnly(canvas, SDL_Rect{600, 96, 260, 384}, kBackground));
+  SC_CHECK(areaIsOnly(canvas, SDL_Rect{624, 96, 236, 384}, kBackground));
   SC_CHECK(countColor(canvas, portraitRow(6), kTextDim) ==
            glyphPixelCount("ORIENTATION PORTRAIT") * kMenuScale * kMenuScale);
   // The turn back restores the landscape page and its own row string.
@@ -2075,12 +2415,12 @@ void run_options_screen_checks() {
     SC_CHECK(countColor(canvas, rowBelow, kAccent) == 0);
   }
 
-  // Seven downs walk the cursor to the last row, and the marker follows: the
-  // first row goes dim and the MUSIC row goes bright.
+  // Nine downs walk the cursor to the last row, and the marker follows: the
+  // first row goes dim and the PIECE DESIGNS row goes bright.
   for (int step = 0; step < kOptionsItemCount - 1; ++step) {
     menuDown(game);
   }
-  SC_CHECK(game.optionsSelection() == kOptionsMusicRow);
+  SC_CHECK(game.optionsSelection() == kOptionsPieceDesignsRow);
   renderer.draw(game);
   SC_CHECK(countColor(canvas, menuRow(kOptionsMenuY, kMenuScale), kText) == 0);
   SC_CHECK(countColor(canvas,
@@ -2088,7 +2428,7 @@ void run_options_screen_checks() {
                                   (kOptionsItemCount - 1) * kMenuItemHeight,
                               kMenuScale),
                       kText) > 100);
-  // The eighth down stays inside the screen: one more down wraps to the
+  // The tenth down stays inside the screen: one more down wraps to the
   // SOUND row, whose band turns bright again.
   menuDown(game);
   SC_CHECK(game.optionsSelection() == 0);
@@ -2281,6 +2621,168 @@ void run_music_options_screen_checks() {
   renderer.draw(game);
   SC_CHECK(countColor(canvas,
                       menuRow(kOptionsMenuY + kOptionsMusicRow * kMenuItemHeight,
+                              kMenuScale),
+                      kText) > 100);
+}
+
+// The backgrounds page behind the BACKGROUNDS row (task T084): the same
+// heading, menu metrics, and footer hint as the options page, over its two
+// rows - the mode word and the preferred design with its stable number and
+// approved name in the menu's uppercase spelling. Every mode and every
+// design ID draws, because the renderer mirrors the wallpaper state the
+// platform layer pushes, and the exact glyph count pins each row's string:
+// MODE OFF cannot stand in for MODE AUTO, and DESIGN 3 DISTANT STARS cannot
+// stand in for DESIGN 7 SLEEPING SKYLINE. A portrait pass proves the widest
+// design row, its marker included, stays on the 544 px canvas.
+void run_background_options_screen_checks() {
+  Canvas canvas = makeCanvas(kCanvasWidth, kCanvasHeight);
+  SC_CHECK(canvas.ok);
+  Renderer renderer(canvas.renderer);
+  Game game;
+  game.openTitle(20261105);
+
+  // Reach the page: OPTIONS, eight downs to the BACKGROUNDS row, A to open.
+  menuDown(game);
+  menuDown(game);
+  SC_CHECK(game.titleSelection() == 2);
+  TickInput select;
+  select.menu.selectPressed = true;
+  game.tick(select);
+  SC_CHECK(game.scene() == Scene::Options);
+  for (int step = 0; step < kOptionsBackgroundsRow; ++step) {
+    menuDown(game);
+  }
+  game.tick(select);
+  SC_CHECK(game.scene() == Scene::BackgroundOptions);
+  SC_CHECK(game.backgroundsSelection() == 0);
+
+  // Plain background and a bright BACKGROUNDS heading at the shared
+  // constants, the same plain menu ground as the options page: the page
+  // carries no wallpaper of its own (task T084 keeps non-play pages flat).
+  renderer.draw(game);
+  SC_CHECK(sameColor(pixelAt(canvas, 5, 5), kBackground));
+  const SDL_Rect heading{0, kOptionsHeadingY, kCanvasWidth,
+                         kGlyphRows * kOptionsHeadingScale};
+  SC_CHECK(countColor(canvas, heading, kText) > 400);
+
+  // Every mode and design combination draws, with the row strings pinned by
+  // their exact glyph counts. The renderer's wallpaper mirror holds the
+  // preference in every mode, so the design row reads it even while Off.
+  const backgrounds::Mode modes[3] = {backgrounds::Mode::Auto,
+                                      backgrounds::Mode::Off,
+                                      backgrounds::Mode::Fixed};
+  const char* modeWords[3] = {"AUTO", "OFF", "FIXED"};
+  for (int mode = 0; mode < 3; ++mode) {
+    for (int design = backgrounds::kDesignFirstId;
+         design <= backgrounds::kDesignLastId; ++design) {
+      renderer.setBackgroundMode(modes[mode]);
+      renderer.setBackgroundPreference(design);
+      game.tick(TickInput{});  // a quiet tick keeps the scene and the cursor
+      renderer.draw(game);
+      char modeRow[16];
+      std::snprintf(modeRow, sizeof(modeRow), "MODE %s", modeWords[mode]);
+      char designRow[48];
+      std::snprintf(designRow, sizeof(designRow), "DESIGN %d", design);
+      const backgrounds::Design* record =
+          backgrounds::designOf(renderer.backgroundPreference());
+      SC_CHECK(record != nullptr);
+      std::strncat(designRow, " ",
+                   sizeof(designRow) - std::strlen(designRow) - 1);
+      char upper[32];
+      std::size_t at = 0;
+      for (const char* p = record->name;
+           *p != '\0' && at + 1 < sizeof(upper); ++p) {
+        upper[at++] = *p >= 'a' && *p <= 'z'
+                          ? static_cast<char>(*p - 'a' + 'A')
+                          : *p;
+      }
+      upper[at] = '\0';
+      std::strncat(designRow, upper,
+                   sizeof(designRow) - std::strlen(designRow) - 1);
+      const char* rows[kBackgroundOptionsItemCount] = {modeRow, designRow};
+      for (int index = 0; index < kBackgroundOptionsItemCount; ++index) {
+        const int y = kOptionsMenuY + index * kMenuItemHeight;
+        const SDL_Rect row = menuRow(y, kMenuScale);
+        const int pixels =
+            glyphPixelCount(rows[index]) * kMenuScale * kMenuScale;
+        if (index == game.backgroundsSelection()) {
+          SC_CHECK(countColor(canvas, row, kText) == pixels);
+          SC_CHECK(countColor(canvas, row, kTextDim) == 0);
+        } else {
+          SC_CHECK(countColor(canvas, row, kTextDim) == pixels);
+          SC_CHECK(countColor(canvas, row, kText) == 0);
+          SC_CHECK(countColor(canvas, row, kAccent) == 0);
+        }
+      }
+      // The widest design row keeps its whole text and its selection marker
+      // on the canvas.
+      const int textLeft = kCanvasWidth / 2 -
+                           textWidth(kMenuScale, designRow) / 2;
+      SC_CHECK(textLeft - kMenuMarkerGap - kMenuMarkerSize >= 0);
+      SC_CHECK(textLeft + textWidth(kMenuScale, designRow) <= kCanvasWidth);
+    }
+  }
+
+  // The cursor walks the two rows with the marker: one down reaches DESIGN
+  // and one more wraps to MODE.
+  for (int step = 0; step < kBackgroundOptionsItemCount - 1; ++step) {
+    menuDown(game);
+  }
+  SC_CHECK(game.backgroundsSelection() == kBackgroundOptionsItemCount - 1);
+  renderer.draw(game);
+  SC_CHECK(countColor(canvas, menuRow(kOptionsMenuY, kMenuScale), kText) == 0);
+  menuDown(game);
+  SC_CHECK(game.backgroundsSelection() == 0);
+
+  // The footer band holds exactly the shared options hint, and both rows and
+  // the footer sit inside the canvas with nothing clipped.
+  const SDL_Rect footerBand{0, kOptionsFooterY - 6, kCanvasWidth,
+                            kGlyphRows * kHintScale + 12};
+  const std::vector<int> footerRuns = textRowRuns(canvas, footerBand);
+  SC_CHECK(footerRuns.size() == 1);
+  SC_CHECK(footerRuns[0] == kGlyphRows * kHintScale);
+  SC_CHECK(countColor(canvas, footerBand, kTextDim) ==
+           glyphPixelCount("UP/DOWN CHOOSE - A CHANGE - B BACK") * kHintScale *
+               kHintScale);
+
+  // The portrait page: the widest design row, DESIGN 7 SLEEPING SKYLINE, and
+  // its marker stay inside the 544 px portrait canvas, and both rows draw at
+  // the portrait metrics. A portrait rect (x, y, w, h) reaches the device
+  // canvas at (y, 543 - x, h, w).
+  renderer.setBackgroundMode(backgrounds::Mode::Fixed);
+  renderer.setBackgroundPreference(7);
+  renderer.setOrientation(Orientation::Portrait);
+  renderer.draw(game);
+  {
+    const char* designRow = "DESIGN 7 SLEEPING SKYLINE";
+    const int textTop = kPOptionsMenuY + kBackgroundOptionsPreferredRow *
+                                              kMenuItemHeight;
+    const int textLeft = kPortraitCanvasWidth / 2 -
+                         textWidth(kMenuScale, designRow) / 2;
+    SC_CHECK(textLeft - kMenuMarkerGap - kMenuMarkerSize >= 0);
+    SC_CHECK(textLeft + textWidth(kMenuScale, designRow) <=
+             kPortraitCanvasWidth);
+    // Row 1 draws bright when selected at the portrait metrics.
+    menuDown(game);
+    SC_CHECK(game.backgroundsSelection() == 1);
+    renderer.draw(game);
+    const SDL_Rect portraitRow1{textTop, 0, kGlyphRows * kMenuScale,
+                                kPortraitCanvasWidth};
+    SC_CHECK(countColor(canvas, portraitRow1, kText) > 100);
+  }
+  renderer.setOrientation(Orientation::Landscape);
+
+  // Back returns to the options screen with the cursor still on the
+  // BACKGROUNDS row, whose band turns bright again.
+  TickInput back;
+  back.menu.backPressed = true;
+  game.tick(back);
+  SC_CHECK(game.scene() == Scene::Options);
+  SC_CHECK(game.optionsSelection() == kOptionsBackgroundsRow);
+  renderer.draw(game);
+  SC_CHECK(countColor(canvas,
+                      menuRow(kOptionsMenuY +
+                                  kOptionsBackgroundsRow * kMenuItemHeight,
                               kMenuScale),
                       kText) > 100);
 }
@@ -2915,6 +3417,1249 @@ void run_portrait_landscape_invariance_checks() {
   SC_CHECK(identical);
 }
 
+// ---------------------------------------------------------------------------
+// The level backgrounds of task T078: the zones the renderer derives from
+// its geometry, the wallpaper pixels of the play scene in both frames, the
+// Off legacy path, cuts, stepped fades, the clock freeze, the wallpaper
+// beneath the overlays, and the untouched menu grounds.
+// ---------------------------------------------------------------------------
+
+// The per-channel maxima of `area`, for the componentwise cap scans.
+SDL_Color maxChannels(const Canvas& canvas, const SDL_Rect& area) {
+  SDL_Color largest{0, 0, 0, 255};
+  for (int y = area.y; y < area.y + area.h; ++y) {
+    for (int x = area.x; x < area.x + area.w; ++x) {
+      const SDL_Color color = pixelAt(canvas, x, y);
+      if (color.r > largest.r) {
+        largest.r = color.r;
+      }
+      if (color.g > largest.g) {
+        largest.g = color.g;
+      }
+      if (color.b > largest.b) {
+        largest.b = color.b;
+      }
+    }
+  }
+  return largest;
+}
+
+void run_background_checks() {
+  Canvas canvas = makeCanvas(kCanvasWidth, kCanvasHeight);
+  SC_CHECK(canvas.ok);
+  Renderer renderer(canvas.renderer);
+
+  // The zones of backgroundZones() are the design package mask
+  // (docs/backgrounds/index.md, "The layout mask"), restated here with the
+  // mask's own numbers so the derivation cannot drift from the contract.
+  const backgrounds::Zones landscape = backgroundZones(Orientation::Landscape);
+  SC_CHECK(landscape.canvasWidth == 960 && landscape.canvasHeight == 544);
+  SC_CHECK(landscape.frame.x == 344 && landscape.frame.y == 1);
+  SC_CHECK(landscape.frame.w == 272 && landscape.frame.h == 542);
+  SC_CHECK(landscape.loudCount == 2);
+  SC_CHECK(landscape.loud[0].x == 0 && landscape.loud[0].y == 0);
+  SC_CHECK(landscape.loud[0].w == 192 && landscape.loud[0].h == 544);
+  SC_CHECK(landscape.loud[1].x == 768 && landscape.loud[1].w == 192);
+  const backgrounds::Zones portrait = backgroundZones(Orientation::Portrait);
+  SC_CHECK(portrait.canvasWidth == 544 && portrait.canvasHeight == 960);
+  SC_CHECK(portrait.frame.x == 71 && portrait.frame.y == 119);
+  SC_CHECK(portrait.frame.w == 402 && portrait.frame.h == 802);
+  SC_CHECK(portrait.loudCount == 3);
+  SC_CHECK(portrait.loud[0].x == 0 && portrait.loud[0].y == 119);
+  SC_CHECK(portrait.loud[0].w == 59 && portrait.loud[0].h == 802);
+  SC_CHECK(portrait.loud[1].x == 485 && portrait.loud[1].w == 59);
+  SC_CHECK(portrait.loud[2].x == 0 && portrait.loud[2].y == 921);
+  SC_CHECK(portrait.loud[2].w == 544 && portrait.loud[2].h == 39);
+
+  Game game;
+  game.start(4242);
+
+  // Auto at level 1 draws the Still ground design of task T079: the legacy
+  // base #10121A with two nested corner steps of the darker ink #0C0E16 in
+  // each corner, inside the loud margins alone. The suites above read the
+  // flat legacy ground through mode Off, so this is where the level 1 pixels
+  // are pinned.
+  const SDL_Rect leftMargin{0, 0, 192, 544};
+  const SDL_Rect rightMargin{768, 0, 192, 544};
+  SC_CHECK(renderer.backgroundMode() == backgrounds::Mode::Auto);
+  renderer.setBackgroundLevel(1);
+  renderer.draw(game);
+  const SDL_Color base1{0x10, 0x12, 0x1A, 255};
+  const SDL_Color ink1{0x0C, 0x0E, 0x16, 255};
+  // The outer step is 160 x 121, the inner 99 x 75, both touching the corner.
+  SC_CHECK(sameColor(pixelAt(canvas, 5, 5), ink1));
+  SC_CHECK(sameColor(pixelAt(canvas, 159, 120), ink1));
+  SC_CHECK(sameColor(pixelAt(canvas, 160, 120), base1));   // past the outer
+  SC_CHECK(sameColor(pixelAt(canvas, 161, 0), base1));
+  SC_CHECK(sameColor(pixelAt(canvas, 98, 74), ink1));      // inside the inner
+  SC_CHECK(sameColor(pixelAt(canvas, 90, 100), ink1));     // outer, past inner
+  SC_CHECK(sameColor(pixelAt(canvas, 900, 300), base1));   // right margin, no step
+  SC_CHECK(sameColor(pixelAt(canvas, 900, 100), ink1));    // top-right corner
+  SC_CHECK(sameColor(pixelAt(canvas, 100, 500), ink1));    // bottom-left corner
+  SC_CHECK(sameColor(pixelAt(canvas, 900, 500), ink1));    // bottom-right corner
+  SC_CHECK(sameColor(pixelAt(canvas, 100, 300), base1));   // left margin, no step
+  // The quiet span holds the base alone: the statistics column, the next
+  // column, and both guard gaps.
+  SC_CHECK(sameColor(pixelAt(canvas, 250, 300), base1));
+  SC_CHECK(sameColor(pixelAt(canvas, 700, 450), base1));
+  SC_CHECK(sameColor(pixelAt(canvas, 330, 300), base1));
+  SC_CHECK(sameColor(pixelAt(canvas, 630, 100), base1));
+  // The corner ink sits below the base and far under every cap, and the
+  // well and its ring stay pure.
+  const SDL_Color cornerPeak = maxChannels(canvas, leftMargin);
+  SC_CHECK(cornerPeak.r <= 0x10 && cornerPeak.g <= 0x12 &&
+           cornerPeak.b <= 0x1A);
+  SC_CHECK(sameColor(pixelAt(canvas, 490, 400), kBoardWell));
+  SC_CHECK(sameColor(pixelAt(canvas, 344, 400), kFrame));
+
+  // A level with a cut record switches in one draw: level 5, the first
+  // moving design of the Stir chapter (task T080), cuts in with its base
+  // everywhere outside the frame and its 56 hash-ranked stars inside the
+  // loud margins alone, the static dust beneath them. The round reset
+  // parks the presentation clock at zero, so the stars sit at the t = 0
+  // placement of the seed 0x5356.
+  renderer.setBackgroundLevel(5);
+  SC_CHECK(renderer.backgroundLevel() == 5);
+  renderer.resetBackgroundRound();
+  renderer.draw(game);
+  const SDL_Color design5{0x0F, 0x14, 0x20, 255};
+  const SDL_Color starBright5{0x68, 0x78, 0x92, 255};
+  const SDL_Color dust5{0x20, 0x28, 0x3A, 255};
+  const SDL_Rect leftGap{320, 0, 24, 544};
+  const SDL_Rect rightGap{616, 0, 24, 544};
+  // The quiet span holds the base alone: no star or fleck draws under the
+  // HUD columns or in the guard gaps.
+  SC_CHECK(sameColor(pixelAt(canvas, 250, 300), design5));   // stats column
+  SC_CHECK(sameColor(pixelAt(canvas, 700, 450), design5));   // next column
+  SC_CHECK(areaIsOnly(canvas, leftGap, design5));
+  SC_CHECK(areaIsOnly(canvas, rightGap, design5));
+  // The approved anchors: a 1 px bright star at (18, 340), a 2 x 2 bright
+  // star at (51, 41), a 3 x 1 dust fleck at (61, 18).
+  SC_CHECK(sameColor(pixelAt(canvas, 18, 340), starBright5));
+  SC_CHECK(sameColor(pixelAt(canvas, 19, 341), design5));    // past it
+  SC_CHECK(sameColor(pixelAt(canvas, 51, 41), starBright5));
+  SC_CHECK(sameColor(pixelAt(canvas, 52, 42), starBright5));
+  SC_CHECK(sameColor(pixelAt(canvas, 53, 43), design5));     // past the 2 px
+  SC_CHECK(sameColor(pixelAt(canvas, 61, 18), dust5));
+  SC_CHECK(sameColor(pixelAt(canvas, 63, 18), dust5));
+  SC_CHECK(sameColor(pixelAt(canvas, 64, 18), design5));     // past the 3 px
+  // The stars sink at the record's 2 px/s: after half a second of
+  // presentation clock every star sits one pixel lower - the bright
+  // anchor of (18, 340) now at 341 - and the dust beneath holds still.
+  advanceBackgroundBy(renderer, 500);
+  renderer.draw(game);
+  SC_CHECK(sameColor(pixelAt(canvas, 18, 341), starBright5));
+  SC_CHECK(sameColor(pixelAt(canvas, 18, 340), design5));
+  SC_CHECK(sameColor(pixelAt(canvas, 51, 42), starBright5));
+  SC_CHECK(sameColor(pixelAt(canvas, 61, 18), dust5));
+  // The well and its ring stay pure: the background ground hides under them.
+  SC_CHECK(sameColor(pixelAt(canvas, 490, 400), kBoardWell));
+  SC_CHECK(sameColor(pixelAt(canvas, 344, 400), kFrame));
+  SC_CHECK(sameColor(pixelAt(canvas, 615, 400), kFrame));
+  // The quiet rule holds on the pure-background guard strips: nothing above
+  // the secondary cap #2A3146 draws there, componentwise, and the loud
+  // margins hold the accent cap #8A94AC.
+  const SDL_Color gapPeak = maxChannels(canvas, leftGap);
+  SC_CHECK(gapPeak.r <= 0x2A && gapPeak.g <= 0x31 && gapPeak.b <= 0x46);
+  const SDL_Color gapPeakRight = maxChannels(canvas, rightGap);
+  SC_CHECK(gapPeakRight.r <= 0x2A && gapPeakRight.g <= 0x31 &&
+           gapPeakRight.b <= 0x46);
+  const SDL_Color marginPeak = maxChannels(canvas, leftMargin);
+  SC_CHECK(marginPeak.r <= 0x8A && marginPeak.g <= 0x94 &&
+           marginPeak.b <= 0xAC);
+
+  // Fixed shows the preferred design at every level: the level moves and the
+  // design does not.
+  renderer.setBackgroundPreference(20);
+  renderer.setBackgroundMode(backgrounds::Mode::Fixed);
+  SC_CHECK(renderer.backgroundPreference() == 20);
+  renderer.setBackgroundLevel(3);
+  renderer.draw(game);
+  const SDL_Color design20{0x19, 0x1E, 0x2B, 255};
+  // The landed Collapse grammar holds base-only windows in its margin -
+  // its debris piles toward the far canvas edges - so the Fixed proof
+  // reads one: the 48 x 48 block at x 48, clear of the ranked fragments
+  // and the slabs at the t = 0 placement.
+  SC_CHECK(areaIsOnly(canvas, SDL_Rect{48, 0, 48, 48}, design20));
+  SC_CHECK(sameColor(pixelAt(canvas, 250, 300), design20));
+
+  // Off restores the legacy flat #10121A at any level, and nothing else:
+  // the whole margin holds the old canvas color alone.
+  renderer.setBackgroundMode(backgrounds::Mode::Off);
+  renderer.setBackgroundLevel(20);
+  SC_CHECK(renderer.backgroundLevel() == 20);
+  renderer.draw(game);
+  SC_CHECK(areaIsOnly(canvas, leftMargin, kBackground));
+  SC_CHECK(areaIsOnly(canvas, rightMargin, kBackground));
+  SC_CHECK(sameColor(pixelAt(canvas, 250, 300), kBackground));
+  SC_CHECK(sameColor(pixelAt(canvas, 490, 400), kBoardWell));
+
+  // A fade record steps visibly. Back on Auto at level 20 the design cuts
+  // in (Off never left a fade pending), then level 2 fades from design 20
+  // over 400 ms in 12 steps; the anchor of the two bases is the midpoint.
+  // The fade reads the base-only window of the landed design 20 above,
+  // above the rows the design 2 rule and its under-bands occupy once the
+  // fade lands.
+  const SDL_Rect upperLeftMargin{48, 0, 48, 48};
+  renderer.setBackgroundMode(backgrounds::Mode::Auto);
+  renderer.setBackgroundLevel(20);
+  renderer.draw(game);
+  SC_CHECK(areaIsOnly(canvas, upperLeftMargin, design20));
+  renderer.setBackgroundLevel(2);
+  SC_CHECK(renderer.backgroundClockFrozen() == false);
+  // Step 0: the outgoing frame continues without a pop.
+  renderer.draw(game);
+  SC_CHECK(areaIsOnly(canvas, upperLeftMargin, design20));
+  // Half way: the flat anchor hand-off frame of the two fade halves.
+  renderer.advanceBackgroundClock(200);
+  renderer.draw(game);
+  const SDL_Color anchor{0x14, 0x18, 0x23, 255};  // mid of #191E2B, #10131C
+  SC_CHECK(areaIsOnly(canvas, upperLeftMargin, anchor));
+  // Frozen mid-fade: focus loss or pause holds the step, and the time the
+  // freeze covers never lands when it thaws.
+  renderer.freezeBackgroundClock(true);
+  SC_CHECK(renderer.backgroundClockFrozen());
+  renderer.advanceBackgroundClock(250);
+  renderer.advanceBackgroundClock(50);
+  renderer.draw(game);
+  SC_CHECK(areaIsOnly(canvas, upperLeftMargin, anchor));
+  renderer.freezeBackgroundClock(false);
+  renderer.advanceBackgroundClock(100);  // 300 ms of fade: step 9
+  renderer.draw(game);
+  const SDL_Color stepNine{18, 21, 31, 255};  // #10131C six parts from anchor
+  SC_CHECK(areaIsOnly(canvas, upperLeftMargin, stepNine));
+  // The fade lands on the plain target inside its record.
+  renderer.advanceBackgroundClock(100);
+  renderer.draw(game);
+  const SDL_Color design2{0x10, 0x13, 0x1C, 255};
+  SC_CHECK(areaIsOnly(canvas, upperLeftMargin, design2));
+
+  // The landed First light design of the Still chapter: the 1 px rule of
+  // #2A3146 at row 440 and the two under-bands of #1C2433 below it, both
+  // cut by the frame ring, both within the secondary cap everywhere they
+  // draw - the rule is exactly at the cap, so it may cross the quiet zones.
+  const SDL_Color rule2{0x2A, 0x31, 0x46, 255};
+  const SDL_Color under2{0x1C, 0x24, 0x33, 255};
+  SC_CHECK(sameColor(pixelAt(canvas, 5, 440), rule2));
+  SC_CHECK(sameColor(pixelAt(canvas, 343, 440), rule2));  // the frame cuts it
+  SC_CHECK(sameColor(pixelAt(canvas, 344, 440), kFrame));
+  SC_CHECK(sameColor(pixelAt(canvas, 616, 440), rule2));
+  SC_CHECK(sameColor(pixelAt(canvas, 615, 440), kFrame));
+  SC_CHECK(sameColor(pixelAt(canvas, 5, 439), design2));
+  SC_CHECK(sameColor(pixelAt(canvas, 5, 441), design2));
+  SC_CHECK(sameColor(pixelAt(canvas, 5, 449), under2));   // rows 448..450
+  SC_CHECK(sameColor(pixelAt(canvas, 5, 451), design2));
+  SC_CHECK(sameColor(pixelAt(canvas, 5, 458), under2));   // rows 456..459
+  SC_CHECK(sameColor(pixelAt(canvas, 5, 460), design2));
+  SC_CHECK(sameColor(pixelAt(canvas, 250, 440), rule2));  // the stats column
+  SC_CHECK(sameColor(pixelAt(canvas, 490, 440), kBoardWell));  // under the well
+
+  // The Distant stars design: the approved hash-ranked placement of 28
+  // stars, inside the loud margins alone, in the two shades of its record.
+  renderer.setBackgroundLevel(3);
+  advanceBackgroundBy(renderer, 750);  // past the 0.5 s fade of the record
+  renderer.draw(game);
+  const SDL_Color base3{0x0E, 0x12, 0x1C, 255};
+  const SDL_Color starDim{0x1B, 0x22, 0x30, 255};
+  const SDL_Color starBright{0x64, 0x71, 0x8C, 255};
+  SC_CHECK(sameColor(pixelAt(canvas, 779, 371), starDim));    // first star
+  SC_CHECK(sameColor(pixelAt(canvas, 780, 372), starDim));    // 2 x 2
+  SC_CHECK(sameColor(pixelAt(canvas, 781, 372), base3));      // past it
+  SC_CHECK(sameColor(pixelAt(canvas, 954, 395), starDim));    // a 1 px star
+  SC_CHECK(sameColor(pixelAt(canvas, 955, 395), base3));
+  SC_CHECK(sameColor(pixelAt(canvas, 831, 86), starBright));  // a bright one
+  SC_CHECK(sameColor(pixelAt(canvas, 2, 203), starDim));      // left margin
+  SC_CHECK(sameColor(pixelAt(canvas, 147, 16), starDim));
+  // The quiet span holds the base alone: no star under the HUD. The guard
+  // gaps carry wallpaper only, so they pin it exactly; the HUD columns carry
+  // their text on top of the same base.
+  SC_CHECK(sameColor(pixelAt(canvas, 330, 300), base3));
+  SC_CHECK(sameColor(pixelAt(canvas, 630, 100), base3));
+  SC_CHECK(areaIsOnly(canvas, leftGap, base3));
+  SC_CHECK(areaIsOnly(canvas, rightGap, base3));
+  // Every star pixel stays inside the loud margins and under the accent cap.
+  const SDL_Color starMarginPeak = maxChannels(canvas, leftMargin);
+  SC_CHECK(starMarginPeak.r <= 0x8A && starMarginPeak.g <= 0x94 &&
+           starMarginPeak.b <= 0xAC);
+
+  // The Quiet strata design: eight sediment bands of #222A39 stacked in the
+  // bottom third, cut by the well, with the 6 px stepped ends at the margin
+  // edges. Its record fades in over 0.5 s, so the check waits the fade out.
+  renderer.setBackgroundLevel(4);
+  advanceBackgroundBy(renderer, 750);
+  renderer.draw(game);
+  const SDL_Color base4{0x11, 0x14, 0x1D, 255};
+  const SDL_Color ink4{0x22, 0x2A, 0x39, 255};
+  SC_CHECK(sameColor(pixelAt(canvas, 5, 505), ink4));   // the first band
+  SC_CHECK(sameColor(pixelAt(canvas, 10, 504), base4));  // its 9 px gap above
+  SC_CHECK(sameColor(pixelAt(canvas, 5, 534), ink4));   // its bottom row
+  SC_CHECK(sameColor(pixelAt(canvas, 5, 535), base4));  // below the stack
+  SC_CHECK(sameColor(pixelAt(canvas, 5, 277), ink4));   // the last band's top
+  SC_CHECK(sameColor(pixelAt(canvas, 10, 276), base4));  // above the stack
+  SC_CHECK(sameColor(pixelAt(canvas, 300, 505), ink4)); // under the HUD
+  SC_CHECK(sameColor(pixelAt(canvas, 490, 505), kBoardWell));  // under the well
+  SC_CHECK(sameColor(pixelAt(canvas, 343, 505), ink4));  // the guard gap
+  SC_CHECK(sameColor(pixelAt(canvas, 0, 499), ink4));   // the stepped end
+  SC_CHECK(sameColor(pixelAt(canvas, 5, 499), ink4));   // 6 px wide
+  SC_CHECK(sameColor(pixelAt(canvas, 6, 499), base4));  // past it
+  SC_CHECK(sameColor(pixelAt(canvas, 0, 498), base4));  // above the step
+  SC_CHECK(sameColor(pixelAt(canvas, 186, 499), ink4)); // the inner edge step
+  SC_CHECK(sameColor(pixelAt(canvas, 192, 499), base4));  // outside the margin
+  SC_CHECK(sameColor(pixelAt(canvas, 768, 499), ink4));
+  SC_CHECK(sameColor(pixelAt(canvas, 954, 499), ink4));
+  // The bands never leave the secondary cap: the guard gaps hold wallpaper
+  // alone, and the bands cross them at their secondary shade.
+  const SDL_Color strataPeak = maxChannels(canvas, leftGap);
+  SC_CHECK(strataPeak.r <= 0x2A && strataPeak.g <= 0x31 &&
+           strataPeak.b <= 0x46);
+  const SDL_Color strataPeakRight = maxChannels(canvas, rightGap);
+  SC_CHECK(strataPeakRight.r <= 0x2A && strataPeakRight.g <= 0x31 &&
+           strataPeakRight.b <= 0x46);
+
+  // The landed Stir designs of task T080 in the real frame. Each round
+  // reset parks the clock at zero, so every design sits at its t = 0
+  // placement, and one advance of the presentation clock shows the
+  // record's motion at exact pixels.
+  //
+  // Level 6, Dither dusk: the first inked dusk zone at rows 163..206 - a
+  // band inset 6 px from the margin edges with a 6 px end cap 5 px taller
+  // at each edge - and its checker patches of accent #38445B rising at
+  // 2 px/s over the margin height plus their own 12 px.
+  renderer.setBackgroundLevel(6);
+  renderer.resetBackgroundRound();
+  renderer.draw(game);
+  const SDL_Color design6{0x12, 0x16, 0x20, 255};
+  const SDL_Color zone6{0x24, 0x2B, 0x3A, 255};
+  const SDL_Color dither6{0x38, 0x44, 0x5B, 255};
+  SC_CHECK(sameColor(pixelAt(canvas, 6, 163), zone6));    // the band top
+  SC_CHECK(sameColor(pixelAt(canvas, 5, 163), zone6));    // the end cap
+  SC_CHECK(sameColor(pixelAt(canvas, 6, 206), zone6));    // band bottom row
+  SC_CHECK(sameColor(pixelAt(canvas, 6, 207), design6));  // the 4 px gap
+  SC_CHECK(sameColor(pixelAt(canvas, 0, 158), zone6));    // the end cap
+  SC_CHECK(sameColor(pixelAt(canvas, 5, 158), zone6));
+  SC_CHECK(sameColor(pixelAt(canvas, 6, 157), design6));  // above the cap
+  SC_CHECK(sameColor(pixelAt(canvas, 191, 158), zone6));  // the inner cap
+  SC_CHECK(sameColor(pixelAt(canvas, 191, 163), zone6));
+  SC_CHECK(sameColor(pixelAt(canvas, 191, 206), zone6));
+  SC_CHECK(sameColor(pixelAt(canvas, 192, 163), design6));  // outside the
+                                                            // margin
+  SC_CHECK(sameColor(pixelAt(canvas, 4, 158), zone6));    // 6 px wide cap
+  SC_CHECK(sameColor(pixelAt(canvas, 4, 157), design6));
+  // A dither square of the first zone, and its motion: half a second
+  // lifts every patch one pixel, the square now at sy - 1 and its old
+  // bottom row back to the zone beneath.
+  {
+    int sx = 0;
+    int sy = 0;
+    bool found = false;
+    for (int y = 169; y < 195 && !found; ++y) {
+      for (int x = 10; x < 182 && !found; ++x) {
+        if (sameColor(pixelAt(canvas, x, y), dither6)) {
+          sx = x;
+          sy = y;
+          found = true;
+        }
+      }
+    }
+    SC_CHECK(found);
+    if (found) {
+      advanceBackgroundBy(renderer, 500);
+      renderer.draw(game);
+      SC_CHECK(sameColor(pixelAt(canvas, sx, sy - 1), dither6));
+      SC_CHECK(sameColor(pixelAt(canvas, sx, sy + 2), dither6));
+      SC_CHECK(sameColor(pixelAt(canvas, sx, sy + 3), zone6));
+    }
+  }
+
+  // Level 7, Sleeping skyline: the corner tower at (3, 352) 43 px wide
+  // and 192 tall with its two roof blocks above, and a breathing window
+  // of accent #64728A that swells one pixel upward through the middle of
+  // the 8 s cycle while its bottom row holds.
+  renderer.setBackgroundLevel(7);
+  renderer.resetBackgroundRound();
+  renderer.draw(game);
+  const SDL_Color design7{0x11, 0x15, 0x1F, 255};
+  const SDL_Color tower7{0x25, 0x2D, 0x3D, 255};
+  const SDL_Color window7{0x64, 0x72, 0x8A, 255};
+  SC_CHECK(sameColor(pixelAt(canvas, 3, 352), tower7));   // the tower top
+  SC_CHECK(sameColor(pixelAt(canvas, 3, 351), design7));  // base above it
+  SC_CHECK(sameColor(pixelAt(canvas, 46, 352), design7)); // past its width
+  SC_CHECK(sameColor(pixelAt(canvas, 12, 344), tower7));  // roof 1
+  SC_CHECK(sameColor(pixelAt(canvas, 37, 344), tower7));
+  SC_CHECK(sameColor(pixelAt(canvas, 38, 344), design7));
+  SC_CHECK(sameColor(pixelAt(canvas, 18, 338), tower7));  // roof 2
+  SC_CHECK(sameColor(pixelAt(canvas, 30, 338), tower7));
+  SC_CHECK(sameColor(pixelAt(canvas, 31, 338), design7));
+  // A window at rest: 3 px wide, 4 tall, 10 px under the tower top.
+  SC_CHECK(sameColor(pixelAt(canvas, 7, 362), window7));
+  SC_CHECK(sameColor(pixelAt(canvas, 9, 362), window7));
+  SC_CHECK(sameColor(pixelAt(canvas, 10, 362), tower7));  // between columns
+  SC_CHECK(sameColor(pixelAt(canvas, 7, 365), window7));
+  SC_CHECK(sameColor(pixelAt(canvas, 7, 366), tower7));   // inside the tower
+  SC_CHECK(sameColor(pixelAt(canvas, 7, 361), tower7));   // 10 px below top
+  // Mid-cycle the window swells: one pixel taller at the top, the same
+  // bottom row.
+  advanceBackgroundBy(renderer, 4000);
+  renderer.draw(game);
+  SC_CHECK(sameColor(pixelAt(canvas, 7, 361), window7));
+  SC_CHECK(sameColor(pixelAt(canvas, 7, 360), tower7));
+  SC_CHECK(sameColor(pixelAt(canvas, 7, 365), window7));
+  SC_CHECK(sameColor(pixelAt(canvas, 7, 366), tower7));
+
+  // Level 8, Low signal: the two accent bars of the left margin - 14 px
+  // under its top and 40 px over its bottom - and the scanline burst
+  // whose rules scroll down 3 px/s, repeating every 10/3 s.
+  renderer.setBackgroundLevel(8);
+  renderer.resetBackgroundRound();
+  renderer.draw(game);
+  const SDL_Color line8{0x24, 0x2C, 0x3B, 255};
+  const SDL_Color bar8{0x54, 0x61, 0x7A, 255};
+  SC_CHECK(sameColor(pixelAt(canvas, 6, 14), bar8));      // the top bar
+  SC_CHECK(sameColor(pixelAt(canvas, 185, 16), bar8));
+  const SDL_Color design8{0x11, 0x15, 0x1F, 255};
+  SC_CHECK(sameColor(pixelAt(canvas, 6, 17), design8));
+  SC_CHECK(sameColor(pixelAt(canvas, 6, 504), bar8));     // the bottom bar
+  SC_CHECK(sameColor(pixelAt(canvas, 185, 506), bar8));
+  SC_CHECK(sameColor(pixelAt(canvas, 6, 507), design8));
+  SC_CHECK(sameColor(pixelAt(canvas, 64, 189), line8));   // the first rule
+  SC_CHECK(sameColor(pixelAt(canvas, 172, 189), line8));
+  SC_CHECK(sameColor(pixelAt(canvas, 173, 189), design8));
+  SC_CHECK(sameColor(pixelAt(canvas, 64, 190), design8));
+  // A third of a second slides the rule set one pixel down; the bars
+  // never move.
+  advanceBackgroundBy(renderer, 333);
+  renderer.draw(game);
+  SC_CHECK(sameColor(pixelAt(canvas, 64, 190), line8));
+  SC_CHECK(sameColor(pixelAt(canvas, 64, 189), design8));
+  SC_CHECK(sameColor(pixelAt(canvas, 6, 14), bar8));
+  SC_CHECK(sameColor(pixelAt(canvas, 6, 504), bar8));
+
+  // The landed Build designs of task T081 in the real frame, each at its
+  // t = 0 placement after the round reset, with one advance of the clock
+  // showing the record's motion at exact pixels.
+  //
+  // Level 9, Fracture: the first seam step of the left margin - a 17 x 5
+  // block at (0, 0) with its 22 px tall ledge 12 px toward the center -
+  // and the sinking accent ticks: a third of a second drops every tick
+  // one pixel while the staircase holds still.
+  renderer.setBackgroundLevel(9);
+  renderer.resetBackgroundRound();
+  renderer.draw(game);
+  const SDL_Color design9{0x10, 0x15, 0x1F, 255};
+  const SDL_Color seam9{0x28, 0x30, 0x44, 255};
+  const SDL_Color tick9{0x70, 0x7D, 0x96, 255};
+  SC_CHECK(sameColor(pixelAt(canvas, 0, 0), seam9));      // the seam step
+  SC_CHECK(sameColor(pixelAt(canvas, 16, 4), seam9));
+  SC_CHECK(sameColor(pixelAt(canvas, 29, 0), design9));   // past the ledge
+  SC_CHECK(sameColor(pixelAt(canvas, 0, 5), design9));    // past its 5 rows
+  SC_CHECK(sameColor(pixelAt(canvas, 12, 21), seam9));    // the ledge
+  SC_CHECK(sameColor(pixelAt(canvas, 12, 22), design9));  // past the ledge
+  SC_CHECK(sameColor(pixelAt(canvas, 29, 45), seam9));    // step 1's seam
+  SC_CHECK(sameColor(pixelAt(canvas, 28, 45), seam9));    // its ledge edge
+  SC_CHECK(sameColor(pixelAt(canvas, 19, 10), tick9));    // a tick
+  SC_CHECK(sameColor(pixelAt(canvas, 20, 11), tick9));
+  SC_CHECK(sameColor(pixelAt(canvas, 19, 12), seam9));    // the ledge under
+  SC_CHECK(sameColor(pixelAt(canvas, 943, 0), seam9));    // mirrored margin
+  SC_CHECK(sameColor(pixelAt(canvas, 931, 21), seam9));
+  SC_CHECK(sameColor(pixelAt(canvas, 939, 11), tick9));
+  advanceBackgroundBy(renderer, 333);
+  renderer.draw(game);
+  SC_CHECK(sameColor(pixelAt(canvas, 19, 11), tick9));    // one pixel down
+  SC_CHECK(sameColor(pixelAt(canvas, 19, 10), seam9));    // the ledge under
+  SC_CHECK(sameColor(pixelAt(canvas, 0, 0), seam9));      // the seam holds
+  SC_CHECK(sameColor(pixelAt(canvas, 12, 21), seam9));
+
+  // Level 10, Circuit hush: the first path of the left margin - a 48 px
+  // run at (4, 8), its 31 px drop at the right end, the 22 px jog back,
+  // and the 35 px closing drop - with its 4 x 4 node and the 2 x 2 lit
+  // core that swells to 3 x 3 through the middle of the 7 s cycle.
+  renderer.setBackgroundLevel(10);
+  renderer.resetBackgroundRound();
+  renderer.draw(game);
+  const SDL_Color design10{0x11, 0x17, 0x21, 255};
+  const SDL_Color trace10{0x28, 0x31, 0x44, 255};
+  const SDL_Color core10{0x6B, 0x84, 0x98, 255};
+  SC_CHECK(sameColor(pixelAt(canvas, 4, 8), trace10));    // the run
+  SC_CHECK(sameColor(pixelAt(canvas, 51, 8), trace10));
+  SC_CHECK(sameColor(pixelAt(canvas, 52, 8), design10));   // past the run
+  SC_CHECK(sameColor(pixelAt(canvas, 50, 8), trace10));    // the drop
+  SC_CHECK(sameColor(pixelAt(canvas, 30, 37), trace10));   // the jog back
+  SC_CHECK(sameColor(pixelAt(canvas, 31, 68), trace10));   // the node
+  SC_CHECK(sameColor(pixelAt(canvas, 32, 71), trace10));
+  SC_CHECK(sameColor(pixelAt(canvas, 28, 68), design10));  // past the node
+  SC_CHECK(sameColor(pixelAt(canvas, 29, 68), core10));    // the lit core
+  SC_CHECK(sameColor(pixelAt(canvas, 30, 69), core10));
+  SC_CHECK(sameColor(pixelAt(canvas, 31, 69), trace10));   // node past core
+  advanceBackgroundBy(renderer, 4000);
+  renderer.draw(game);
+  SC_CHECK(sameColor(pixelAt(canvas, 31, 69), core10));    // swelled to 3 x 3
+  SC_CHECK(sameColor(pixelAt(canvas, 30, 70), core10));
+  SC_CHECK(sameColor(pixelAt(canvas, 27, 67), design10));
+  SC_CHECK(sameColor(pixelAt(canvas, 32, 70), trace10));   // the node holds
+  SC_CHECK(sameColor(pixelAt(canvas, 29, 71), trace10));
+  advanceBackgroundBy(renderer, 3000);
+  renderer.draw(game);
+  SC_CHECK(sameColor(pixelAt(canvas, 28, 68), design10));  // quiet again
+  SC_CHECK(sameColor(pixelAt(canvas, 30, 70), trace10));
+  SC_CHECK(sameColor(pixelAt(canvas, 30, 69), core10));
+
+  // Level 11, Band aurora: the lowest ribbon's staircase - lifts 0, 1, 2,
+  // 1, 0 times 8 px over its 40 px steps - with a riding tick, rising one
+  // pixel every quarter second, the whole layer together. The ribbons are
+  // secondary, so they cross the guard gaps at the same shade.
+  renderer.setBackgroundLevel(11);
+  renderer.resetBackgroundRound();
+  renderer.draw(game);
+  const SDL_Color design11{0x13, 0x17, 0x25, 255};
+  const SDL_Color ribbon11{0x28, 0x30, 0x44, 255};
+  const SDL_Color tick11{0x67, 0x75, 0x8D, 255};
+  SC_CHECK(sameColor(pixelAt(canvas, 0, 87), ribbon11));   // step 0, lift 0
+  SC_CHECK(sameColor(pixelAt(canvas, 39, 87), ribbon11));
+  SC_CHECK(sameColor(pixelAt(canvas, 40, 79), ribbon11));   // step 1, lift 8
+  SC_CHECK(sameColor(pixelAt(canvas, 80, 71), ribbon11));   // step 2, lift 16
+  SC_CHECK(sameColor(pixelAt(canvas, 80, 70), design11));   // above the lift
+  SC_CHECK(sameColor(pixelAt(canvas, 120, 79), ribbon11));  // step 3, lift 8
+  SC_CHECK(sameColor(pixelAt(canvas, 160, 87), ribbon11));  // step 4, lift 0
+  SC_CHECK(sameColor(pixelAt(canvas, 200, 79), ribbon11));  // step 5, lift 8
+  SC_CHECK(sameColor(pixelAt(canvas, 240, 105), ribbon11)); // step 6 bottom
+  SC_CHECK(sameColor(pixelAt(canvas, 343, 87), ribbon11));  // the guard gap
+  SC_CHECK(sameColor(pixelAt(canvas, 616, 87), ribbon11));
+  SC_CHECK(sameColor(pixelAt(canvas, 250, 300), design11));  // between rows
+  SC_CHECK(sameColor(pixelAt(canvas, 11, 25), tick11));      // a riding tick
+  SC_CHECK(sameColor(pixelAt(canvas, 12, 26), tick11));
+  SC_CHECK(sameColor(pixelAt(canvas, 13, 25), design11));
+  advanceBackgroundBy(renderer, 250);
+  renderer.draw(game);
+  SC_CHECK(sameColor(pixelAt(canvas, 0, 86), ribbon11));    // one pixel up
+  SC_CHECK(sameColor(pixelAt(canvas, 0, 85), design11));    // the row it left
+  SC_CHECK(sameColor(pixelAt(canvas, 40, 78), ribbon11));
+  SC_CHECK(sameColor(pixelAt(canvas, 11, 24), tick11));
+
+  // Level 12, Long trails: a bright star of the ranked placement, a trail
+  // step with its head above, and the layer's shared diagonal - a third
+  // of a second moves every element a pixel down and left together.
+  renderer.setBackgroundLevel(12);
+  renderer.resetBackgroundRound();
+  renderer.draw(game);
+  const SDL_Color design12{0x11, 0x16, 0x20, 255};
+  const SDL_Color starDim12{0x29, 0x31, 0x44, 255};
+  const SDL_Color head12{0x76, 0x84, 0x9B, 255};
+  SC_CHECK(sameColor(pixelAt(canvas, 15, 316), starDim12));  // trail step 0
+  SC_CHECK(sameColor(pixelAt(canvas, 17, 316), starDim12));
+  SC_CHECK(sameColor(pixelAt(canvas, 18, 316), design12));
+  SC_CHECK(sameColor(pixelAt(canvas, 11, 318), starDim12));  // step 1
+  SC_CHECK(sameColor(pixelAt(canvas, 14, 313), head12));     // its head
+  SC_CHECK(sameColor(pixelAt(canvas, 15, 314), head12));
+  SC_CHECK(sameColor(pixelAt(canvas, 16, 313), design12));
+  SC_CHECK(sameColor(pixelAt(canvas, 806, 481), head12));    // a bright star
+  SC_CHECK(sameColor(pixelAt(canvas, 807, 482), head12));
+  SC_CHECK(sameColor(pixelAt(canvas, 808, 481), design12));
+  SC_CHECK(sameColor(pixelAt(canvas, 192, 316), design12));  // quiet zone
+  SC_CHECK(sameColor(pixelAt(canvas, 330, 316), design12));
+  advanceBackgroundBy(renderer, 333);
+  renderer.draw(game);
+  SC_CHECK(sameColor(pixelAt(canvas, 14, 317), starDim12));  // the diagonal
+  SC_CHECK(sameColor(pixelAt(canvas, 15, 316), design12));
+  SC_CHECK(sameColor(pixelAt(canvas, 13, 314), head12));
+
+  // The landed Pressure designs of task T082 in the real frame, each at
+  // its t = 0 placement after the round reset, with one advance of the
+  // clock showing the record's motion at exact pixels.
+  //
+  // Level 13, Deep grid: the first scrolling rule of the left margin - a
+  // 1 px line of #293145 at row 266, the mid row 272 less the 6 px
+  // horizon offset - over the first staircase guide at x 6, whose second
+  // quarter shifts 1 px toward the canvas center, closed by its 2 x 2
+  // accent node at the margin foot. A fifth of a second scrolls the rule
+  // set down one pixel; the guides and nodes hold still.
+  renderer.setBackgroundLevel(13);
+  renderer.resetBackgroundRound();
+  renderer.draw(game);
+  const SDL_Color design13{0x12, 0x17, 0x22, 255};
+  const SDL_Color line13{0x29, 0x31, 0x45, 255};
+  const SDL_Color node13{0x79, 0x86, 0x9B, 255};
+  SC_CHECK(sameColor(pixelAt(canvas, 5, 266), line13));   // the rule
+  SC_CHECK(sameColor(pixelAt(canvas, 190, 266), line13));
+  SC_CHECK(sameColor(pixelAt(canvas, 5, 265), design13));  // above it
+  SC_CHECK(sameColor(pixelAt(canvas, 5, 267), design13));  // below it
+  SC_CHECK(sameColor(pixelAt(canvas, 772, 266), line13));  // right margin
+  SC_CHECK(sameColor(pixelAt(canvas, 6, 100), line13));    // guide, first
+  SC_CHECK(sameColor(pixelAt(canvas, 5, 100), design13));  // quarter
+  SC_CHECK(sameColor(pixelAt(canvas, 7, 200), line13));    // second quarter
+  SC_CHECK(sameColor(pixelAt(canvas, 6, 200), design13));  // stepped in
+  SC_CHECK(sameColor(pixelAt(canvas, 9, 408), line13));    // fourth quarter
+  SC_CHECK(sameColor(pixelAt(canvas, 41, 100), line13));   // guide 2
+  SC_CHECK(sameColor(pixelAt(canvas, 148, 100), line13));  // guide 5
+  SC_CHECK(sameColor(pixelAt(canvas, 774, 100), line13));  // right guide
+  SC_CHECK(sameColor(pixelAt(canvas, 774, 200), line13));   // steps away:
+  SC_CHECK(sameColor(pixelAt(canvas, 775, 200), design13));  // 774, 773
+  SC_CHECK(sameColor(pixelAt(canvas, 6, 538), node13));    // the node
+  SC_CHECK(sameColor(pixelAt(canvas, 7, 539), node13));
+  SC_CHECK(sameColor(pixelAt(canvas, 8, 538), design13));
+  SC_CHECK(sameColor(pixelAt(canvas, 774, 538), node13));
+  advanceBackgroundBy(renderer, 200);
+  renderer.draw(game);
+  SC_CHECK(sameColor(pixelAt(canvas, 5, 267), line13));    // one pixel down
+  SC_CHECK(sameColor(pixelAt(canvas, 5, 266), design13));
+  SC_CHECK(sameColor(pixelAt(canvas, 772, 279), line13));  // the +6 rule
+  SC_CHECK(sameColor(pixelAt(canvas, 6, 100), line13));    // guides hold
+  SC_CHECK(sameColor(pixelAt(canvas, 6, 538), node13));
+
+  // Level 14, Fine snow: the falling field of exactly 160 flakes - a 1 px
+  // dim flake of #293145 at (5, 119), a 2 x 2 bright flake of #7A879E at
+  // (40, 188) - over the three static bands of #293145, 19 rows tall at
+  // 30, 55 and 80 percent height. Half a second drops every flake three
+  // pixels; the bands hold still.
+  renderer.setBackgroundLevel(14);
+  renderer.resetBackgroundRound();
+  renderer.draw(game);
+  const SDL_Color design14{0x13, 0x19, 0x23, 255};
+  const SDL_Color flakeDim14{0x29, 0x31, 0x45, 255};
+  const SDL_Color flakeBright14{0x7A, 0x87, 0x9E, 255};
+  SC_CHECK(sameColor(pixelAt(canvas, 5, 119), flakeDim14));   // a 1 px flake
+  SC_CHECK(sameColor(pixelAt(canvas, 6, 119), design14));
+  SC_CHECK(sameColor(pixelAt(canvas, 40, 188), flakeBright14));  // a 2 x 2
+  SC_CHECK(sameColor(pixelAt(canvas, 41, 189), flakeBright14));
+  SC_CHECK(sameColor(pixelAt(canvas, 42, 188), design14));
+  SC_CHECK(sameColor(pixelAt(canvas, 5, 163), flakeDim14));   // band 1 top
+  SC_CHECK(sameColor(pixelAt(canvas, 5, 162), design14));
+  SC_CHECK(sameColor(pixelAt(canvas, 5, 181), flakeDim14));   // band bottom
+  SC_CHECK(sameColor(pixelAt(canvas, 5, 182), design14));
+  SC_CHECK(sameColor(pixelAt(canvas, 5, 299), flakeDim14));   // band 2
+  SC_CHECK(sameColor(pixelAt(canvas, 5, 435), flakeDim14));   // band 3
+  SC_CHECK(sameColor(pixelAt(canvas, 250, 163), flakeDim14));  // stats zone
+  SC_CHECK(sameColor(pixelAt(canvas, 330, 163), flakeDim14));  // guard gap
+  SC_CHECK(sameColor(pixelAt(canvas, 490, 163), kBoardWell));  // under well
+  advanceBackgroundBy(renderer, 500);
+  renderer.draw(game);
+  SC_CHECK(sameColor(pixelAt(canvas, 5, 122), flakeDim14));   // three down
+  SC_CHECK(sameColor(pixelAt(canvas, 5, 119), design14));
+  SC_CHECK(sameColor(pixelAt(canvas, 40, 191), flakeBright14));
+  SC_CHECK(sameColor(pixelAt(canvas, 40, 188), design14));
+  SC_CHECK(sameColor(pixelAt(canvas, 5, 163), flakeDim14));   // bands hold
+
+  // Level 15, Undertow: the first wave band - a staircase of 20 px steps
+  // whose lift runs 0, 1, 2, 1 times 6 px, at base row 152 - with its foam
+  // tick of #74839B two rows above the edge, and the second band's
+  // mirrored contour at base row 201 dropped 3 px. Half a second slides
+  // the whole layer three pixels left; the foam holds its slot.
+  renderer.setBackgroundLevel(15);
+  renderer.resetBackgroundRound();
+  renderer.draw(game);
+  const SDL_Color design15{0x13, 0x19, 0x23, 255};
+  const SDL_Color band15{0x2A, 0x31, 0x46, 255};
+  const SDL_Color foam15{0x74, 0x83, 0x9B, 255};
+  SC_CHECK(sameColor(pixelAt(canvas, 0, 152), band15));   // step 0, lift 0
+  SC_CHECK(sameColor(pixelAt(canvas, 19, 189), band15));
+  SC_CHECK(sameColor(pixelAt(canvas, 20, 146), band15));   // step 1, lift 6
+  SC_CHECK(sameColor(pixelAt(canvas, 40, 140), band15));   // step 2, lift 12
+  SC_CHECK(sameColor(pixelAt(canvas, 40, 139), design15));  // above the lift
+  SC_CHECK(sameColor(pixelAt(canvas, 60, 146), band15));   // step 3, lift 6
+  SC_CHECK(sameColor(pixelAt(canvas, 39, 145), design15));  // between steps
+  SC_CHECK(sameColor(pixelAt(canvas, 0, 192), band15));    // band 1, phase 2
+  SC_CHECK(sameColor(pixelAt(canvas, 40, 204), band15));   // its lift 0
+  SC_CHECK(sameColor(pixelAt(canvas, 40, 203), design15));
+  SC_CHECK(sameColor(pixelAt(canvas, 87, 150), foam15));   // the foam tick
+  SC_CHECK(sameColor(pixelAt(canvas, 88, 150), foam15));
+  SC_CHECK(sameColor(pixelAt(canvas, 87, 151), design15));
+  SC_CHECK(sameColor(pixelAt(canvas, 830, 155), foam15));  // right margin
+  SC_CHECK(sameColor(pixelAt(canvas, 330, 160), band15));  // guard gap, ok
+  SC_CHECK(sameColor(pixelAt(canvas, 250, 160), band15));  // stats zone
+  advanceBackgroundBy(renderer, 500);
+  renderer.draw(game);
+  SC_CHECK(sameColor(pixelAt(canvas, 37, 140), band15));   // three left
+  SC_CHECK(sameColor(pixelAt(canvas, 36, 140), design15));
+  SC_CHECK(sameColor(pixelAt(canvas, 39, 141), band15));
+  SC_CHECK(sameColor(pixelAt(canvas, 87, 150), foam15));   // foam holds
+  SC_CHECK(sameColor(pixelAt(canvas, 0, 189), band15));    // band still on
+
+  // Level 16, Slow pulse: the outermost broken contour of #2A3146 - 2 px
+  // bars inset 10 px, the top bar split by a 24 px opening at x 586..609,
+  // the left bar by one at rows 23..46 - with its corner tip of #7C88A0,
+  // the second contour at inset 36, and the swell: four seconds in, every
+  // contour has breathed 24 px outward.
+  renderer.setBackgroundLevel(16);
+  renderer.resetBackgroundRound();
+  renderer.draw(game);
+  const SDL_Color design16{0x14, 0x1A, 0x26, 255};
+  const SDL_Color contour16{0x2A, 0x31, 0x46, 255};
+  const SDL_Color tip16{0x7C, 0x88, 0xA0, 255};
+  SC_CHECK(sameColor(pixelAt(canvas, 30, 10), contour16));  // top bar
+  SC_CHECK(sameColor(pixelAt(canvas, 330, 10), contour16));  // past the
+  SC_CHECK(sameColor(pixelAt(canvas, 940, 10), contour16));  // stats zone
+  // The 24 px opening of the outer contour hides under the board well
+  // (the frame cuts the bar at x 344 and 615); the second contour's
+  // opening lies in the open: rows 36..37, x 221..244.
+  SC_CHECK(sameColor(pixelAt(canvas, 220, 36), contour16));
+  SC_CHECK(sameColor(pixelAt(canvas, 221, 36), design16));  // the opening
+  SC_CHECK(sameColor(pixelAt(canvas, 232, 37), design16));
+  SC_CHECK(sameColor(pixelAt(canvas, 244, 36), design16));
+  SC_CHECK(sameColor(pixelAt(canvas, 245, 36), contour16));  // past it
+  SC_CHECK(sameColor(pixelAt(canvas, 10, 22), contour16));  // left bar
+  SC_CHECK(sameColor(pixelAt(canvas, 10, 23), design16));   // its opening
+  SC_CHECK(sameColor(pixelAt(canvas, 10, 46), design16));
+  SC_CHECK(sameColor(pixelAt(canvas, 10, 47), contour16));
+  SC_CHECK(sameColor(pixelAt(canvas, 50, 36), contour16));  // contour 2's
+  SC_CHECK(sameColor(pixelAt(canvas, 35, 36), design16));   // top bar
+  SC_CHECK(sameColor(pixelAt(canvas, 490, 10), kBoardWell));  // well covers
+  SC_CHECK(sameColor(pixelAt(canvas, 10, 10), tip16));     // the corner tip
+  SC_CHECK(sameColor(pixelAt(canvas, 11, 11), tip16));
+  SC_CHECK(sameColor(pixelAt(canvas, 948, 10), tip16));
+  SC_CHECK(sameColor(pixelAt(canvas, 10, 532), tip16));
+  SC_CHECK(sameColor(pixelAt(canvas, 62, 62), tip16));     // contour 3
+  SC_CHECK(sameColor(pixelAt(canvas, 63, 63), tip16));
+  SC_CHECK(sameColor(pixelAt(canvas, 64, 64), design16));  // past its bar
+  advanceBackgroundBy(renderer, 4000);
+  renderer.draw(game);
+  SC_CHECK(sameColor(pixelAt(canvas, 34, 34), tip16));     // swelled 24 out
+  SC_CHECK(sameColor(pixelAt(canvas, 40, 34), contour16));
+  SC_CHECK(sameColor(pixelAt(canvas, 30, 34), design16));  // inside contour
+  SC_CHECK(sameColor(pixelAt(canvas, 30, 10), design16));  // old bar gone
+  SC_CHECK(sameColor(pixelAt(canvas, 86, 86), tip16));     // contour 3 in
+  SC_CHECK(sameColor(pixelAt(canvas, 85, 85), design16));
+  advanceBackgroundBy(renderer, 4000);
+  renderer.draw(game);
+  SC_CHECK(sameColor(pixelAt(canvas, 30, 10), contour16));  // back at rest
+  SC_CHECK(sameColor(pixelAt(canvas, 34, 34), design16));  // inside ring 0
+  SC_CHECK(sameColor(pixelAt(canvas, 50, 36), contour16));  // ring 1 again
+  SC_CHECK(sameColor(pixelAt(canvas, 62, 62), tip16));
+
+  // The landed Peak designs of task T083 in the real frame, each at its
+  // t = 0 placement after the round reset, with one advance of the clock
+  // showing the record's motion at exact pixels.
+  //
+  // Level 17, Rising ember: the ranked embers of the warm accent #897A72 -
+  // a 1 x 2 px ember at (915, 288), a 2 x 2 ember at (9, 520) - rising past
+  // the static stepped columns of #2A3040 in the lower fifth: the first
+  // column's block at (4, 534) with its half-width step six rows above.
+  // Half a second raises every ember four pixels; the columns hold.
+  renderer.setBackgroundLevel(17);
+  renderer.resetBackgroundRound();
+  renderer.draw(game);
+  const SDL_Color design17{0x17, 0x19, 0x1F, 255};
+  const SDL_Color ember17{0x89, 0x7A, 0x72, 255};
+  const SDL_Color column17{0x2A, 0x30, 0x40, 255};
+  SC_CHECK(sameColor(pixelAt(canvas, 5, 5), design17));     // quiet margin
+  SC_CHECK(sameColor(pixelAt(canvas, 250, 300), design17));  // stats zone
+  SC_CHECK(sameColor(pixelAt(canvas, 330, 300), design17));  // guard gap
+  SC_CHECK(sameColor(pixelAt(canvas, 915, 288), ember17));   // a 1 x 2 ember
+  SC_CHECK(sameColor(pixelAt(canvas, 916, 288), design17));
+  SC_CHECK(sameColor(pixelAt(canvas, 9, 520), ember17));     // a 2 x 2 ember
+  SC_CHECK(sameColor(pixelAt(canvas, 10, 521), ember17));
+  SC_CHECK(sameColor(pixelAt(canvas, 4, 534), column17));    // the block
+  SC_CHECK(sameColor(pixelAt(canvas, 4, 528), column17));    // its step
+  SC_CHECK(sameColor(pixelAt(canvas, 4, 527), design17));   // above both
+  advanceBackgroundBy(renderer, 500);
+  renderer.draw(game);
+  SC_CHECK(sameColor(pixelAt(canvas, 915, 284), ember17));   // four pixels up
+  SC_CHECK(sameColor(pixelAt(canvas, 915, 288), design17));
+  SC_CHECK(sameColor(pixelAt(canvas, 4, 534), column17));    // columns hold
+
+  // Level 18, Storm lines: the first stepped trail - five 4 x 2 px
+  // segments of #2A3146 stepping 4 px left and 2 px down from (96, 44) -
+  // beside a dim 2 x 4 dash of #2A3146 at (901, 2) and a bright 2 x 4 dash
+  // of #8290A7 at (38, 9). A quarter second drops the whole layer two
+  // pixels, dashes and trails together.
+  renderer.setBackgroundLevel(18);
+  renderer.resetBackgroundRound();
+  renderer.draw(game);
+  const SDL_Color design18{0x13, 0x19, 0x25, 255};
+  const SDL_Color dashDim18{0x2A, 0x31, 0x46, 255};
+  const SDL_Color dashBright18{0x82, 0x90, 0xA7, 255};
+  SC_CHECK(sameColor(pixelAt(canvas, 96, 44), dashDim18));   // trail head
+  SC_CHECK(sameColor(pixelAt(canvas, 88, 48), dashDim18));   // third step
+  SC_CHECK(sameColor(pixelAt(canvas, 99, 44), dashDim18));   // 4 px wide
+  SC_CHECK(sameColor(pixelAt(canvas, 100, 44), design18));
+  SC_CHECK(sameColor(pixelAt(canvas, 901, 2), dashDim18));   // dim dash
+  SC_CHECK(sameColor(pixelAt(canvas, 901, 5), dashDim18));
+  SC_CHECK(sameColor(pixelAt(canvas, 901, 6), design18));    // 4 px tall
+  SC_CHECK(sameColor(pixelAt(canvas, 38, 9), dashBright18));  // bright dash
+  SC_CHECK(sameColor(pixelAt(canvas, 38, 12), dashBright18));
+  SC_CHECK(sameColor(pixelAt(canvas, 38, 13), design18));
+  SC_CHECK(sameColor(pixelAt(canvas, 330, 300), design18));  // guard gap
+  advanceBackgroundBy(renderer, 250);
+  renderer.draw(game);
+  SC_CHECK(sameColor(pixelAt(canvas, 901, 4), dashDim18));   // two down
+  SC_CHECK(sameColor(pixelAt(canvas, 901, 2), design18));
+  SC_CHECK(sameColor(pixelAt(canvas, 96, 46), dashDim18));   // trail too
+  SC_CHECK(sameColor(pixelAt(canvas, 38, 11), dashBright18));
+
+  // Level 19, Compression: the outermost band's top bar - 3 px of #2A3146
+  // at rows 8..10, split by its 20 px opening under the board and cut by
+  // the frame ring - with the accent ticks of #8591A8 riding it every
+  // 32 px. Six seconds in, the nest has pressed its 54 px: the fifth
+  // band's bars sit 5 px from the canvas edges, the outer bands have
+  // slid off them, and the ticks rode in with the bar. Six seconds later
+  // the nest rests again.
+  renderer.setBackgroundLevel(19);
+  renderer.resetBackgroundRound();
+  renderer.draw(game);
+  const SDL_Color design19{0x17, 0x1C, 0x28, 255};
+  const SDL_Color band19{0x2A, 0x31, 0x46, 255};
+  const SDL_Color tick19{0x85, 0x91, 0xA8, 255};
+  SC_CHECK(sameColor(pixelAt(canvas, 8, 8), band19));    // the top bar
+  SC_CHECK(sameColor(pixelAt(canvas, 12, 8), band19));
+  SC_CHECK(sameColor(pixelAt(canvas, 12, 11), design19));  // below it
+  SC_CHECK(sameColor(pixelAt(canvas, 14, 8), tick19));   // a tick on it
+  SC_CHECK(sameColor(pixelAt(canvas, 17, 8), band19));   // past the tick
+  SC_CHECK(sameColor(pixelAt(canvas, 330, 300), band19));  // a band crosses
+  // the guard gap at its secondary shade, the cap itself
+  SC_CHECK(sameColor(pixelAt(canvas, 500, 8), kBoardWell));  // the bar hides
+  SC_CHECK(sameColor(pixelAt(canvas, 344, 8), kFrame));     // under the well
+  advanceBackgroundBy(renderer, 6000);
+  renderer.draw(game);
+  SC_CHECK(sameColor(pixelAt(canvas, 5, 5), band19));    // pressed to 5 px
+  SC_CHECK(sameColor(pixelAt(canvas, 9, 9), design19));  // inside the band
+  SC_CHECK(sameColor(pixelAt(canvas, 8, 8), design19));  // outer band gone
+  SC_CHECK(sameColor(pixelAt(canvas, 344, 34), kFrame));  // ring still pure
+  advanceBackgroundBy(renderer, 6000);
+  renderer.draw(game);
+  SC_CHECK(sameColor(pixelAt(canvas, 8, 8), band19));    // rested again
+  SC_CHECK(sameColor(pixelAt(canvas, 14, 8), tick19));
+
+  // Level 20, Collapse: the ranked debris of the far edges - a 3 x 7 px
+  // fragment of #2A3146 at (184, 2), a 1 x 3 bright fragment of #8A94AC
+  // at (950, 124) - falling past the static stepped slabs: the 32 x 13 px
+  // slab at (148, 6) with its half-width step on top. Half a second drops
+  // every fragment five pixels; the slabs hold.
+  renderer.setBackgroundLevel(20);
+  renderer.resetBackgroundRound();
+  renderer.draw(game);
+  const SDL_Color design20c{0x19, 0x1E, 0x2B, 255};
+  const SDL_Color debrisDim20{0x2A, 0x31, 0x46, 255};
+  const SDL_Color debrisBright20{0x8A, 0x94, 0xAC, 255};
+  SC_CHECK(sameColor(pixelAt(canvas, 184, 2), debrisDim20));  // 3 x 7 px
+  SC_CHECK(sameColor(pixelAt(canvas, 187, 2), design20c));
+  SC_CHECK(sameColor(pixelAt(canvas, 950, 124), debrisBright20));  // 1 x 3
+  SC_CHECK(sameColor(pixelAt(canvas, 950, 127), design20c));
+  SC_CHECK(sameColor(pixelAt(canvas, 148, 6), debrisDim20));  // the slab
+  SC_CHECK(sameColor(pixelAt(canvas, 147, 6), design20c));
+  SC_CHECK(sameColor(pixelAt(canvas, 148, 1), debrisDim20));  // its step
+  SC_CHECK(sameColor(pixelAt(canvas, 148, 0), design20c));
+  SC_CHECK(sameColor(pixelAt(canvas, 180, 6), design20c));  // past 32 px
+  SC_CHECK(sameColor(pixelAt(canvas, 330, 300), design20c));  // guard gap
+  SC_CHECK(sameColor(pixelAt(canvas, 490, 400), kBoardWell));
+  advanceBackgroundBy(renderer, 500);
+  renderer.draw(game);
+  SC_CHECK(sameColor(pixelAt(canvas, 184, 7), debrisDim20));  // five down
+  SC_CHECK(sameColor(pixelAt(canvas, 184, 2), design20c));
+  SC_CHECK(sameColor(pixelAt(canvas, 950, 129), debrisBright20));
+  SC_CHECK(sameColor(pixelAt(canvas, 148, 6), debrisDim20));  // slab holds
+
+  // Pause keeps the selected wallpaper beneath the veil: the paused margin
+  // reads as the veiled design, not as the veiled flat ground, and a frozen
+  // pause redraws the same bytes while the clock holds. Design 17 gives the
+  // comparison room - its base sits clear of the flat ground in every
+  // channel - and its landed grammar holds a base-only stretch of the left
+  // margin at the t = 0 placement the frozen clock pins: the block at
+  // x 96..135, above the lower-fifth columns and clear of the ranked
+  // embers.
+  renderer.setBackgroundLevel(17);
+  renderer.resetBackgroundRound();
+  renderer.draw(game);
+  SC_CHECK(areaIsOnly(canvas, SDL_Rect{96, 0, 40, 40}, design17));
+  game.tick(TickInput{});
+  TickInput pause;
+  pause.game.pausePressed = true;
+  game.tick(pause);
+  game.tick(TickInput{});
+  SC_CHECK(game.scene() == Scene::Paused);
+  renderer.draw(game);
+  const SDL_Color veiledDesign = pixelAt(canvas, 100, 10);
+  SC_CHECK(!sameColor(veiledDesign, design17));  // the veil mixed it
+  SC_CHECK(!sameColor(veiledDesign, kBackground));
+  std::vector<Uint32> pausedFrame(
+      static_cast<std::size_t>(canvas.surface->w) * canvas.surface->h);
+  SDL_LockSurface(canvas.surface);
+  std::memcpy(pausedFrame.data(), canvas.surface->pixels,
+              pausedFrame.size() * sizeof(Uint32));
+  SDL_UnlockSurface(canvas.surface);
+  // The freeze the loop applies on pause: half a second of wall time drops,
+  // and the frozen frame redraws the same bytes.
+  renderer.freezeBackgroundClock(true);
+  renderer.advanceBackgroundClock(250);
+  renderer.advanceBackgroundClock(250);
+  renderer.draw(game);
+  SDL_LockSurface(canvas.surface);
+  const bool pausedStable =
+      std::memcmp(pausedFrame.data(), canvas.surface->pixels,
+                  pausedFrame.size() * sizeof(Uint32)) == 0;
+  SDL_UnlockSurface(canvas.surface);
+  SC_CHECK(pausedStable);
+  renderer.freezeBackgroundClock(false);
+  // The same paused frame over Off reads as the flat ground alone, so the
+  // two differ: the design really sits beneath the overlay.
+  renderer.setBackgroundMode(backgrounds::Mode::Off);
+  renderer.draw(game);
+  const SDL_Color veiledFlat = pixelAt(canvas, 100, 10);
+  SC_CHECK(!sameColor(veiledFlat, veiledDesign));
+  renderer.setBackgroundMode(backgrounds::Mode::Auto);
+
+  // The game-over overlay keeps the wallpaper beneath it the same way.
+  Game over;
+  over.openTitle(4242);
+  TickInput select;
+  select.menu.selectPressed = true;
+  over.tick(select);
+  over.tick(TickInput{});
+  forceGameOver(over);
+  SC_CHECK(over.scene() == Scene::GameOver);
+  renderer.setBackgroundLevel(5);
+  renderer.resetBackgroundRound();
+  renderer.draw(over);
+  SC_CHECK(!sameColor(pixelAt(canvas, 5, 5), design5));
+  SC_CHECK(!sameColor(pixelAt(canvas, 5, 5), kBackground));
+
+  // Grayscale keeps the wallpaper palette exactly: the pieces gray out
+  // and the design does not. The whole loud margin - base, drifting
+  // stars, dust - redraws byte for byte while the pieces gray inside the
+  // well.
+  Game plain;
+  plain.start(4242);
+  renderer.setBackgroundLevel(5);
+  renderer.resetBackgroundRound();
+  renderer.draw(plain);
+  SC_CHECK(sameColor(pixelAt(canvas, 18, 340), starBright5));
+  std::vector<Uint32> colorMargin(
+      static_cast<std::size_t>(canvas.surface->w) * canvas.surface->h);
+  SDL_LockSurface(canvas.surface);
+  std::memcpy(colorMargin.data(), canvas.surface->pixels,
+              colorMargin.size() * sizeof(Uint32));
+  SDL_UnlockSurface(canvas.surface);
+  renderer.setGrayscale(true);
+  renderer.draw(plain);
+  bool grayMarginStable = true;
+  for (int y = 0; y < kCanvasHeight && grayMarginStable; ++y) {
+    for (int x = 0; x < 192; ++x) {
+      const Uint32 before = colorMargin[y * canvas.surface->w + x];
+      SDL_LockSurface(canvas.surface);
+      const Uint32 after =
+          static_cast<const Uint32*>(canvas.surface->pixels)[y * canvas.surface->w + x];
+      SDL_UnlockSurface(canvas.surface);
+      if (before != after) {
+        grayMarginStable = false;
+        break;
+      }
+    }
+  }
+  SC_CHECK(grayMarginStable);
+  renderer.setGrayscale(false);
+
+  // The menus keep their flat ground at any level and mode: the title page
+  // never carries the play wallpaper.
+  Game title;
+  title.openTitle(4242);
+  title.tick(TickInput{});
+  renderer.setBackgroundLevel(20);
+  renderer.draw(title);
+  SC_CHECK(sameColor(pixelAt(canvas, 5, 5), kBackground));
+  SC_CHECK(sameColor(pixelAt(canvas, 955, 539), kBackground));
+
+  // Portrait draws the same design in its own zones: the loud side margins,
+  // the quiet HUD strip, and the bottom strip all carry the base where the
+  // landed Deep grid grammar of design 13 draws nothing - beside its rules
+  // and guides - and the well and ring stay pure through the rotation.
+  renderer.setOrientation(Orientation::Portrait);
+  renderer.setBackgroundMode(backgrounds::Mode::Fixed);
+  renderer.setBackgroundPreference(13);
+  renderer.draw(plain);  // a live round: the wallpaper shows un-veiled
+  SC_CHECK(sameColor(pixelAtPoint(canvas, portraitPixel(5, 500)), design13));
+  SC_CHECK(sameColor(pixelAtPoint(canvas, portraitPixel(539, 500)), design13));
+  SC_CHECK(sameColor(pixelAtPoint(canvas, portraitPixel(272, 5)), design13));
+  SC_CHECK(sameColor(pixelAtPoint(canvas, portraitPixel(272, 945)), design13));
+  SC_CHECK(sameColor(pixelAtPoint(canvas, portraitPixel(290, 700)),
+                     kBoardWell));
+  SC_CHECK(sameColor(pixelAtPoint(canvas, portraitPixel(71, 500)), kFrame));
+  SC_CHECK(sameColor(pixelAtPoint(canvas, portraitPixel(472, 500)), kFrame));
+  SC_CHECK(sameColor(pixelAtPoint(canvas, portraitPixel(64, 500)), design13));
+  SC_CHECK(sameColor(pixelAtPoint(canvas, portraitPixel(478, 500)), design13));
+
+  // The Still ground in the turned frame: the corner steps of design 1 land
+  // in the portrait loud margins - the outer 91 x 213, the inner 56 x 132 -
+  // and the quiet HUD strip above the board holds the base alone.
+  renderer.setBackgroundPreference(1);
+  renderer.draw(plain);
+  SC_CHECK(sameColor(pixelAtPoint(canvas, portraitPixel(5, 5)), ink1));
+  SC_CHECK(sameColor(pixelAtPoint(canvas, portraitPixel(55, 131)), ink1));
+  SC_CHECK(sameColor(pixelAtPoint(canvas, portraitPixel(92, 0)), base1));
+  SC_CHECK(sameColor(pixelAtPoint(canvas, portraitPixel(70, 212)), ink1));
+  SC_CHECK(sameColor(pixelAtPoint(canvas, portraitPixel(30, 220)), base1));
+  SC_CHECK(sameColor(pixelAtPoint(canvas, portraitPixel(30, 500)), base1));
+  SC_CHECK(sameColor(pixelAtPoint(canvas, portraitPixel(500, 700)), base1));
+  SC_CHECK(sameColor(pixelAtPoint(canvas, portraitPixel(5, 900)), ink1));
+  SC_CHECK(sameColor(pixelAtPoint(canvas, portraitPixel(530, 500)), base1));
+  SC_CHECK(sameColor(pixelAtPoint(canvas, portraitPixel(272, 60)), base1));
+  // A same-frame byte comparison holds the whole turned design still: the
+  // static chapter redraws identical bytes at any clock value.
+  std::vector<Uint32> stillFrame(
+      static_cast<std::size_t>(canvas.surface->w) * canvas.surface->h);
+  SDL_LockSurface(canvas.surface);
+  std::memcpy(stillFrame.data(), canvas.surface->pixels,
+              stillFrame.size() * sizeof(Uint32));
+  SDL_UnlockSurface(canvas.surface);
+  advanceBackgroundBy(renderer, 40000);
+  renderer.draw(plain);
+  SDL_LockSurface(canvas.surface);
+  const bool stillStable =
+      std::memcmp(stillFrame.data(), canvas.surface->pixels,
+                  stillFrame.size() * sizeof(Uint32)) == 0;
+  SDL_UnlockSurface(canvas.surface);
+  SC_CHECK(stillStable);
+  renderer.setBackgroundPreference(5);
+
+  // The Stir design of level 5 in the turned frame: its stars sit in the
+  // portrait loud margins at the t = 0 placement, sink one pixel over
+  // half a second, and the dust beneath holds still.
+  renderer.setBackgroundMode(backgrounds::Mode::Auto);
+  renderer.setBackgroundLevel(5);
+  renderer.resetBackgroundRound();
+  renderer.draw(plain);
+  SC_CHECK(sameColor(pixelAtPoint(canvas, portraitPixel(18, 459)),
+                     starBright5));
+  SC_CHECK(sameColor(pixelAtPoint(canvas, portraitPixel(19, 460)), design5));
+  SC_CHECK(sameColor(pixelAtPoint(canvas, portraitPixel(38, 243)),
+                     starBright5));
+  SC_CHECK(sameColor(pixelAtPoint(canvas, portraitPixel(513, 231)),
+                     starBright5));
+  SC_CHECK(sameColor(pixelAtPoint(canvas, portraitPixel(513, 232)),
+                     starBright5));
+  SC_CHECK(sameColor(pixelAtPoint(canvas, portraitPixel(514, 232)), design5));
+  SC_CHECK(sameColor(pixelAtPoint(canvas, portraitPixel(513, 230)), design5));
+  SC_CHECK(sameColor(pixelAtPoint(canvas, portraitPixel(19, 661)), dust5));
+  SC_CHECK(sameColor(pixelAtPoint(canvas, portraitPixel(21, 661)), dust5));
+  SC_CHECK(sameColor(pixelAtPoint(canvas, portraitPixel(22, 661)), design5));
+  advanceBackgroundBy(renderer, 500);
+  renderer.draw(plain);
+  SC_CHECK(sameColor(pixelAtPoint(canvas, portraitPixel(18, 460)),
+                     starBright5));
+  SC_CHECK(sameColor(pixelAtPoint(canvas, portraitPixel(18, 459)), design5));
+  SC_CHECK(sameColor(pixelAtPoint(canvas, portraitPixel(513, 233)),
+                     starBright5));
+  SC_CHECK(sameColor(pixelAtPoint(canvas, portraitPixel(513, 231)), design5));
+  SC_CHECK(sameColor(pixelAtPoint(canvas, portraitPixel(19, 661)), dust5));
+
+  // The Band aurora design of the Build chapter in the turned frame: the
+  // lowest ribbon's staircase in the portrait loud margins - the base row
+  // 154, the 8 px lift of the next step - rising one pixel over a quarter
+  // second, and the frame ring cutting the middle steps.
+  renderer.setBackgroundLevel(11);
+  renderer.resetBackgroundRound();
+  renderer.draw(plain);
+  SC_CHECK(sameColor(pixelAtPoint(canvas, portraitPixel(0, 154)), ribbon11));
+  SC_CHECK(sameColor(pixelAtPoint(canvas, portraitPixel(39, 154)), ribbon11));
+  SC_CHECK(sameColor(pixelAtPoint(canvas, portraitPixel(40, 146)), ribbon11));
+  SC_CHECK(sameColor(pixelAtPoint(canvas, portraitPixel(40, 145)), design11));
+  SC_CHECK(sameColor(pixelAtPoint(canvas, portraitPixel(70, 146)), ribbon11));
+  SC_CHECK(sameColor(pixelAtPoint(canvas, portraitPixel(72, 146)),
+                     kBoardWell));
+  SC_CHECK(sameColor(pixelAtPoint(canvas, portraitPixel(64, 154)),
+                     ribbon11));  // the ribbons cross the quiet guard gap
+                                 // at their secondary shade
+  SC_CHECK(sameColor(pixelAtPoint(canvas, portraitPixel(14, 853)), tick11));
+  SC_CHECK(sameColor(pixelAtPoint(canvas, portraitPixel(15, 854)), tick11));
+  SC_CHECK(sameColor(pixelAtPoint(canvas, portraitPixel(16, 853)), design11));
+  advanceBackgroundBy(renderer, 250);
+  renderer.draw(plain);
+  SC_CHECK(sameColor(pixelAtPoint(canvas, portraitPixel(0, 153)), ribbon11));
+  SC_CHECK(sameColor(pixelAtPoint(canvas, portraitPixel(0, 152)), design11));
+  SC_CHECK(sameColor(pixelAtPoint(canvas, portraitPixel(14, 852)), tick11));
+
+  // The Deep grid design of the Pressure chapter in the turned frame: the
+  // first scrolling rule at portrait row 474 inside both side strips, the
+  // first staircase guide at x 6 over the strip quarters, its node at the
+  // strip foot, and the one-pixel scroll of a fifth of a second.
+  renderer.setBackgroundLevel(13);
+  renderer.resetBackgroundRound();
+  renderer.draw(plain);
+  SC_CHECK(sameColor(pixelAtPoint(canvas, portraitPixel(5, 474)), line13));
+  SC_CHECK(sameColor(pixelAtPoint(canvas, portraitPixel(519, 474)), line13));
+  SC_CHECK(sameColor(pixelAtPoint(canvas, portraitPixel(5, 473)), design13));
+  SC_CHECK(sameColor(pixelAtPoint(canvas, portraitPixel(6, 200)), line13));
+  SC_CHECK(sameColor(pixelAtPoint(canvas, portraitPixel(7, 400)), line13));
+  SC_CHECK(sameColor(pixelAtPoint(canvas, portraitPixel(6, 916)), node13));
+  SC_CHECK(sameColor(pixelAtPoint(canvas, portraitPixel(491, 200)), line13));
+  SC_CHECK(sameColor(pixelAtPoint(canvas, portraitPixel(290, 700)),
+                     kBoardWell));
+  advanceBackgroundBy(renderer, 200);
+  renderer.draw(plain);
+  SC_CHECK(sameColor(pixelAtPoint(canvas, portraitPixel(5, 475)), line13));
+  SC_CHECK(sameColor(pixelAtPoint(canvas, portraitPixel(5, 474)), design13));
+  SC_CHECK(sameColor(pixelAtPoint(canvas, portraitPixel(6, 200)), line13));
+
+  // The Undertow design in the turned frame: the first wave band's
+  // staircase in the portrait side strips - base row 269, the next step
+  // lifted 6 - sliding three pixels left over half a second while the
+  // bands stay on.
+  renderer.setBackgroundLevel(15);
+  renderer.resetBackgroundRound();
+  renderer.draw(plain);
+  SC_CHECK(sameColor(pixelAtPoint(canvas, portraitPixel(10, 300)), band15));
+  SC_CHECK(sameColor(pixelAtPoint(canvas, portraitPixel(25, 270)), band15));
+  SC_CHECK(sameColor(pixelAtPoint(canvas, portraitPixel(25, 262)),
+                     design15));
+  SC_CHECK(sameColor(pixelAtPoint(canvas, portraitPixel(71, 300)),
+                     kFrame));  // the ring cuts the middle steps
+  SC_CHECK(sameColor(pixelAtPoint(canvas, portraitPixel(290, 700)),
+                     kBoardWell));
+  advanceBackgroundBy(renderer, 500);
+  renderer.draw(plain);
+  SC_CHECK(sameColor(pixelAtPoint(canvas, portraitPixel(18, 264)), band15));
+  SC_CHECK(sameColor(pixelAtPoint(canvas, portraitPixel(18, 263)), band15));
+  SC_CHECK(sameColor(pixelAtPoint(canvas, portraitPixel(18, 262)),
+                     design15));
+  SC_CHECK(sameColor(pixelAtPoint(canvas, portraitPixel(10, 300)), band15));
+
+  // The Slow pulse design in the turned frame: the outer contour's top
+  // bar at rows 10..11 with its bottom-strip corner tips, breathing to
+  // inset 34 four seconds in. The inner contours hide behind the tall
+  // board, exactly the record's clipped frame.
+  renderer.setBackgroundLevel(16);
+  renderer.resetBackgroundRound();
+  renderer.draw(plain);
+  SC_CHECK(sameColor(pixelAtPoint(canvas, portraitPixel(50, 10)), contour16));
+  SC_CHECK(sameColor(pixelAtPoint(canvas, portraitPixel(50, 12)), design16));
+  SC_CHECK(sameColor(pixelAtPoint(canvas, portraitPixel(10, 949)), tip16));
+  SC_CHECK(sameColor(pixelAtPoint(canvas, portraitPixel(532, 949)), tip16));
+  SC_CHECK(sameColor(pixelAtPoint(canvas, portraitPixel(50, 34)), design16));
+  advanceBackgroundBy(renderer, 4000);
+  renderer.draw(plain);
+  SC_CHECK(sameColor(pixelAtPoint(canvas, portraitPixel(50, 34)), contour16));
+  SC_CHECK(sameColor(pixelAtPoint(canvas, portraitPixel(34, 925)), tip16));
+  SC_CHECK(sameColor(pixelAtPoint(canvas, portraitPixel(50, 10)), design16));
+
+
+  // The Peak designs in the turned frame: the ember field and columns of
+  // level 17 in the tall side strips and the flat bottom row, the trail
+  // and bright dash of level 18, the pressed bands of level 19 - whose
+  // ticks never draw in portrait, the loud zones starting 119 rows below
+  // the top bar - and the debris and stepped slabs of level 20.
+  renderer.setBackgroundLevel(17);
+  renderer.resetBackgroundRound();
+  renderer.draw(plain);
+  SC_CHECK(sameColor(pixelAtPoint(canvas, portraitPixel(37, 400)), ember17));
+  SC_CHECK(sameColor(pixelAtPoint(canvas, portraitPixel(38, 400)), design17));
+  SC_CHECK(sameColor(pixelAtPoint(canvas, portraitPixel(4, 911)),
+                     column17));   // the first column block
+  SC_CHECK(sameColor(pixelAtPoint(canvas, portraitPixel(4, 905)),
+                     column17));   // its step
+  SC_CHECK(sameColor(pixelAtPoint(canvas, portraitPixel(390, 925)),
+                     column17));   // the flat bottom row
+  SC_CHECK(sameColor(pixelAtPoint(canvas, portraitPixel(272, 60)),
+                     design17));   // the quiet HUD strip holds the base
+  SC_CHECK(sameColor(pixelAtPoint(canvas, portraitPixel(290, 700)),
+                     kBoardWell));
+  advanceBackgroundBy(renderer, 500);
+  renderer.draw(plain);
+  SC_CHECK(sameColor(pixelAtPoint(canvas, portraitPixel(37, 396)), ember17));
+  SC_CHECK(sameColor(pixelAtPoint(canvas, portraitPixel(37, 400)), design17));
+  SC_CHECK(sameColor(pixelAtPoint(canvas, portraitPixel(4, 911)),
+                     column17));   // columns hold
+
+  // Level 18 in the turned frame: the first trail stepping down the left
+  // strip from (30, 183), a bright 2 x 6 dash of #8290A7 in the bottom
+  // strip, both two pixels lower after a quarter second.
+  renderer.setBackgroundLevel(18);
+  renderer.resetBackgroundRound();
+  renderer.draw(plain);
+  SC_CHECK(sameColor(pixelAtPoint(canvas, portraitPixel(30, 183)),
+                     dashDim18));
+  SC_CHECK(sameColor(pixelAtPoint(canvas, portraitPixel(26, 185)),
+                     dashDim18));
+  SC_CHECK(sameColor(pixelAtPoint(canvas, portraitPixel(33, 185)), design18));
+  SC_CHECK(sameColor(pixelAtPoint(canvas, portraitPixel(314, 942)),
+                     dashBright18));
+  SC_CHECK(sameColor(pixelAtPoint(canvas, portraitPixel(314, 947)),
+                     dashBright18));
+  SC_CHECK(sameColor(pixelAtPoint(canvas, portraitPixel(316, 942)),
+                     design18));
+  advanceBackgroundBy(renderer, 250);
+  renderer.draw(plain);
+  SC_CHECK(sameColor(pixelAtPoint(canvas, portraitPixel(314, 944)),
+                     dashBright18));
+  SC_CHECK(sameColor(pixelAtPoint(canvas, portraitPixel(314, 942)), design18));
+  SC_CHECK(sameColor(pixelAtPoint(canvas, portraitPixel(30, 185)),
+                     dashDim18));
+
+  // Level 19 in the turned frame: the outermost band's top bar at rows
+  // 8..10 with no tick beside it - the pressed bar never reaches the loud
+  // zones - and the bottom bar at rows 949..951, pressing to 5 px at the
+  // crest of the half cycle.
+  renderer.setBackgroundLevel(19);
+  renderer.resetBackgroundRound();
+  renderer.draw(plain);
+  SC_CHECK(sameColor(pixelAtPoint(canvas, portraitPixel(50, 8)), band19));
+  SC_CHECK(sameColor(pixelAtPoint(canvas, portraitPixel(50, 11)), design19));
+  SC_CHECK(sameColor(pixelAtPoint(canvas, portraitPixel(200, 949)), band19));
+  SC_CHECK(sameColor(pixelAtPoint(canvas, portraitPixel(200, 952)), design19));
+  // the bands cross the quiet HUD strip at their secondary shade, the cap
+  SC_CHECK(sameColor(pixelAtPoint(canvas, portraitPixel(272, 60)), band19));
+  SC_CHECK(sameColor(pixelAtPoint(canvas, portraitPixel(290, 700)),
+                     kBoardWell));
+  advanceBackgroundBy(renderer, 6000);
+  renderer.draw(plain);
+  SC_CHECK(sameColor(pixelAtPoint(canvas, portraitPixel(5, 5)), band19));
+  SC_CHECK(sameColor(pixelAtPoint(canvas, portraitPixel(9, 9)), design19));
+
+  // Level 20 in the turned frame: the ranked debris falling past the
+  // stepped slabs of the side strips and the bottom strip - the 32 x 13
+  // slab at (15, 125) with its half-width step on top - five pixels lower
+  // after half a second while the slabs hold.
+  renderer.setBackgroundLevel(20);
+  renderer.resetBackgroundRound();
+  renderer.draw(plain);
+  SC_CHECK(sameColor(pixelAtPoint(canvas, portraitPixel(525, 669)),
+                     debrisDim20));
+  SC_CHECK(sameColor(pixelAtPoint(canvas, portraitPixel(525, 672)), design20c));
+  SC_CHECK(sameColor(pixelAtPoint(canvas, portraitPixel(15, 125)),
+                     debrisDim20));  // the side-strip slab
+  SC_CHECK(sameColor(pixelAtPoint(canvas, portraitPixel(14, 125)), design20c));
+  SC_CHECK(sameColor(pixelAtPoint(canvas, portraitPixel(15, 120)),
+                     debrisDim20));  // its step
+  SC_CHECK(sameColor(pixelAtPoint(canvas, portraitPixel(15, 119)), design20c));
+  SC_CHECK(sameColor(pixelAtPoint(canvas, portraitPixel(47, 125)), design20c));
+  SC_CHECK(sameColor(pixelAtPoint(canvas, portraitPixel(340, 930)),
+                     debrisDim20));  // a bottom-strip slab
+  SC_CHECK(sameColor(pixelAtPoint(canvas, portraitPixel(272, 60)), design20c));
+  advanceBackgroundBy(renderer, 500);
+  renderer.draw(plain);
+  SC_CHECK(sameColor(pixelAtPoint(canvas, portraitPixel(525, 674)),
+                     debrisDim20));
+  SC_CHECK(sameColor(pixelAtPoint(canvas, portraitPixel(525, 669)), design20c));
+  SC_CHECK(sameColor(pixelAtPoint(canvas, portraitPixel(15, 125)),
+                     debrisDim20));  // the slab holds
+
+  // A same-session orientation turn rebuilds the wallpaper geometry without
+  // leaking state: landscape bytes before the turn return after it.
+  renderer.setOrientation(Orientation::Landscape);
+  renderer.draw(plain);
+  std::vector<Uint32> beforeTurn(
+      static_cast<std::size_t>(canvas.surface->w) * canvas.surface->h);
+  SDL_LockSurface(canvas.surface);
+  std::memcpy(beforeTurn.data(), canvas.surface->pixels,
+              beforeTurn.size() * sizeof(Uint32));
+  SDL_UnlockSurface(canvas.surface);
+  renderer.setOrientation(Orientation::Portrait);
+  renderer.draw(plain);
+  renderer.setOrientation(Orientation::Landscape);
+  renderer.draw(plain);
+  SDL_LockSurface(canvas.surface);
+  const bool turnStable =
+      std::memcmp(beforeTurn.data(), canvas.surface->pixels,
+                  beforeTurn.size() * sizeof(Uint32)) == 0;
+  SDL_UnlockSurface(canvas.surface);
+  SC_CHECK(turnStable);
+
+  // The default mirrors hold: Auto, design 1.
+  Renderer fresh(canvas.renderer);
+  SC_CHECK(fresh.backgroundMode() == backgrounds::Mode::Auto);
+  SC_CHECK(fresh.backgroundPreference() == 1);
+  SC_CHECK(fresh.backgroundLevel() == 1);
+  fresh.setBackgroundPreference(0);
+  SC_CHECK(fresh.backgroundPreference() == 1);
+  fresh.setBackgroundPreference(99);
+  SC_CHECK(fresh.backgroundPreference() == 20);
+}
+
 }  // namespace
 
 int main() {
@@ -2928,6 +4673,7 @@ int main() {
   run_cells_and_ghost_checks();
   run_next_and_hold_checks();
   run_grayscale_checks();
+  run_piece_design_checks();
   run_preview_checks();
   run_text_checks();
   run_focused_hud_checks();
@@ -2938,11 +4684,13 @@ int main() {
   run_rebind_screen_checks();
   run_options_screen_checks();
   run_music_options_screen_checks();
+  run_background_options_screen_checks();
   run_pause_overlay_checks();
   run_gameover_overlay_checks();
   run_portrait_board_checks();
   run_portrait_hud_and_screens_checks();
   run_portrait_landscape_invariance_checks();
+  run_background_checks();
 
   SDL_Quit();
   stackfall_test::print_summary();

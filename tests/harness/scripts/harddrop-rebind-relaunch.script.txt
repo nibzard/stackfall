@@ -1,0 +1,223 @@
+# T87 stage three (docs/AGENT_TESTING.md): the portrait relaunch that reads
+# the orientation preference stage two saved and the controls file it left -
+# hard drop on R1 in both pad tables and on D on the landscape keyboard - on
+# the developer virtual controller, seed 20261103. The turned session opens
+# straight into its roles, the mappings page names the custom tables at the
+# portrait metrics, and the round proves the persisted rebind end to end:
+# the grip's up arm and the stick reading that reaches it drop nothing while
+# R1 drops. RESTORE DEFAULTS then returns every table to the section 5 bytes,
+# and the round that follows hard drops from the grip's up arm again. A
+# `wait` follows every check, so no record carries the tick of the input
+# that comes after it.
+check title-start
+wait 1
+# the mappings page at the portrait metrics, naming R1 beside HARD DROP
+pad right down
+wait 2
+pad right up
+wait 2
+check title-portrait-at-controls
+wait 1
+pad b down
+wait 2
+pad b up
+wait 2
+check controls-custom-portrait-loaded
+wait 1
+pad b down
+wait 2
+pad b up
+wait 2
+check rebind-open-portrait-relaunch
+wait 1
+# back out and play: the title cursor sits on CONTROLS
+pad a down
+wait 2
+pad a up
+wait 2
+check controls-portrait-back
+wait 1
+pad a down
+wait 2
+pad a up
+wait 2
+check title-portrait-back
+wait 1
+pad left down
+wait 2
+pad left up
+wait 2
+pad b down
+wait 2
+pad b up
+wait 2
+check playing-portrait-relaunch
+wait 1
+# the persisted rebind: the grip's up arm drops nothing
+pad left down
+wait 2
+pad left up
+wait 2
+check relaunch-portrait-left-dead
+wait 1
+# the stick reading that reaches the freed arm drops nothing
+stick x -32767
+wait 4
+check relaunch-portrait-stick-dead
+wait 1
+stick x 0
+wait 2
+# the persisted shoulder drops
+pad r1 down
+wait 2
+pad r1 up
+wait 2
+check relaunch-portrait-r1-drops
+wait 1
+# leave the round for the restore
+pad start down
+wait 2
+pad start up
+wait 2
+check paused-portrait-relaunch
+wait 1
+pad left down
+wait 2
+pad left up
+wait 2
+check paused-portrait-at-quit
+wait 1
+pad b down
+wait 2
+pad b up
+wait 2
+check title-after-round
+wait 1
+# back into the customization screen on the turned roles
+pad right down
+wait 2
+pad right up
+wait 2
+check title-portrait-at-controls-again
+wait 1
+pad b down
+wait 2
+pad b up
+wait 2
+check controls-portrait-again
+wait 1
+pad b down
+wait 2
+pad b up
+wait 2
+check rebind-again-portrait
+wait 1
+# eight MenuDowns - right arms - walk from MOVE LEFT down to RESTORE DEFAULTS
+pad right down
+wait 2
+pad right up
+wait 2
+pad right down
+wait 2
+pad right up
+wait 2
+pad right down
+wait 2
+pad right up
+wait 2
+pad right down
+wait 2
+pad right up
+wait 2
+pad right down
+wait 2
+pad right up
+wait 2
+pad right down
+wait 2
+pad right up
+wait 2
+pad right down
+wait 2
+pad right up
+wait 2
+pad right down
+wait 2
+pad right up
+wait 2
+check rebind-at-restore-portrait
+wait 1
+pad b down
+wait 2
+pad b up
+wait 2
+check defaults-restored-portrait
+wait 1
+# back out and play on the restored section 5 tables
+pad a down
+wait 2
+pad a up
+wait 2
+check controls-portrait-restored
+wait 1
+pad a down
+wait 2
+pad a up
+wait 2
+check title-portrait-restored
+wait 1
+# the title cursor sits on CONTROLS, so one MenuUp reaches START GAME
+pad left down
+wait 2
+pad left up
+wait 2
+pad b down
+wait 2
+pad b up
+wait 2
+check playing-portrait-restored
+wait 1
+# the grip's up arm hard drops again on the default table
+stick x -32767
+wait 2
+check restored-portrait-stick-drops
+wait 1
+stick x 0
+wait 2
+# quit through the turned pause and title roles
+pad start down
+wait 2
+pad start up
+wait 2
+check paused-portrait-restored
+wait 1
+pad left down
+wait 2
+pad left up
+wait 2
+check paused-portrait-at-quit-again
+wait 1
+pad b down
+wait 2
+pad b up
+wait 2
+check title-portrait-after-leave
+wait 1
+pad right down
+wait 2
+pad right up
+wait 2
+pad right down
+wait 2
+pad right up
+wait 2
+pad right down
+wait 2
+pad right up
+wait 2
+check title-portrait-at-quit
+check quit-confirmed
+pad b down
+wait 2
+pad b up
+wait 2

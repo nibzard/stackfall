@@ -18,7 +18,7 @@ Reads one harness run directory and decides pass or fail from evidence:
     when the GHOST row was turned off, while its save directory holds the
     three-line settings file that toggle wrote;
   * the options-expansion sessions of task T045 add their own pixel and file
-    proofs: the eight-row options page fits the canvas with the marker on the
+    proofs: the options page rows fit the canvas with the marker on the
     highlighted row, the staged relaunch session pins the exact canonical
     settings bytes after every one-preference change and the values the next
     process restored, the legacy stages pin the three-line and two-line files
@@ -55,6 +55,23 @@ Reads one harness run directory and decides pass or fail from evidence:
     screen on the same row, the four-row page layout holds from pixels, and
     the saved bytes and input-log lines carry the changed mode, the
     volumes, and the Next track action;
+  * the backgrounds sessions of task T084 prove the backgrounds page behind
+    the ninth options row and its saved pair: the keyboard session walks the
+    MODE ring Auto/Off/Fixed and every stable DESIGN ID 1..20 with the wrap,
+    the pad session proves the same-session application - a round after Off
+    draws the legacy flat wallpaper and a round after Fixed the retained
+    design - and the relaunch stages cover the saved Fixed pair in portrait,
+    the corrupted backgroundid=99 file that recovers to the defaults without
+    rewriting a byte, and the legacy eleven-line file that upgrades on its
+    next save;
+  * the piece-designs sessions of task T095 prove the PIECE DESIGNS row, the
+    tenth of the options screen: the keyboard and pad sessions toggle and
+    save the setting on both input paths, and over the labeled all-pieces
+    fixture the checker reads one settled cell of every piece type from
+    pixels - the interior holds only the palette fill and dark shade, the
+    dark pixels form the piece's mark, and no two pieces share a mark, in
+    color and in grayscale, in both orientations, with the plain frame as
+    the negative control;
   * each game run must exit 0, log a clean shutdown, and label every fixture
     it used;
   * the high-score file of a session that set a record must hold that record;
@@ -171,10 +188,13 @@ HOLD_GROUP_BOX = (192, 4, 128, 86)
 # The first statistics field (label over value) of the same column, for the
 # proof that grayscale leaves the text its color.
 STATS_FIELD_BOX = (192, 108, 128, 38)
-OPTIONS_HEADING_BOX = (0, 64, 960, 28)      # kOptionsHeadingY, scale 4
-OPTIONS_ROW_BOXES = [(0, 112 + 44 * i, 960, 21) for i in range(8)]
-OPTIONS_FOOTER_BOX = (0, 464, 960, 14)      # kOptionsFooterY, hint scale
-OPTIONS_BELOW_FOOTER_BOX = (0, 479, 960, 65)
+OPTIONS_HEADING_BOX = (0, 40, 960, 28)      # kOptionsHeadingY, scale 4
+OPTIONS_ROW_BOXES = [(0, 88 + 44 * i, 960, 21) for i in range(10)]
+OPTIONS_FOOTER_BOX = (0, 516, 960, 14)      # kOptionsFooterY, hint scale
+OPTIONS_BELOW_FOOTER_BOX = (0, 530, 960, 14)
+# The backgrounds page behind the BACKGROUNDS row (task T084) shares the
+# options metrics over its two rows: MODE and the preferred DESIGN.
+BACKGROUNDS_PAGE_ROW_BOXES = OPTIONS_ROW_BOXES[:2]
 # The music settings page shares the options metrics (task T062): its four
 # rows sit at the top of the same band, and its quiet title line - the
 # playing track's name, empty while music is silent - sits between the last
@@ -202,7 +222,7 @@ PORTRAIT_GAMEOVER_PANEL = (200, 32, 440, 480)
 # nothing (task T055).
 PORTRAIT_BELOW_BOARD_BOX = (921, 0, 39, 544)
 # The portrait options page of the same-session turn (task T068), in device
-# pixels: the heading, the eight rows at the shared menu metrics, and the
+# pixels: the heading, the rows at the shared menu metrics, and the
 # footer hint all turn into vertical bands, because a portrait rect (x, y, w,
 # h) reaches the device canvas at (y, 543 - x, h, w). Row 6 is ORIENTATION,
 # so its band carries the bright text and the accent marker exactly while the
@@ -631,26 +651,34 @@ def check_high_score_file(session, save_dir, expected, rule):
 
 def settings_file_bytes(sound_on, ghost_on, grid_on, hold_on, next_previews,
                         grayscale_on, orientation="landscape",
-                        music_mode="auto", music_volume=6, effects_volume=8):
+                        music_mode="auto", music_volume=6, effects_volume=8,
+                        background_mode="auto", background_id=1,
+                        piece_designs=False):
     """The canonical settings file, exactly as `formatSettingsFile` renders it
     (specification sections 6.3 and 9): the sound and ghost lines of the
     earlier eras, the grid, hold, next, and grayscale lines of task T044, the
-    orientation line of task T055, and the music mode and volume lines of
-    task T062 (MUSIC.md persistence)."""
+    orientation line of task T055, the music mode and volume lines of task
+    T062 (MUSIC.md persistence), the background mode and preferred design
+    lines of task T084, and the piece designs line of task T095."""
     return ("version=1\nsound=%s\nghost=%s\ngrid=%s\nhold=%s\nnext=%d\n"
             "grayscale=%s\norientation=%s\nmusic=%s\nmusicvolume=%d\n"
-            "effectsvolume=%d\n" % (
+            "effectsvolume=%d\nbackground=%s\nbackgroundid=%d\n"
+            "piecedesigns=%s\n" % (
                 "on" if sound_on else "off", "on" if ghost_on else "off",
                 "on" if grid_on else "off", "on" if hold_on else "off",
                 next_previews, "on" if grayscale_on else "off", orientation,
-                music_mode, music_volume, effects_volume))
+                music_mode, music_volume, effects_volume, background_mode,
+                background_id, "on" if piece_designs else "off"))
 
 
 def check_settings_path(session, path, sound_on, ghost_on, grid_on, hold_on,
                         next_previews, grayscale_on, rule,
                         orientation="landscape", music_mode="auto",
-                        music_volume=6, effects_volume=8):
-    """One settings file against the canonical rendering of ten values."""
+                        music_volume=6, effects_volume=8,
+                        background_mode="auto", background_id=1,
+                        piece_designs=False):
+    """One settings file against the canonical rendering of thirteen
+    values."""
     if not os.path.isfile(path):
         fail(rule, "missing %s" % path)
         return
@@ -658,28 +686,35 @@ def check_settings_path(session, path, sound_on, ghost_on, grid_on, hold_on,
         text = handle.read()
     wanted = settings_file_bytes(sound_on, ghost_on, grid_on, hold_on,
                                  next_previews, grayscale_on, orientation,
-                                 music_mode, music_volume, effects_volume)
+                                 music_mode, music_volume, effects_volume,
+                                 background_mode, background_id,
+                                 piece_designs)
     if text != wanted:
         fail(rule, "%s holds %r, expected %r" % (path, text, wanted))
     else:
         good(rule, "%s: sound=%s ghost=%s grid=%s hold=%s next=%d grayscale=%s "
-             "orientation=%s music=%s volumes=%d/%d"
+             "orientation=%s music=%s volumes=%d/%d background=%s/%d "
+             "designs=%s"
              % (os.path.basename(os.path.dirname(path)),
                 "on" if sound_on else "off", "on" if ghost_on else "off",
                 "on" if grid_on else "off", "on" if hold_on else "off",
                 next_previews, "on" if grayscale_on else "off", orientation,
-                music_mode, music_volume, effects_volume))
+                music_mode, music_volume, effects_volume, background_mode,
+                background_id, "on" if piece_designs else "off"))
 
 
 def check_settings_file(session, save_dir, sound_on, ghost_on, grid_on,
                         hold_on, next_previews, grayscale_on, rule,
                         orientation="landscape", music_mode="auto",
-                        music_volume=6, effects_volume=8):
+                        music_volume=6, effects_volume=8,
+                        background_mode="auto", background_id=1,
+                        piece_designs=False):
     """The settings file of the player preferences in one save directory."""
     check_settings_path(session, os.path.join(save_dir, "settings.dat"),
                         sound_on, ghost_on, grid_on, hold_on, next_previews,
                         grayscale_on, rule, orientation, music_mode,
-                        music_volume, effects_volume)
+                        music_volume, effects_volume, background_mode,
+                        background_id, piece_designs)
 
 
 def check_settings_bytes(session, path, wanted, rule):
@@ -1029,6 +1064,96 @@ def check_play_scene_colors(session, record, grayscale, rule):
          (drawn, "gray" if grayscale else "colored", record["check"]))
 
 
+# The labeled all-pieces fixture of task T095: every tetromino settled once,
+# so one settled cell of each type - the representative cells below, in the
+# fixture's own coordinates - carries that type's in-cell mark.
+PIECE_DESIGN_CELLS = [
+    ("I", 0, 3), ("O", 6, 4), ("T", 1, 6), ("J", 6, 7),
+    ("S", 1, 9), ("L", 8, 10), ("Z", 0, 12),
+]
+PORTRAIT_BOARD_ORIGIN = (72, 120)
+PORTRAIT_BOARD_CELL = 40
+
+
+def portrait_device_pixel(x, y):
+    """One portrait pixel on the 960x544 device canvas through the fixed
+    rotation of task T055: portrait (x, y) reaches the device at (y, 543-x)."""
+    return (y, 543 - x)
+
+
+def piece_design_mask(pixel, letter, cell, grayscale, portrait):
+    """The dark-shade pixel set of one settled cell's interior, plus a census
+    of every other shade found there. The interior is the band two pixels
+    inside the cell edges - past the outline and the bevel - which is exactly
+    where cellDesign places a mark (renderer_sdl.hpp, task T095)."""
+    fill = piece_fill(letter, grayscale)
+    dark = mix_toward(fill, (0, 0, 0), 1, 2)
+    origin, size = ((PORTRAIT_BOARD_ORIGIN, PORTRAIT_BOARD_CELL) if portrait
+                    else (BOARD_ORIGIN, BOARD_CELL))
+    col, row = cell
+    x0 = origin[0] + col * size
+    y0 = origin[1] + row * size
+    mask = set()
+    others = {}
+    for iy in range(2, size - 2):
+        for ix in range(2, size - 2):
+            spot = (portrait_device_pixel(x0 + ix, y0 + iy) if portrait
+                    else (x0 + ix, y0 + iy))
+            color = pixel(*spot)
+            if color == dark:
+                mask.add((ix, iy))
+            elif color != fill:
+                others[color] = others.get(color, 0) + 1
+    return mask, others
+
+
+def check_piece_design_marks(session, record, grayscale, portrait, rule,
+                             expect_designs=True):
+    """The per-piece in-cell designs from pixels (task T095, specification
+    section 6.2): over the labeled all-pieces fixture, the interior of one
+    settled cell per piece type holds only that palette's fill and dark
+    shade, the dark pixels form the piece's mark, and no two pieces share a
+    mark - so the pattern alone names the piece, in color and in grayscale,
+    in both orientations. With expect_designs off the same walk is the
+    negative control: the flat cell draws no dark pixel at all, so the proof
+    cannot pass on shading the cell always had."""
+    loaded = load_shot(record, rule)
+    if loaded is None:
+        return
+    _, _, pixel = loaded
+    masks = {}
+    for letter, col, row in PIECE_DESIGN_CELLS:
+        mask, others = piece_design_mask(pixel, letter, (col, row), grayscale,
+                                         portrait)
+        where = "%s cell of %s at (%d,%d)" % (record["check"], letter, col, row)
+        if others:
+            detail = ", ".join("%d x %s" % (n, c)
+                               for c, n in sorted(others.items()))
+            fail(rule, "the interior of the %s holds shades beside the fill "
+                 "and the dark (%s)" % (where, detail))
+            return
+        if expect_designs and not mask:
+            fail(rule, "the interior of the %s holds no mark pixel" % where)
+            return
+        if not expect_designs and mask:
+            fail(rule, "the interior of the %s holds %d dark pixels with the "
+                 "designs off" % (where, len(mask)))
+            return
+        masks[letter] = mask
+    if expect_designs:
+        order = sorted(masks)
+        for i, first in enumerate(order):
+            for second in order[i + 1:]:
+                if masks[first] == masks[second]:
+                    fail(rule, "the %s and %s marks share one shape at %s" %
+                         (first, second, record["check"]))
+                    return
+    good(rule, "%s %s cell interiors hold %s at %s" %
+         (len(masks), "gray" if grayscale else "color",
+          "seven distinct marks" if expect_designs else "no dark pixel",
+          record["check"]))
+
+
 def check_ghost_readable(session, record, grayscale, rule):
     """The ghost outline from pixels: the rows below the live piece hold the
     exact blend the renderer derives from the piece's fill, in the palette the
@@ -1119,8 +1244,8 @@ def check_music_page_layout(session, record, rule):
 
 
 def check_options_screen_layout(session, record, rule):
-    """The eight-row options page inside the canvas (tasks T044, T055, and
-    T062): the heading, one text line per row at the shared menu metrics with
+    """The options page rows inside the canvas (tasks T044, T055, T062, and
+    T095): the heading, one text line per row at the shared menu metrics with
     the accent marker on the highlighted row, the footer hint below, and
     nothing at all under the footer, so no row or hint can have slipped off
     the 960x544 canvas."""
@@ -1158,8 +1283,128 @@ def check_options_screen_layout(session, record, rule):
              "the page does not fit the canvas" %
              (sum(below.values()), total, record["check"], detail))
         return
-    good(rule, "heading, eight rows with row %d marked, footer, quiet canvas "
+    good(rule, "heading, every row with row %d marked, footer, quiet canvas "
          "at %s" % (selected, record["check"]))
+
+
+def check_backgrounds_page_layout(session, record, rule):
+    """The backgrounds page behind the BACKGROUNDS row, inside the canvas
+    (task T084, docs/BACKGROUND_IMPLEMENTATION.md player options): the
+    BACKGROUNDS heading, its two rows - MODE and the preferred DESIGN - at
+    the shared menu metrics with the accent marker on the highlighted row,
+    the footer hint below, and nothing at all under the footer."""
+    loaded = load_shot(record, rule)
+    if loaded is None:
+        return
+    _, _, pixel = loaded
+    selected = record["menu"].split(":")
+    if len(selected) != 2 or not selected[1].isdigit():
+        fail(rule, "record %s is not on the backgrounds page: menu=%s" %
+             (record["check"], record.get("menu")))
+        return
+    selected = int(selected[1])
+    heading, _ = scan_box(pixel, OPTIONS_HEADING_BOX, (BACKGROUND_COLOR,))
+    if TEXT_COLOR not in heading:
+        fail(rule, "the BACKGROUNDS heading draws no bright glyph at %s" %
+             record["check"])
+        return
+    for index, box in enumerate(BACKGROUNDS_PAGE_ROW_BOXES):
+        counts, _ = scan_box(pixel, box, (BACKGROUND_COLOR,))
+        if TEXT_DIM_COLOR not in counts and TEXT_COLOR not in counts:
+            fail(rule, "backgrounds page row %d draws no text at %s" %
+                 (index, record["check"]))
+            return
+        if index == selected and ACCENT_COLOR not in counts:
+            fail(rule, "the highlighted backgrounds row %d draws no marker "
+                 "at %s" % (index, record["check"]))
+            return
+    footer, _ = scan_box(pixel, OPTIONS_FOOTER_BOX, (BACKGROUND_COLOR,))
+    if TEXT_DIM_COLOR not in footer:
+        fail(rule, "the backgrounds page footer draws no hint at %s" %
+             record["check"])
+        return
+    below, total = scan_box(pixel, OPTIONS_BELOW_FOOTER_BOX,
+                            (BACKGROUND_COLOR,))
+    if below:
+        detail = ", ".join("%d x %s" % (n, c) for c, n in sorted(below.items()))
+        fail(rule, "%d of %d pixels below the footer are drawn at %s (%s), so "
+             "the page does not fit the canvas" %
+             (sum(below.values()), total, record["check"], detail))
+        return
+    good(rule, "BACKGROUNDS heading, two rows with row %d marked, footer, "
+         "quiet canvas at %s" % (selected, record["check"]))
+
+
+def check_backgrounds_page_layout_portrait(session, record, rule):
+    """The backgrounds page in portrait (task T084): the same turned bands
+    the portrait options page uses, with the page's own two rows, the
+    heading, and the footer hint, so the names and rows read in the tall
+    frame exactly as the acceptance asks."""
+    loaded = load_shot(record, rule)
+    if loaded is None:
+        return
+    _, _, pixel = loaded
+    selected = record["menu"].split(":")
+    if len(selected) != 2 or not selected[1].isdigit():
+        fail(rule, "record %s is not on the backgrounds page: menu=%s" %
+             (record["check"], record.get("menu")))
+        return
+    selected = int(selected[1])
+    heading, _ = scan_box(pixel, PORTRAIT_OPTIONS_HEADING_BOX,
+                          (BACKGROUND_COLOR,))
+    if TEXT_COLOR not in heading:
+        fail(rule, "the portrait BACKGROUNDS heading draws no bright glyph "
+             "at %s" % record["check"])
+        return
+    footer, _ = scan_box(pixel, PORTRAIT_OPTIONS_FOOTER_BOX,
+                         (BACKGROUND_COLOR,))
+    if TEXT_DIM_COLOR not in footer:
+        fail(rule, "the portrait backgrounds footer draws no hint at %s" %
+             record["check"])
+        return
+    for index in range(2):
+        band = (PORTRAIT_OPTIONS_MENU_X + index * PORTRAIT_OPTIONS_ROW_HEIGHT,
+                0, PORTRAIT_OPTIONS_ROW_TEXT_HEIGHT, 544)
+        counts, _ = scan_box(pixel, band, (BACKGROUND_COLOR,))
+        if index == selected:
+            if TEXT_COLOR not in counts or ACCENT_COLOR not in counts:
+                fail(rule, "the highlighted portrait backgrounds row %d draws "
+                     "no bright text and marker at %s" %
+                     (index, record["check"]))
+                return
+        elif TEXT_DIM_COLOR not in counts:
+            fail(rule, "portrait backgrounds row %d draws no text at %s" %
+                 (index, record["check"]))
+            return
+    good(rule, "turned heading, two rows with row %d marked, footer, at %s"
+         % (selected, record["check"]))
+
+
+def check_play_wallpaper_color(session, record, rule, probes, expected,
+                               label):
+    """The play scene's wallpaper from pixels (task T084): every probe point
+    of the shot must hold exactly `expected`, the base field of the design
+    the saved mode selected - the legacy flat #10121A for Off - which proves
+    the change applied on the very next play frame of the same session. The
+    probes sit in base-only windows of the landscape quiet span, clear of
+    every design's secondary shapes."""
+    loaded = load_shot(record, rule)
+    if loaded is None:
+        return
+    width, height, pixel = loaded
+    for x, y in probes:
+        if not (0 <= x < width and 0 <= y < height):
+            fail(rule, "probe %s is outside the %dx%d shot of %s" %
+                 ((x, y), width, height, record["check"]))
+            return
+        actual = pixel(x, y)
+        if actual != expected:
+            fail(rule, "the play probe (%d, %d) at %s holds %s, expected the "
+                 "%s base %s" % (x, y, record["check"], actual, label,
+                                 expected))
+            return
+    good(rule, "%d probes hold the %s base %s at %s" %
+         (len(probes), label, expected, record["check"]))
 
 
 def check_hold_ignored(session, records, before, after, rule):
@@ -1419,7 +1664,7 @@ def check_rotated_mapping(session, input_log_path, device, rule):
 
 def check_portrait_options_layout(session, record, rule):
     """The portrait options page of the same-session turn, from pixels (task
-    T068): the heading, the eight rows, and the footer hint sit in the
+    T068): the heading, the rows, and the footer hint sit in the
     vertical bands the rotation gives them, with the highlighted row's text
     bright and its accent marker beside it. A landscape page draws nothing in
     the heading and footer bands at all, so the two boxes together prove the
@@ -1446,7 +1691,7 @@ def check_portrait_options_layout(session, record, rule):
         fail(rule, "the portrait options footer band draws no hint at %s" %
              record["check"])
         return
-    for index in range(8):
+    for index in range(9):
         band = (PORTRAIT_OPTIONS_MENU_X + index * PORTRAIT_OPTIONS_ROW_HEIGHT,
                 0, PORTRAIT_OPTIONS_ROW_TEXT_HEIGHT, 544)
         counts, _ = scan_box(pixel, band, (BACKGROUND_COLOR,))
@@ -1459,7 +1704,7 @@ def check_portrait_options_layout(session, record, rule):
             fail(rule, "portrait options row %d draws no text at %s" %
                  (index, record["check"]))
             return
-    good(rule, "turned heading, eight rows with row %d marked, footer, at %s"
+    good(rule, "turned heading, the rows with row %d marked, footer, at %s"
          % (selected, record["check"]))
 
 
@@ -1527,6 +1772,90 @@ def check_turn_spends_input(session, input_log_path, rule, probe_bit=None):
             return
     good(rule, "%d turn(s) spent the select edge and every held level and "
          "pending edge that crossed them" % len(turns))
+
+
+# ---------------------------------------------------------------------------
+# The analog thumbstick (task T86). Each axis reading resolves to the D-pad
+# arm it points at, so the mapping of an orientation is the table's business:
+# what these checks pin is the reading itself - which action bits a deflection
+# raised, that a deadzone reading raised none, and that the piece moved in the
+# on-screen direction the arm carries there.
+# ---------------------------------------------------------------------------
+
+# One per-tick input-log line, in the log's own field order. The menu field
+# is four bits, up, down, select, and back.
+TICK_LINE = re.compile(
+    r"^tick=(\d+) slot=\S+ L=(\d) R=(\d) D=(\d) cw=(\d) ccw=(\d) drop=(\d) "
+    r"hold=(\d) pause=(\d) menu=([01]{4})$")
+
+
+def round_tick_bits(input_log_path, rule):
+    """The non-idle tick lines of the round an input log opened, as tuples of
+    the nine action bits in the log's own order. The round runs from the last
+    `scene title -> playing` line to the next scene line, and an idle tick -
+    nothing held, nothing pressed - is dropped, so the sequence names exactly
+    the inputs that acted."""
+    try:
+        with open(input_log_path) as handle:
+            lines = handle.read().splitlines()
+    except IOError:
+        fail(rule, "cannot read %s" % input_log_path)
+        return None
+    starts = [i for i, line in enumerate(lines)
+              if line.startswith("scene title -> playing")]
+    if not starts:
+        fail(rule, "no round in %s" % input_log_path)
+        return None
+    begin = starts[-1]
+    end = len(lines)
+    for i in range(begin + 1, len(lines)):
+        if lines[i].startswith("scene "):
+            end = i
+            break
+    bits = []
+    for line in lines[begin:end]:
+        match = TICK_LINE.match(line)
+        if match is None:
+            continue
+        values = match.groups()[1:]
+        if all(value == "0" for value in values[:8]) and values[8] == "0000":
+            continue  # an idle tick holds and presses nothing
+        bits.append(tuple(int(v) for v in values[:8]) + (values[8],))
+    return bits
+
+
+def check_stick_round_bits(session, input_log_path, expected, rule):
+    """The round's non-idle ticks are exactly `expected`, in order."""
+    bits = round_tick_bits(input_log_path, rule)
+    if bits is None:
+        return
+    if bits != expected:
+        fail(rule, "round inputs %s, expected %s" % (bits, expected))
+    else:
+        good(rule, "%d acting ticks in order" % len(bits))
+
+
+def check_piece_delta(session, before, after, dx, dy, rule):
+    """The active piece moved by exactly (dx, dy) between two records with the
+    same identity and rotation - the direction proof of the thumbstick
+    sessions, where a dead or inverted axis shows up as the wrong delta."""
+    a = piece_cells(before, "active")
+    b = piece_cells(after, "active")
+    if a is None or b is None:
+        fail(rule, "no active piece: %s -> %s" %
+             (before.get("active"), after.get("active")))
+    elif (b[0] != a[0] or b[1] != a[1] or b[2] != a[2] + dx or
+          b[3] != a[3] + dy):
+        fail(rule, "piece %s -> %s, expected (%+d,%+d)" %
+             (before["active"], after["active"], dx, dy))
+    else:
+        good(rule, "%s -> %s moved (%+d,%+d)" %
+             (before["check"], after["check"], dx, dy))
+
+
+def check_piece_frozen(session, before, after, rule):
+    """The active piece did not move at all between two records."""
+    check_piece_delta(session, before, after, 0, 0, rule)
 
 
 # ---------------------------------------------------------------------------
@@ -1650,19 +1979,24 @@ def check_rebind_flow(session, by_name, input_log, device_word):
 
 def settings_log_line(sound_on, ghost_on, grid_on, hold_on, next_previews,
                       grayscale_on, status, orientation="landscape",
-                      music_mode="auto", music_volume=6, effects_volume=8):
+                      music_mode="auto", music_volume=6, effects_volume=8,
+                      background_mode="auto", background_id=1,
+                      piece_designs=False):
     return ("Settings: sound %s, ghost preview %s, grid %s, hold %s, next "
             "previews %d, grayscale %s, orientation %s, music %s, volumes "
-            "%d/%d (%s) from" % (
+            "%d/%d, backgrounds %s %d, piece designs %s (%s) from" % (
                 "on" if sound_on else "off", "on" if ghost_on else "off",
                 "on" if grid_on else "off", "on" if hold_on else "off",
                 next_previews, "on" if grayscale_on else "off", orientation,
-                music_mode, music_volume, effects_volume, status))
+                music_mode, music_volume, effects_volume, background_mode,
+                background_id, "on" if piece_designs else "off", status))
 
 
 def settings_start_lines(sound_on, ghost_on, grid_on, hold_on, next_previews,
                          grayscale_on, orientation="landscape",
-                         music_mode="auto", music_volume=6, effects_volume=8):
+                         music_mode="auto", music_volume=6, effects_volume=8,
+                         background_mode="auto", background_id=1,
+                         piece_designs=False):
     return [
         "sound start=%s" % ("on" if sound_on else "off"),
         "ghost start=%s" % ("on" if ghost_on else "off"),
@@ -1674,6 +2008,9 @@ def settings_start_lines(sound_on, ghost_on, grid_on, hold_on, next_previews,
         "music start=%s" % music_mode,
         "musicvolume start=%d" % music_volume,
         "effectsvolume start=%d" % effects_volume,
+        "background start=%s" % background_mode,
+        "backgroundid start=%d" % background_id,
+        "piecedesigns start=%s" % ("on" if piece_designs else "off"),
     ]
 
 
@@ -2076,6 +2413,184 @@ def check_session(run_dir, session):
         check_field(by_name["quit-confirmed"], "quit", "1",
                     session + "/quit-confirmed")
         check_log(session, log_path, ["Clean shutdown", "Scene title -> playing"])
+    elif session == "stick-pad":
+        # The analog thumbstick session of task T86 on the landscape table.
+        # The stick's Y axis carries the D-pad arms' menu roles, so it walks
+        # the title menu; the round then moves the piece with X, soft drops
+        # and hard drops with Y; a reading inside the deadzone holds nothing
+        # while the boundary itself moves; and the D-pad and the keyboard
+        # beside the stick are unchanged.
+        check_scene_sequence(run_records, [
+            "title", "title", "title",
+            "playing", "playing", "playing", "playing", "playing", "playing",
+            "playing", "playing", "playing", "playing",
+            "paused", "paused", "title", "title", "title"],
+            session + "/scene-sequence")
+        check_field(by_name["title-at-options"], "menu", "title:2",
+                    session + "/stick-walks-title-down")
+        check_field(by_name["title-at-start"], "menu", "title:0",
+                    session + "/stick-walks-title-up")
+        check_field(by_name["round-start"], "scene", "playing",
+                    session + "/round-starts")
+        # One column per successful movement (section 4.5), the same rule the
+        # D-pad follows: left, right, the deadzone edge, and the two controls
+        # beside the stick.
+        check_piece_delta(session, by_name["round-start"],
+                          by_name["stick-left-moved"], -1, 0,
+                          session + "/stick-x-negative-moves-left")
+        check_piece_delta(session, by_name["stick-left-moved"],
+                          by_name["stick-right-moved"], +1, 0,
+                          session + "/stick-x-positive-moves-right")
+        check_piece_frozen(session, by_name["stick-right-moved"],
+                           by_name["deadzone-x-quiet"],
+                           session + "/deadzone-x-holds")
+        check_piece_frozen(session, by_name["deadzone-x-quiet"],
+                           by_name["deadzone-y-quiet"],
+                           session + "/deadzone-y-holds")
+        check_piece_delta(session, by_name["deadzone-y-quiet"],
+                          by_name["deadzone-edge-moves"], +1, 0,
+                          session + "/deadzone-boundary-moves")
+        # Soft drop: two held ticks, two cells, two points (section 4.6).
+        check_piece_delta(session, by_name["deadzone-edge-moves"],
+                          by_name["stick-soft-drop"], 0, +2,
+                          session + "/stick-y-positive-soft-drops")
+        delta_check("score", by_name["deadzone-edge-moves"],
+                    by_name["stick-soft-drop"], 2,
+                    session + "/soft-drop-points")
+        # Hard drop: the piece locks in the same tick, four cells settle, and
+        # the drop scores two points per cell travelled - the ghost of the
+        # record before it names the landing row (section 4.5).
+        delta_check("settled", by_name["stick-soft-drop"],
+                    by_name["stick-hard-drop"], 4,
+                    session + "/stick-y-negative-hard-drops")
+        drop_cells = piece_cells(by_name["stick-soft-drop"], "ghost")[3] - \
+            piece_cells(by_name["stick-soft-drop"], "active")[3]
+        delta_check("score", by_name["stick-soft-drop"],
+                    by_name["stick-hard-drop"], 2 * drop_cells,
+                    session + "/hard-drop-points")
+        check_piece_delta(session, by_name["stick-hard-drop"],
+                          by_name["dpad-left-moved"], -1, 0,
+                          session + "/dpad-unchanged")
+        check_piece_delta(session, by_name["dpad-left-moved"],
+                          by_name["keyboard-left-moved"], -1, 0,
+                          session + "/keyboard-unchanged")
+        # The ordered action bits of the round: two held ticks per deflection,
+        # one edge for each edge action, nothing at all for the deadzone.
+        check_stick_round_bits(session, input_log, [
+            (1, 0, 0, 0, 0, 0, 0, 0, "0000"),
+            (1, 0, 0, 0, 0, 0, 0, 0, "0000"),
+            (0, 1, 0, 0, 0, 0, 0, 0, "0000"),
+            (0, 1, 0, 0, 0, 0, 0, 0, "0000"),
+            (0, 1, 0, 0, 0, 0, 0, 0, "0000"),
+            (0, 1, 0, 0, 0, 0, 0, 0, "0000"),
+            (0, 0, 1, 0, 0, 0, 0, 0, "0100"),
+            (0, 0, 1, 0, 0, 0, 0, 0, "0000"),
+            (0, 0, 0, 0, 0, 1, 0, 0, "1000"),
+            (1, 0, 0, 0, 0, 0, 0, 0, "0000"),
+            (1, 0, 0, 0, 0, 0, 0, 0, "0000"),
+            (1, 0, 0, 0, 0, 0, 0, 0, "0000"),
+            (1, 0, 0, 0, 0, 0, 0, 0, "0000"),
+            (0, 0, 0, 0, 0, 0, 0, 1, "0000"),
+        ], session + "/round-input-bits")
+        check_field(by_name["quit-confirmed"], "quit", "1",
+                    session + "/quit-confirmed")
+        check_log(session, log_path, ["Clean shutdown", "Scene title -> playing"])
+    elif session == "stick-portrait":
+        # The analog thumbstick session of task T86 on the turned table. The
+        # turn itself runs with the stick deflected across the select, so the
+        # deflected arm is spent with every held level and pending edge. The
+        # round then proves the rotated mapping reading by reading - the
+        # physical down arm moves the piece left, the physical up arm moves
+        # it right, the physical right arm soft drops, and the physical left
+        # arm hard drops - with the face buttons playable beside the stick.
+        check_scene_sequence(run_records, [
+            "title", "title", "options", "options", "options", "title",
+            "title", "playing", "playing", "playing", "playing", "playing",
+            "playing", "playing", "playing", "playing", "playing", "paused",
+            "paused", "title", "title", "options", "options", "options",
+            "title", "title", "title"],
+            session + "/scene-sequence")
+        # The turn spent the deflection: the ticks after the orientation save
+        # carry no action bit at all until the script presses again, exactly
+        # as the T068 rule demands of a held control. The probe names the
+        # move-left level, which the stick's X-negative deflection held
+        # across the select on the landscape table.
+        check_turn_spends_input(session, input_log,
+                                session + "/turn-spends-deflection",
+                                probe_bit="L")
+        check_field(by_name["title-at-start"], "menu", "title:0",
+                    session + "/stick-walks-turned-title")
+        check_field(by_name["playing-portrait"], "scene", "playing",
+                    session + "/round-starts")
+        # The rotated table, one reading at a time. An inverted or dead axis
+        # fails here whatever the reference says, because the expectation is
+        # the on-screen direction of section 5's portrait table alone.
+        check_piece_delta(session, by_name["playing-portrait"],
+                          by_name["stick-moved-left"], -1, 0,
+                          session + "/physical-down-moves-left")
+        check_piece_delta(session, by_name["stick-moved-left"],
+                          by_name["stick-moved-right"], +1, 0,
+                          session + "/physical-up-moves-right")
+        check_piece_delta(session, by_name["stick-moved-right"],
+                          by_name["stick-soft-drop"], 0, +2,
+                          session + "/physical-right-soft-drops")
+        delta_check("score", by_name["stick-moved-right"],
+                    by_name["stick-soft-drop"], 2,
+                    session + "/soft-drop-points")
+        # The reversed cluster beside the stick: B clockwise, A back, Y holds,
+        # X carries nothing, and the deadzone holds the turned round too.
+        before_rotate = piece_cells(by_name["stick-soft-drop"], "active")
+        check_field(by_name["face-b-rotates"], "active",
+                    "%s,1,%d,%d" % (before_rotate[0], before_rotate[2],
+                                    before_rotate[3]),
+                    session + "/face-b-rotates-cw")
+        check_field(by_name["face-a-rotates-back"], "active",
+                    by_name["stick-soft-drop"]["active"],
+                    session + "/face-a-rotates-ccw")
+        # The hold field is `<id>,<locked|free>`: Y stashed the piece that
+        # was active at the soft-drop record and drew the queue head.
+        hold_value = by_name["face-y-holds"].get("hold", "none")
+        hold_letter = hold_value.split(",")[0] if hold_value != "none" else None
+        if hold_letter != before_rotate[0]:
+            fail(session + "/face-y-holds",
+                 "hold slot is %s, expected the stashed %s" %
+                 (hold_value, before_rotate[0]))
+        else:
+            good(session + "/face-y-holds", "hold=%s" % hold_value)
+        check_piece_frozen(session, by_name["face-x-nothing"],
+                           by_name["portrait-deadzone-quiet"],
+                           session + "/face-x-and-deadzone-hold")
+        delta_check("settled", by_name["portrait-deadzone-quiet"],
+                    by_name["stick-hard-drop"], 4,
+                    session + "/physical-left-hard-drops")
+        # The ordered action bits of the turned round: the deflections land
+        # on the rotated actions, the face buttons on the reversed cluster,
+        # and the deadzone and the freed X button raise nothing at all.
+        check_stick_round_bits(session, input_log, [
+            (1, 0, 0, 0, 0, 0, 0, 0, "0000"),
+            (1, 0, 0, 0, 0, 0, 0, 0, "0000"),
+            (0, 1, 0, 0, 0, 0, 0, 0, "0000"),
+            (0, 1, 0, 0, 0, 0, 0, 0, "0000"),
+            (0, 0, 1, 0, 0, 0, 0, 0, "0100"),
+            (0, 0, 1, 0, 0, 0, 0, 0, "0000"),
+            (0, 0, 0, 1, 0, 0, 0, 0, "0010"),
+            (0, 0, 0, 0, 1, 0, 0, 0, "0001"),
+            (0, 0, 0, 0, 0, 0, 1, 0, "0000"),
+            (0, 0, 0, 0, 0, 1, 0, 0, "1000"),
+            (0, 0, 0, 0, 0, 0, 0, 1, "0000"),
+        ], session + "/round-input-bits")
+        # The session turned three times and leaves the portrait preference.
+        check_settings_path(session, os.path.join(save_dir, "settings.dat"),
+                            True, True, True, True, 5, False,
+                            rule="%s/saved-orientation" % session,
+                            orientation="portrait")
+        check_field(by_name["quit-confirmed"], "quit", "1",
+                    session + "/quit-confirmed")
+        check_log(session, log_path, [
+            "Clean shutdown",
+            "Scene title -> playing",
+            "Scene playing -> paused",
+        ])
     elif session == "normal-game-clears":
         # A play-only session: the title appears only before the round starts
         # and every later record is playing or paused, ending resumed.
@@ -2279,26 +2794,29 @@ def check_session(run_dir, session):
             "ghost hidden status=ok",
         ], name="input-log")
     elif session == "options-six-keyboard":
-        # The eight-row options screen on the keyboard (tasks T045, T055, and
-        # T062): the cursor reaches every row, one select changes each of the
-        # four T045 preferences, the cursor reaches ORIENTATION and MUSIC
-        # without selecting them and wraps past MUSIC back to SOUND, and the
-        # session quits with the settings file holding every new value and
-        # landscape.
+        # The ten-row options screen on the keyboard (tasks T045, T055,
+        # T062, T084, and T095): the cursor reaches every row, one select
+        # changes each of the four T045 preferences, the cursor reaches
+        # ORIENTATION, MUSIC, BACKGROUNDS, and PIECE DESIGNS without
+        # selecting them and wraps past PIECE DESIGNS back to SOUND, and the
+        # session quits with the settings file holding every new value,
+        # landscape, and the designs off.
         check_scene_sequence(run_records, [
-            "title", "title"] + ["options"] * 13 + [
+            "title", "title"] + ["options"] * 15 + [
             "title", "title", "title"], session + "/scene-sequence")
         check_field(by_name["title-at-options"], "menu", "title:2",
                     session + "/options-item-reached")
         rows = [("options-sound-row", 0), ("options-ghost-row", 1),
                 ("options-grid-row", 2), ("options-hold-row", 3),
                 ("options-next-row", 4), ("options-grayscale-row", 5),
-                ("options-orientation-row", 6), ("options-music-row", 7)]
+                ("options-orientation-row", 6), ("options-music-row", 7),
+                ("options-backgrounds-row-unselected", 8),
+                ("options-piece-designs-row", 9)]
         for name, row in rows:
             check_field(by_name[name], "menu", "options:%d" % row,
                         session + "/row-%d-reached" % row)
         # One select changes the value and never the row; the wrap checkpoint
-        # proves the cursor left GRAYSCALE downward and landed on SOUND.
+        # proves the cursor left PIECE DESIGNS downward and landed on SOUND.
         for name, row in [("grid-toggled", 2), ("hold-toggled", 3),
                           ("next-cycled", 4), ("grayscale-toggled", 5),
                           ("options-wrapped-to-sound", 0)]:
@@ -2327,15 +2845,15 @@ def check_session(run_dir, session):
             "next 1 status=ok", "grayscale on status=ok",
         ], name="input-log")
     elif session == "options-six-pad":
-        # The same eight rows on the developer virtual controller (tasks T045,
-        # T055, and T062), the input path of scene-cycle-pad: A changes each
-        # of the four T045 preferences - NEXT PIECES three times,
-        # 5 -> 1 -> 2 -> 3 - the cursor reaches ORIENTATION and MUSIC without
-        # selecting them and wraps past MUSIC, and a round then proves the
-        # pad's own hold inputs, Y and the left shoulder, change nothing
-        # while HOLD is off.
+        # The same ten rows on the developer virtual controller (tasks T045,
+        # T055, T062, T084, and T095), the input path of scene-cycle-pad: A
+        # changes each of the four T045 preferences - NEXT PIECES three
+        # times, 5 -> 1 -> 2 -> 3 - the cursor reaches ORIENTATION, MUSIC,
+        # BACKGROUNDS, and PIECE DESIGNS without selecting them and wraps
+        # past PIECE DESIGNS, and a round then proves the pad's own hold
+        # inputs, Y and the left shoulder, change nothing while HOLD is off.
         check_scene_sequence(run_records, [
-            "title", "title"] + ["options"] * 15 + [
+            "title", "title"] + ["options"] * 17 + [
             "title", "title", "playing", "playing", "playing", "playing",
             "playing", "playing", "paused", "paused", "title", "title",
             "title"], session + "/scene-sequence")
@@ -2346,7 +2864,9 @@ def check_session(run_dir, session):
                           ("options-next-row", 4),
                           ("options-grayscale-row", 5),
                           ("options-orientation-row", 6),
-                          ("options-music-row", 7)]:
+                          ("options-music-row", 7),
+                          ("options-backgrounds-row-unselected", 8),
+                          ("options-piece-designs-row", 9)]:
             check_field(by_name[name], "menu", "options:%d" % row,
                         session + "/row-%d-reached" % row)
             check_options_screen_layout(session, by_name[name],
@@ -2503,6 +3023,281 @@ def check_session(run_dir, session):
             "effectsvolume start=8", "music arcade status=ok",
             "music next track",
         ], name="input-log")
+    elif session == "backgrounds-keyboard":
+        # The backgrounds page behind the BACKGROUNDS row on the keyboard
+        # (task T084): the page opens on its MODE row, the mode ring walks
+        # Auto -> Off -> Fixed, the DESIGN row walks every stable ID 1..20
+        # and wraps back to 1 before ending on 7 - every select of the walk a
+        # saved Fixed ID - and the mode then steps Auto and lands on Off with
+        # the preferred design kept. B returns to the options screen on the
+        # BACKGROUNDS row. The saved file holds off and 7.
+        check_scene_sequence(run_records, [
+            "title", "title", "options", "options"] +
+            ["backgrounds"] * 33 + ["options", "title", "title", "title"],
+            session + "/scene-sequence")
+        check_field(by_name["title-at-options"], "menu", "title:2",
+                    session + "/options-item-reached")
+        check_field(by_name["options-open"], "menu", "options:0",
+                    session + "/options-opens-on-sound")
+        check_field(by_name["options-backgrounds-row"], "menu", "options:8",
+                    session + "/backgrounds-row-reached")
+        check_options_screen_layout(session, by_name["options-backgrounds-row"],
+                                    session + "/layout-options-backgrounds-row")
+        # The page itself: every checkpoint proves the two rows, the heading,
+        # the footer, and the quiet canvas, and a select never moves the
+        # cursor.
+        page_checks = [("backgrounds-page-open", 0),
+                       ("backgrounds-mode-off", 0),
+                       ("backgrounds-mode-fixed", 0),
+                       ("backgrounds-design-row", 1)]
+        for design in range(2, 21):
+            page_checks.append(("backgrounds-design-%02d" % design, 1))
+        page_checks += [("backgrounds-design-wrap", 1),
+                        ("backgrounds-design-02b", 1),
+                        ("backgrounds-design-03b", 1),
+                        ("backgrounds-design-04b", 1),
+                        ("backgrounds-design-05b", 1),
+                        ("backgrounds-design-06b", 1),
+                        ("backgrounds-design-07b", 1),
+                        ("backgrounds-mode-row-again", 0),
+                        ("backgrounds-mode-auto", 0),
+                        ("backgrounds-mode-off-final", 0)]
+        for name, row in page_checks:
+            check_field(by_name[name], "scene", "backgrounds",
+                        session + "/%s-stays-on-the-page" % name)
+            check_field(by_name[name], "menu", "backgrounds:%d" % row,
+                        session + "/%s-keeps-the-row" % name)
+            check_backgrounds_page_layout(session, by_name[name],
+                                          session + "/layout-%s" % name)
+        # Back lands on the BACKGROUNDS row of the options screen, and back
+        # again leaves through the title.
+        check_field(by_name["options-back-on-backgrounds"], "menu", "options:8",
+                    session + "/back-keeps-backgrounds-row")
+        check_options_screen_layout(
+            session, by_name["options-back-on-backgrounds"],
+            session + "/layout-back-on-backgrounds")
+        check_field(by_name["title-back"], "menu", "title:2",
+                    session + "/back-keeps-options-cursor")
+        check_field(by_name["title-at-quit"], "menu", "title:3",
+                    session + "/title-still-four-items")
+        check_field(by_name["quit-confirmed"], "quit", "1",
+                    session + "/quit-confirmed")
+        # The saved file: Off keeps the preferred design, and every earlier
+        # preference rides along at its default.
+        check_settings_file(session, save_dir, True, True, True, True, 5,
+                            False, session + "/saved-settings",
+                            background_mode="off", background_id=7)
+        check_log(session, log_path, [
+            "Clean shutdown",
+            settings_log_line(True, True, True, True, 5, False, "not found"),
+            "Scene title -> options", "Scene options -> backgrounds",
+            "Scene backgrounds -> options", "Scene options -> title",
+        ])
+        # The per-tick input log carries the whole design ring in order - one
+        # line per select, 2 through 20, the wrap to 1, and the walk to 7 -
+        # then the mode ring and the final Off, each with its save status.
+        ring = ["background %s status=ok" % word
+                for word in ("off", "fixed")]
+        ring += ["backgroundid %d status=ok" % design
+                 for design in list(range(2, 21)) + [1] + list(range(2, 8))]
+        ring += ["background auto status=ok", "background off status=ok"]
+        check_log(session, input_log, [
+            "background start=auto", "backgroundid start=1",
+        ] + ring, name="input-log")
+    elif session == "backgrounds-pad":
+        # The same page on the developer virtual controller (task T084), with
+        # the same-session application the acceptance names: a round opened
+        # after the mode landed Off draws the legacy flat wallpaper on its
+        # first play frame, and a round opened after Fixed draws the retained
+        # design 2 on the next play frame of the same session.
+        check_scene_sequence(run_records, [
+            "title", "title", "options", "options"] +
+            ["backgrounds"] * 4 + ["options", "title", "playing", "paused",
+            "paused", "title", "options"] +
+            ["backgrounds"] * 2 + ["options", "title", "playing", "paused",
+            "title", "options"] +
+            ["backgrounds"] * 2 + ["title", "playing", "paused",
+            "title", "title", "title"],
+            session + "/scene-sequence")
+        check_field(by_name["options-backgrounds-row"], "menu", "options:8",
+                    session + "/backgrounds-row-reached")
+        check_options_screen_layout(session, by_name["options-backgrounds-row"],
+                                    session + "/layout-options-backgrounds-row")
+        for name, row in [("backgrounds-page-open", 0),
+                          ("backgrounds-mode-off", 0),
+                          ("backgrounds-design-row", 1),
+                          ("backgrounds-design-02", 1)]:
+            check_field(by_name[name], "scene", "backgrounds",
+                        session + "/%s-stays-on-the-page" % name)
+            check_field(by_name[name], "menu", "backgrounds:%d" % row,
+                        session + "/%s-keeps-the-row" % name)
+            check_backgrounds_page_layout(session, by_name[name],
+                                          session + "/layout-%s" % name)
+        for name, row in [("backgrounds-page-reopen", 0),
+                          ("backgrounds-mode-fixed", 0),
+                          ("backgrounds-page-auto-open", 0),
+                          ("backgrounds-mode-auto", 0)]:
+            check_field(by_name[name], "scene", "backgrounds",
+                        session + "/%s-stays-on-the-page" % name)
+            check_field(by_name[name], "menu", "backgrounds:%d" % row,
+                        session + "/%s-keeps-the-row" % name)
+            check_backgrounds_page_layout(session, by_name[name],
+                                          session + "/layout-%s" % name)
+        check_field(by_name["options-back-on-backgrounds"], "menu", "options:8",
+                    session + "/back-keeps-backgrounds-row")
+        check_field(by_name["options-back-on-backgrounds-again"], "menu",
+                    "options:8", session + "/back-keeps-backgrounds-again")
+        # The play frames: Off draws the legacy flat ground everywhere the
+        # probes look, and Fixed draws the design 2 base #10131C.
+        # The probes sit in the quiet span and the two 24 px guard gaps
+        # beside the frame, clear of the HUD groups and of every shape the
+        # three pinned frames draw there.
+        check_play_wallpaper_color(
+            session, by_name["playing-off-flat"],
+            session + "/play-frame-off-flat",
+            [(250, 120), (628, 120), (330, 460), (628, 460)],
+            BACKGROUND_COLOR, "legacy flat Off")
+        check_play_wallpaper_color(
+            session, by_name["playing-fixed-2"],
+            session + "/play-frame-fixed-2",
+            [(250, 120), (628, 120), (330, 460), (628, 460)],
+            (0x10, 0x13, 0x1C), "fixed design 2")
+        # Auto at the level 1 boundary draws the design 1 grammar, Still
+        # ground: the base equals the legacy flat, and the corner steps paint
+        # the darker ink #0C0E16 over the canvas corners, so the ink probe
+        # tells Auto from Off while the base probes tell it from design 2.
+        check_play_wallpaper_color(
+            session, by_name["playing-auto-1"],
+            session + "/play-frame-auto-1",
+            [(5, 5), (5, 538), (954, 5), (954, 538)], (0x0C, 0x0E, 0x16),
+            "Auto level 1 corner ink")
+        check_play_wallpaper_color(
+            session, by_name["playing-auto-1"],
+            session + "/play-frame-auto-1-base",
+            [(250, 120), (628, 120), (330, 460), (628, 460)],
+            (0x10, 0x12, 0x1A), "Auto level 1 base")
+        check_field(by_name["quit-confirmed"], "quit", "1",
+                    session + "/quit-confirmed")
+        # The mode changes saved Off, Fixed, then Auto in order, both design
+        # selects kept the mode, and the file holds auto and the retained 2.
+        check_settings_file(session, save_dir, True, True, True, True, 5,
+                            False, session + "/saved-settings",
+                            background_mode="auto", background_id=2)
+        check_log(session, log_path, [
+            "Clean shutdown",
+            settings_log_line(True, True, True, True, 5, False, "not found"),
+            "Scene title -> options", "Scene options -> backgrounds",
+            "Scene backgrounds -> options", "Scene options -> title",
+            "Scene title -> playing", "Scene playing -> paused",
+            "Scene paused -> title",
+        ])
+        check_log(session, input_log, [
+            "background start=auto", "backgroundid start=1",
+            "background off status=ok", "backgroundid 2 status=ok",
+            "background fixed status=ok", "background auto status=ok",
+        ], name="input-log")
+    elif session == "backgrounds-relaunch":
+        # Three relaunches over one save directory (task T084): stage one
+        # starts from the saved pair portrait / fixed / 7 and moves the
+        # preference to 8, stage two starts from the corrupted
+        # backgroundid=99 file and changes nothing, and stage three starts
+        # from the legacy eleven-line music-era file, receives the new
+        # defaults, and upgrades it on its one save.
+        # Stage one: the relaunch applied portrait and Fixed 7.
+        stage1 = {r["check"]: r for r in records["stage1"]}
+        check_field(stage1["options-backgrounds-row"], "menu", "options:8",
+                    session + "/stage1-backgrounds-row")
+        for name, row in [("backgrounds-page-portrait-open", 0),
+                          ("backgrounds-design-row-portrait", 1),
+                          ("backgrounds-design-08-portrait", 1)]:
+            check_field(stage1[name], "scene", "backgrounds",
+                        session + "/stage1-%s-stays-on-the-page" % name)
+            check_field(stage1[name], "menu", "backgrounds:%d" % row,
+                        session + "/stage1-%s-keeps-the-row" % name)
+            check_backgrounds_page_layout_portrait(
+                session, stage1[name], session + "/stage1-layout-%s" % name)
+        # The play frame of the relaunch draws the saved fixed design 7 in
+        # portrait. The probes are device points of base-only windows the
+        # design's portrait grammar leaves flat: the right margin below its
+        # logical top rows (logical x about 513, y 480), the below-board
+        # strip (logical y about 940), and a quiet span of the HUD strip
+        # between its boxes (logical x about 293, y 60) - through the
+        # rotation, portrait (x, y) reaches the device canvas at (y, 543-x).
+        check_play_wallpaper_color(
+            session, stage1["playing-fixed-7-portrait"],
+            session + "/stage1-play-frame-fixed-7",
+            [(490, 20), (940, 250), (60, 250)],
+            (0x11, 0x15, 0x1F), "fixed design 7")
+        check_settings_path(session, stages[0]["after"], True, True, True,
+                            True, 5, False,
+                            session + "/stage1-settings-after",
+                            orientation="portrait",
+                            background_mode="fixed", background_id=8)
+        check_log(session, stages[0]["log"], [
+            "Clean shutdown",
+            settings_log_line(True, True, True, True, 5, False, "ok",
+                              "portrait", background_mode="fixed",
+                              background_id=7),
+            "Orientation: portrait",
+        ])
+        check_log(session, stages[0]["input_log"], [
+            "background start=fixed", "backgroundid start=7",
+            "backgroundid 8 status=ok",
+        ], name="stage1-input-log")
+        # Stage two: the corrupted ID recovers to the defaults, and the read
+        # rewrites nothing - the file keeps its exact broken bytes.
+        stage2 = {r["check"]: r for r in records["stage2"]}
+        check_field(stage2["backgrounds-page-open"], "scene", "backgrounds",
+                    session + "/stage2-page-opens")
+        check_backgrounds_page_layout(
+            session, stage2["backgrounds-page-open"],
+            session + "/stage2-layout-page")
+        broken_bytes = ("version=1\nsound=on\nghost=on\ngrid=on\nhold=on\n"
+                        "next=5\ngrayscale=off\norientation=landscape\n"
+                        "music=auto\nmusicvolume=6\neffectsvolume=8\n"
+                        "background=fixed\nbackgroundid=99\n")
+        with open(stages[1]["after"]) as handle:
+            after_bytes = handle.read()
+        if after_bytes != broken_bytes:
+            fail(session + "/stage2-broken-kept",
+                 "the corrupted file changed: %r" % after_bytes)
+        else:
+            good(session + "/stage2-broken-kept",
+                 "the load rewrote nothing; the broken bytes survive")
+        check_log(session, stages[1]["log"], [
+            "Clean shutdown",
+            settings_log_line(True, True, True, True, 5, False, "invalid"),
+        ])
+        check_log(session, stages[1]["input_log"], [
+            "background start=auto", "backgroundid start=1",
+        ], name="stage2-input-log")
+        # Stage three: the legacy eleven-line file keeps every saved value,
+        # receives the new defaults, and one save upgrades it to the current
+        # canonical form.
+        stage3 = {r["check"]: r for r in records["stage3"]}
+        check_field(stage3["backgrounds-mode-off"], "scene", "backgrounds",
+                    session + "/stage3-mode-row-change")
+        check_field(stage3["backgrounds-mode-off"], "menu", "backgrounds:0",
+                    session + "/stage3-select-keeps-the-row")
+        check_backgrounds_page_layout(
+            session, stage3["backgrounds-mode-off"],
+            session + "/stage3-layout-mode-off")
+        check_settings_path(session, stages[2]["after"], False, False, True,
+                            True, 3, True,
+                            session + "/stage3-settings-upgraded",
+                            music_mode="focus", music_volume=2,
+                            effects_volume=9, background_mode="off",
+                            background_id=1)
+        check_log(session, stages[2]["log"], [
+            "Clean shutdown",
+            settings_log_line(False, False, True, True, 3, True, "ok",
+                              music_mode="focus", music_volume=2,
+                              effects_volume=9),
+        ])
+        check_log(session, stages[2]["input_log"], [
+            "background start=auto", "backgroundid start=1",
+            "background off status=ok",
+        ], name="stage3-input-log")
     elif session == "hold-off":
         # The HOLD preference against specification sections 4.3 and 5 (task
         # T045): with HOLD off, both mapped keyboard hold inputs change
@@ -2610,6 +3405,190 @@ def check_session(run_dir, session):
         ])
         check_log(session, input_log, [
             "grayscale on status=ok", "grayscale off status=ok",
+        ], name="input-log")
+    elif session == "piece-designs-keyboard":
+        # The PIECE DESIGNS preference on the keyboard (task T095): nine downs
+        # reach the tenth row, one select turns the in-cell marks on, and a
+        # round over the labeled all-pieces fixture draws every mark in color
+        # - seven distinct shapes, one per piece type, and no dark pixel left
+        # once the same select walks the value off for the control round.
+        # The final visit turns the marks back on, so the file the session
+        # leaves holds piecedesigns=on.
+        check_scene_sequence(run_records, [
+            "title", "title"] + ["options"] * 3 + ["title", "title"] +
+            ["playing"] * 2 + ["paused"] * 2 + ["title", "title"] +
+            ["options"] * 2 + ["title", "title"] + ["playing"] * 2 +
+            ["paused"] * 2 + ["title", "title"] + ["options"] * 3 +
+            ["title", "title", "title"], session + "/scene-sequence")
+        for name, field, wanted in [
+                ("title-at-options", "menu", "title:2"),
+                ("options-open", "menu", "options:0"),
+                ("options-piece-designs-row", "menu", "options:9"),
+                ("designs-on", "menu", "options:9"),
+                ("title-back-on", "menu", "title:2"),
+                ("title-at-start", "menu", "title:0"),
+                ("paused-on", "menu", "pause:0"),
+                ("paused-at-quit", "menu", "pause:3"),
+                ("title-after-round", "menu", "title:0"),
+                ("title-at-options-again", "menu", "title:2"),
+                ("options-on-same-row", "menu", "options:9"),
+                ("designs-off", "menu", "options:9"),
+                ("title-back-off", "menu", "title:2"),
+                ("title-at-start-off", "menu", "title:0"),
+                ("paused-off", "menu", "pause:0"),
+                ("paused-at-quit-off", "menu", "pause:3"),
+                ("title-after-off-round", "menu", "title:0"),
+                ("title-at-options-final", "menu", "title:2"),
+                # B then A reopens the screen on the row it left.
+                ("options-open-final", "menu", "options:9"),
+                ("options-on-same-row-final", "menu", "options:9"),
+                ("designs-on-again", "menu", "options:9"),
+                ("title-back-final", "menu", "title:2"),
+                ("title-at-quit", "menu", "title:3"),
+                ("quit-confirmed", "quit", "1")]:
+            check_field(by_name[name], field, wanted,
+                        session + "/%s" % name)
+        # The page itself with the row highlighted, on and off.
+        for name in ("options-open", "options-piece-designs-row", "designs-on",
+                     "options-on-same-row", "designs-off"):
+            check_options_screen_layout(session, by_name[name],
+                                        session + "/layout-%s" % name)
+        # One cell of every piece type, on and off: the marks read from
+        # pixels and the control frame proves the flat cell draws none.
+        for name in ("designs-frame", "plain-frame"):
+            check_field(by_name[name], "settled", "28",
+                        session + "/%s-fixture-board" % name)
+        check_piece_design_marks(session, by_name["designs-frame"], False,
+                                 False, session + "/marks-in-color")
+        check_piece_design_marks(session, by_name["plain-frame"], False,
+                                 False, session + "/plain-control",
+                                 expect_designs=False)
+        check_settings_file(session, save_dir, True, True, True, True, 5,
+                            False, session + "/saved-settings",
+                            piece_designs=True)
+        check_log(session, log_path, [
+            "Clean shutdown",
+            # The startup line names the values the session began with:
+            # the designs only turn on inside it.
+            settings_log_line(True, True, True, True, 5, False, "not found"),
+            "Scene title -> options", "Scene options -> title",
+        ])
+        check_log(session, input_log, [
+            "piecedesigns start=off",
+            "piecedesigns on status=ok", "piecedesigns off status=ok",
+        ], name="input-log")
+    elif session == "piece-designs-pad":
+        # The same PIECE DESIGNS row on the developer virtual controller
+        # (task T095), the input path of scene-cycle-pad: the D-pad walks the
+        # ten rows, A turns the marks on, and the fixture round draws every
+        # mark through the controller-driven play path. The session ends with
+        # the saved file holding piecedesigns=on.
+        check_scene_sequence(run_records, [
+            "title", "title"] + ["options"] * 3 + ["title", "title"] +
+            ["playing"] * 2 + ["paused"] * 2 +
+            ["title", "title", "title"], session + "/scene-sequence")
+        for name, field, wanted in [
+                ("title-at-options", "menu", "title:2"),
+                ("options-open", "menu", "options:0"),
+                ("options-piece-designs-row", "menu", "options:9"),
+                ("designs-on", "menu", "options:9"),
+                ("title-back", "menu", "title:2"),
+                ("title-at-start", "menu", "title:0"),
+                ("playing-start", "scene", "playing"),
+                ("paused", "menu", "pause:0"),
+                ("paused-at-quit", "menu", "pause:3"),
+                ("title-after-round", "menu", "title:0"),
+                ("title-at-quit", "menu", "title:3"),
+                ("quit-confirmed", "quit", "1")]:
+            check_field(by_name[name], field, wanted,
+                        session + "/%s" % name)
+        for name in ("options-open", "options-piece-designs-row", "designs-on"):
+            check_options_screen_layout(session, by_name[name],
+                                        session + "/layout-%s" % name)
+        check_field(by_name["designs-frame"], "settled", "28",
+                    session + "/designs-frame-fixture-board")
+        check_piece_design_marks(session, by_name["designs-frame"], False,
+                                 False, session + "/marks-in-color")
+        check_settings_file(session, save_dir, True, True, True, True, 5,
+                            False, session + "/saved-settings",
+                            piece_designs=True)
+        check_log(session, log_path, [
+            "Clean shutdown",
+            # The startup line names the values the session began with:
+            # the designs only turn on inside it.
+            settings_log_line(True, True, True, True, 5, False, "not found"),
+            "Scene title -> options", "Scene options -> title",
+        ])
+        check_log(session, input_log, [
+            "piecedesigns start=off", "piecedesigns on status=ok",
+        ], name="input-log")
+    elif session == "piece-designs-gray":
+        # The per-piece designs where they matter most (task T095): one
+        # options visit turns GRAYSCALE and PIECE DESIGNS on together, and
+        # the fixture frame proves every mark reads in gray - seven distinct
+        # shapes with the piece colors gone. The same session then turns
+        # portrait through the ORIENTATION row and draws the same fixture
+        # again, so the checker reads the marks through the fixed rotation
+        # too, and quits through the turned menu roles.
+        check_scene_sequence(run_records, [
+            "title", "title"] + ["options"] * 5 + ["title", "title"] +
+            ["playing"] * 2 + ["paused"] * 2 + ["title", "title"] +
+            ["options"] * 3 + ["title", "title"] + ["playing"] * 2 +
+            ["paused"] * 2 + ["title", "title", "title"],
+            session + "/scene-sequence")
+        for name, field, wanted in [
+                ("title-at-options", "menu", "title:2"),
+                ("options-open", "menu", "options:0"),
+                ("options-grayscale-row", "menu", "options:5"),
+                ("grayscale-on", "menu", "options:5"),
+                ("options-piece-designs-row", "menu", "options:9"),
+                ("designs-on", "menu", "options:9"),
+                ("title-back", "menu", "title:2"),
+                ("title-at-start", "menu", "title:0"),
+                ("playing-start", "scene", "playing"),
+                ("paused", "menu", "pause:0"),
+                ("paused-at-quit", "menu", "pause:3"),
+                ("title-after-round", "menu", "title:0"),
+                ("title-at-options-again", "menu", "title:2"),
+                # The turned session reopens on the row it left, too.
+                ("options-open-again", "menu", "options:9"),
+                ("options-orientation-row", "menu", "options:6"),
+                ("turned-portrait", "menu", "options:6"),
+                ("title-turned", "menu", "title:2"),
+                ("title-turned-at-start", "menu", "title:0"),
+                ("portrait-playing", "scene", "playing"),
+                ("portrait-paused", "menu", "pause:0"),
+                ("portrait-paused-at-quit", "menu", "pause:3"),
+                ("portrait-title-after-round", "menu", "title:0"),
+                ("title-turned-at-quit", "menu", "title:3"),
+                ("quit-confirmed", "quit", "1")]:
+            check_field(by_name[name], field, wanted,
+                        session + "/%s" % name)
+        check_options_screen_layout(session, by_name["options-open"],
+                                    session + "/layout-options-open")
+        check_portrait_options_layout(session, by_name["turned-portrait"],
+                                      session + "/layout-turned")
+        for name in ("gray-designs-frame", "portrait-gray-designs-frame"):
+            check_field(by_name[name], "settled", "28",
+                        session + "/%s-fixture-board" % name)
+        check_piece_design_marks(session, by_name["gray-designs-frame"], True,
+                                 False, session + "/marks-in-gray")
+        check_piece_design_marks(
+            session, by_name["portrait-gray-designs-frame"], True, True,
+            session + "/marks-in-gray-portrait")
+        check_settings_file(session, save_dir, True, True, True, True, 5,
+                            True, session + "/saved-settings",
+                            orientation="portrait", piece_designs=True)
+        check_log(session, log_path, [
+            "Clean shutdown",
+            # The startup line names landscape and the designs off: the
+            # session turns grayscale, the designs, and portrait itself.
+            settings_log_line(True, True, True, True, 5, False, "not found"),
+            "Scene title -> options", "Scene options -> title",
+        ])
+        check_log(session, input_log, [
+            "grayscale start=off", "piecedesigns start=off",
+            "grayscale on status=ok", "piecedesigns on status=ok",
         ], name="input-log")
     elif session == "options-relaunch":
         # Four relaunches over one save directory (task T045): each stage
@@ -3115,6 +4094,224 @@ def check_session(run_dir, session):
         check_log(session, stage["input_log"], [
             "controls start=default status=invalid",
         ], name="%s/stage1-input-log" % session)
+    elif session == "harddrop-rebind":
+        # The staged hard-drop rebind session (task T87, the operator report
+        # of 2026-11-05): hard drop must be movable off the logical Up
+        # direction onto any other controller input - the face buttons and
+        # the shoulders included - with the stick's up arm edge-triggered
+        # behind the deadzone so a light touch never drops, and a rebound
+        # Up must stop hard-dropping entirely.
+        stage = stages[0]
+        by_name = {r["check"]: r for r in records["stage1"]}
+        check_scene_sequence(records["stage1"], [
+            "title", "playing", "playing", "playing", "playing", "playing",
+            "playing", "paused", "paused", "title", "title", "controls",
+            "rebind", "rebind", "rebind", "rebind", "rebind", "rebind",
+            "controls", "title", "playing", "playing", "playing", "playing",
+            "playing", "playing", "paused", "paused", "title", "title",
+            "title"], session + "/stage1-scene-sequence")
+        # The screen opens on its first row and the cursor lands on HARD
+        # DROP, exactly as on the T066 sessions.
+        check_field(by_name["rebind-open-landscape"], "menu", "rebind:0",
+                    session + "/stage1-rebind-first-row")
+        check_field(by_name["rebind-at-harddrop"], "menu", "rebind:5",
+                    session + "/stage1-harddrop-row")
+        # The T067 defaults before any change: a light stick reading inside
+        # the deadzone settles nothing, D-pad up hard drops once, and a full
+        # stick-up deflection drops exactly once - the settled count and the
+        # score freeze across the long hold that follows, because the arm is
+        # an edge and never a repeated one.
+        check_field(by_name["stick-light-touch-quiet"], "settled", "0",
+                    session + "/stage1-light-touch-quiet")
+        check_field(by_name["stick-wobble-quiet"], "settled", "0",
+                    session + "/stage1-stick-wobble-quiet")
+        check_field(by_name["dpad-up-harddrops"], "settled", "4",
+                    session + "/stage1-dpad-up-drops")
+        check_field(by_name["stick-up-drops-once"], "settled", "8",
+                    session + "/stage1-stick-up-drops-once")
+        check_field(by_name["stick-up-held-quiet"], "score", "68",
+                    session + "/stage1-stick-up-one-edge")
+        check_field(by_name["stick-up-held-quiet"], "settled", "8",
+                    session + "/stage1-stick-up-no-second-edge")
+        # The rebound tables: the freed D-pad up, the freed stick-up arm, and
+        # the face button the second capture replaced all settle nothing,
+        # while the shoulder and the key lock the piece.
+        check_field(by_name["dpad-up-dead"], "settled", "0",
+                    session + "/stage1-freed-dpad-up-dead")
+        check_field(by_name["stick-up-dead"], "settled", "0",
+                    session + "/stage1-freed-stick-up-dead")
+        check_field(by_name["face-x-dead"], "settled", "0",
+                    session + "/stage1-freed-face-x-dead")
+        check_field(by_name["r1-harddrops"], "settled", "4",
+                    session + "/stage1-shoulder-drops")
+        check_field(by_name["d-harddrops"], "settled", "8",
+                    session + "/stage1-key-drops")
+        # The last round's ordered action bits: the two freed Up paths reach
+        # the log as menu edges alone - no drop bit ever follows the rebind -
+        # and each bound control carries exactly one drop edge before the
+        # pause that ends the round.
+        check_stick_round_bits(session, stage["input_log"], [
+            (0, 0, 0, 0, 0, 0, 0, 0, "1000"),  # the freed D-pad up
+            (0, 0, 0, 0, 0, 0, 0, 0, "1000"),  # the freed stick-up arm
+            (0, 0, 0, 0, 0, 1, 0, 0, "0000"),  # R1 hard drops
+            (0, 0, 0, 0, 0, 1, 0, 0, "0000"),  # D hard drops
+            (0, 0, 0, 0, 0, 0, 0, 1, "0000"),  # Start pauses
+        ], session + "/stage1-round-bits")
+        # Across the whole stage exactly four drop edges exist: two on the
+        # default table, both on the Up paths that carry the menu role, and
+        # two on the bound controls after the rebind, which carry none.
+        try:
+            with open(stage["input_log"]) as handle:
+                drop_lines = [line for line in handle
+                              if line.startswith("tick=") and " drop=1 " in line]
+        except IOError:
+            drop_lines = None
+        if drop_lines is None:
+            fail(session + "/stage1-drop-edge-count",
+                 "cannot read %s" % stage["input_log"])
+        elif len(drop_lines) != 4:
+            fail(session + "/stage1-drop-edge-count",
+                 "%d drop edges, expected 4: %s" % (len(drop_lines),
+                                                    drop_lines[:6]))
+        elif sum(1 for line in drop_lines
+                 if line.rstrip().endswith("menu=1000")) != 2:
+            fail(session + "/stage1-drop-edge-count",
+                 "the default-table drops no longer ride the Up menu role: %s"
+                 % drop_lines)
+        else:
+            good(session + "/stage1-drop-edge-count",
+                 "four drop edges: two on the Up default, two on the rebind")
+        check_log(session, stage["input_log"], [
+            "controls capture action=harddrop device=pad control=x "
+            "result=applied",
+            "controls capture action=harddrop device=pad control=r1 "
+            "result=applied",
+            "controls capture action=harddrop device=key control=d "
+            "result=applied",
+        ], name="%s/stage1-input-log" % session)
+        check_log(session, stage["log"], [
+            "Clean shutdown",
+            "Controls: default bindings (not found)",
+            "Scene rebind -> controls",
+        ], name="%s/stage1-log" % session)
+        custom1 = {("landscape", "pad"): {"harddrop": "r1"},
+                   ("landscape", "key"): {"harddrop": "d"}}
+        check_controls_path(session, stage["controls_after"], custom1,
+                            session + "/stage1-wrote-custom-file")
+        check_field(by_name["quit-confirmed"], "quit", "1",
+                    session + "/stage1-quit")
+
+        # Stage two: the relaunch on that file, the portrait turn, and the
+        # rebind through the turned menu roles.
+        stage = stages[1]
+        by_name = {r["check"]: r for r in records["stage2"]}
+        check_scene_sequence(records["stage2"], [
+            "title", "title", "controls", "title", "playing", "playing",
+            "playing", "playing", "playing", "playing", "paused", "paused",
+            "title", "title", "options", "options", "options", "title",
+            "title", "playing", "playing", "playing", "paused", "paused",
+            "title", "title", "controls", "rebind", "rebind", "rebind",
+            "rebind", "controls", "title", "playing", "playing", "playing",
+            "playing", "paused", "paused", "title", "title", "title"],
+            session + "/stage2-scene-sequence")
+        check_controls_path(session, stage["controls_before"], custom1,
+                            session + "/stage2-read-custom-file")
+        # The loaded landscape tables play: R1 and D drop, the freed Up
+        # paths and Space settle nothing.
+        check_field(by_name["r1-drops-loaded"], "settled", "4",
+                    session + "/stage2-shoulder-drops-loaded")
+        check_field(by_name["up-dead-loaded"], "settled", "4",
+                    session + "/stage2-up-dead-loaded")
+        check_field(by_name["stick-up-dead-loaded"], "settled", "4",
+                    session + "/stage2-stick-up-dead-loaded")
+        check_field(by_name["space-dead-loaded"], "settled", "4",
+                    session + "/stage2-space-dead-loaded")
+        check_field(by_name["d-drops-loaded"], "settled", "8",
+                    session + "/stage2-key-drops-loaded")
+        # The untouched portrait defaults: the grip's up direction still
+        # hard drops there - the landscape rebind leaked into no other table
+        # - and the same edge rule holds, one drop per deflection.
+        check_field(by_name["portrait-stick-up-drops"], "settled", "4",
+                    session + "/stage2-portrait-default-drops")
+        check_field(by_name["portrait-stick-up-held-quiet"], "score", "36",
+                    session + "/stage2-portrait-one-edge")
+        check_field(by_name["portrait-stick-up-held-quiet"], "settled", "4",
+                    session + "/stage2-portrait-no-second-edge")
+        # The turned rebind flow: the cursor lands on HARD DROP through the
+        # rotated roles, the capture applies, and the rebound portrait round
+        # frees the grip's up arm on both paths.
+        check_field(by_name["rebind-at-harddrop-portrait"], "menu",
+                    "rebind:5", session + "/stage2-harddrop-row-portrait")
+        check_field(by_name["portrait-dpad-left-dead"], "settled", "0",
+                    session + "/stage2-freed-grip-up-dead")
+        check_field(by_name["portrait-stick-up-dead"], "settled", "0",
+                    session + "/stage2-freed-grip-stick-dead")
+        check_field(by_name["portrait-r1-drops"], "settled", "4",
+                    session + "/stage2-shoulder-drops-portrait")
+        # The turned rebind pages render at the portrait composition: the
+        # rows below the turned board frame stay empty on each capture.
+        for name in ("rebind-open-portrait", "rebind-capture-armed-portrait",
+                     "rebind-harddrop-r1-portrait"):
+            check_portrait_page_quiet(session, by_name[name],
+                                      session + "/portrait-%s-fits" % name)
+        check_log(session, stage["input_log"], [
+            "controls start=custom status=ok",
+            "orientation portrait status=ok",
+            "controls capture action=harddrop device=pad control=r1 "
+            "result=applied",
+        ], name="%s/stage2-input-log" % session)
+        check_log(session, stage["log"], [
+            "Clean shutdown",
+            "Controls: custom bindings (ok)",
+        ], name="%s/stage2-log" % session)
+        custom2 = dict(custom1)
+        custom2[("portrait", "pad")] = {"harddrop": "r1"}
+        check_controls_path(session, stage["controls_after"], custom2,
+                            session + "/stage2-wrote-portrait-file")
+        check_settings_file(session, stage["save"], True, True, True, True, 5,
+                            False, session + "/stage2-saved-portrait",
+                            orientation="portrait")
+        check_field(by_name["quit-confirmed"], "quit", "1",
+                    session + "/stage2-quit")
+
+        # Stage three: the portrait relaunch on the saved preference and the
+        # saved custom tables, then RESTORE DEFAULTS.
+        stage = stages[2]
+        by_name = {r["check"]: r for r in records["stage3"]}
+        check_scene_sequence(records["stage3"], [
+            "title", "title", "controls", "rebind", "controls", "title",
+            "playing", "playing", "playing", "playing", "paused", "paused",
+            "title", "title", "controls", "rebind", "rebind", "rebind",
+            "controls", "title", "playing", "playing", "paused", "paused",
+            "title", "title", "title"], session + "/stage3-scene-sequence")
+        check_controls_path(session, stage["controls_before"], custom2,
+                            session + "/stage3-read-custom-file")
+        check_field(by_name["relaunch-portrait-left-dead"], "settled", "0",
+                    session + "/stage3-persisted-grip-up-dead")
+        check_field(by_name["relaunch-portrait-stick-dead"], "settled", "0",
+                    session + "/stage3-persisted-stick-dead")
+        check_field(by_name["relaunch-portrait-r1-drops"], "settled", "4",
+                    session + "/stage3-persisted-shoulder-drops")
+        check_field(by_name["rebind-at-restore-portrait"], "menu", "rebind:8",
+                    session + "/stage3-restore-row")
+        check_field(by_name["restored-portrait-stick-drops"], "settled", "4",
+                    session + "/stage3-restored-default-drops")
+        check_log(session, stage["input_log"], [
+            "orientation start=portrait",
+            "controls start=custom status=ok",
+            "controls restore result=defaults",
+        ], name="%s/stage3-input-log" % session)
+        check_log(session, stage["log"], [
+            "Clean shutdown",
+            "Controls: custom bindings (ok)",
+        ], name="%s/stage3-log" % session)
+        check_controls_path(session, stage["controls_after"], None,
+                            session + "/stage3-restored-file")
+        check_settings_file(session, stage["save"], True, True, True, True, 5,
+                            False, session + "/stage3-kept-portrait",
+                            orientation="portrait")
+        check_field(by_name["quit-confirmed"], "quit", "1",
+                    session + "/stage3-quit")
     else:
         fail("%s/unknown" % session, "no expectations defined")
 

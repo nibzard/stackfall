@@ -469,6 +469,18 @@ void DeveloperSession::run(const Command& command) {
       SDL_JoystickUpdate();
       break;
     }
+    case Command::Kind::Stick: {
+      if (!pad_.attached()) {
+        marker("stick command without a virtual controller; ignored");
+        break;
+      }
+      SDL_JoystickSetVirtualAxis(pad_.joystick(), command.value,
+                                 static_cast<Sint16>(command.axisValue));
+      // The same update rule as a virtual button: the event belongs to this
+      // frame, not to whichever frame SDL next polls on its own.
+      SDL_JoystickUpdate();
+      break;
+    }
     case Command::Kind::Wait:
       break;  // handled in pumpScript()
     case Command::Kind::Stall:
@@ -613,6 +625,19 @@ bool DeveloperSession::parseLine(const std::string& raw) {
       command.kind = down ? Command::Kind::PadDown : Command::Kind::PadUp;
       command.value = button;
     }
+  } else if (verb == "stick") {
+    // "stick <x|y> <value>", the analog thumbstick of task T86: the value is
+    // the reading the virtual pad reports, so a script can name the deadzone
+    // boundary and the far ends of an axis exactly as SDL reports them.
+    const int axis = virtualPadAxisFromName(name.c_str());
+    if (axis < 0) {
+      return reportSyntax(raw, "unknown stick axis name");
+    }
+    if (!parseScriptAxisValue(state.c_str(), &command.axisValue)) {
+      return reportSyntax(raw, "stick needs a value from -32768 to 32767");
+    }
+    command.kind = Command::Kind::Stick;
+    command.value = axis;
   } else if (verb == "wait" || verb == "stall") {
     // The count runs through the shared bounded rule of the core, never a
     // narrowing cast: a fuzzed count above the 32-bit range once became a

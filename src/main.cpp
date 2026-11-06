@@ -169,6 +169,10 @@ using stackfall::observationSceneName;
 using stackfall::saveStatusName;
 using stackfall::soundCueName;
 
+// The backgrounds package of task T078 under its short name, the namespace
+// the wallpaper settings of task T084 read their words from.
+namespace backgrounds = stackfall::backgrounds;
+
 // ---------------------------------------------------------------------------
 // Session log (task T014, specification section 9).
 //
@@ -975,6 +979,7 @@ void applyPreferences(const SettingsValues& prefs, AudioDriver& audio,
   renderer.setShowHold(prefs.holdOn);
   renderer.setNextPreviews(prefs.nextPreviews);
   renderer.setGrayscale(prefs.grayscaleOn);
+  renderer.setPieceDesigns(prefs.pieceDesignsOn);
 }
 
 // The music settings' half of the same rule (task T062): the volumes reach
@@ -1124,6 +1129,24 @@ void toggleGrayscale(AudioDriver& audio, const SettingsStore& settings,
   savePreference(settings, prefs, "grayscale", line, inputLog);
 }
 
+// The piece designs toggle of the options screen (task T095): on draws the
+// per-piece in-cell mark inside every filled cell the play scene and the
+// previews draw, so a player can read the piece type from the cell detailing
+// alone in grayscale conditions; off restores the plain flat cell of the
+// years before the task exactly. Nothing else changes: the mark is a render
+// detail, so the rules, the input tables, and every observation stream stay
+// as they were.
+void togglePieceDesigns(AudioDriver& audio, const SettingsStore& settings,
+                        SettingsValues& prefs, Renderer& renderer,
+                        std::FILE* inputLog) {
+  prefs.pieceDesignsOn = !prefs.pieceDesignsOn;
+  applyPreferences(prefs, audio, renderer);
+  char line[48];
+  std::snprintf(line, sizeof(line), "piecedesigns %s",
+                prefs.pieceDesignsOn ? "on" : "off");
+  savePreference(settings, prefs, "piece designs", line, inputLog);
+}
+
 // The ORIENTATION row of the options screen (tasks T055 and T068): select
 // walks landscape -> portrait -> landscape and turns the running session at
 // once. The call runs inside the tick that consumed the select edge, which is
@@ -1253,10 +1276,58 @@ void applyOptionsSelect(Renderer& renderer, AudioDriver& audio,
     case 5:
       toggleGrayscale(audio, settings, prefs, renderer, inputLog);
       break;
-    default:
+    case 6:
       cycleOrientation(audio, settings, prefs, renderer, input, inputLog);
       break;
+    case 9:
+      togglePieceDesigns(audio, settings, prefs, renderer, inputLog);
+      break;
+    default:
+      // The MUSIC and BACKGROUNDS rows open their pages, which the core owns;
+      // a select that kept the options screen on one of them changes nothing.
+      break;
   }
+}
+
+// The backgrounds page's own rows (task T084, docs/BACKGROUND_IMPLEMENTATION.md
+// player options): the MODE row cycles Auto -> Off -> Fixed -> Auto and the
+// DESIGN row walks the twenty stable design IDs 1 -> 20 -> 1. Both values are
+// platform state the rules core never holds, so this half applies them here.
+// A mode change cuts the wallpaper on the next play frame and never touches
+// the preferred design, and a design change never touches the mode: the
+// preference waits for the player to select Fixed, and switching to Off or
+// Auto keeps it stored. Both changes write the whole settings file through
+// the same atomic save as every preference, and the play scene of the same
+// session shows the new wallpaper without a restart or a new game.
+void applyBackgroundSelect(Renderer& renderer, const SettingsStore& settings,
+                           SettingsValues& prefs, int row,
+                           std::FILE* inputLog) {
+  if (row == stackfall::kBackgroundOptionsModeRow) {
+    const backgrounds::Mode order[] = {backgrounds::Mode::Auto,
+                                       backgrounds::Mode::Off,
+                                       backgrounds::Mode::Fixed};
+    backgrounds::Mode next = order[0];
+    for (int index = 0; index < 3; ++index) {
+      if (prefs.backgroundMode == order[index]) {
+        next = order[(index + 1) % 3];
+        break;
+      }
+    }
+    prefs.backgroundMode = next;
+    renderer.setBackgroundMode(next);
+    char line[48];
+    std::snprintf(line, sizeof(line), "background %s",
+                  backgrounds::modeName(next));
+    savePreference(settings, prefs, "background mode", line, inputLog);
+    return;
+  }
+  prefs.backgroundId = prefs.backgroundId >= stackfall::kSettingsBackgroundLast
+                           ? stackfall::kSettingsBackgroundFirst
+                           : prefs.backgroundId + 1;
+  renderer.setBackgroundPreference(prefs.backgroundId);
+  char line[48];
+  std::snprintf(line, sizeof(line), "backgroundid %d", prefs.backgroundId);
+  savePreference(settings, prefs, "preferred background", line, inputLog);
 }
 
 // One line of per-cue counters, for stdout and the input log. `requested` is
@@ -1305,10 +1376,14 @@ void logCues(const CueSet& cues, std::uint64_t tick, std::FILE* inputLog) {
 // Returns false when the program should exit: window close, or the Q key,
 // which stands in for the EXIT state until the title screen of milestone M2
 // offers Quit. Escape no longer exits: it pauses (specification section 5).
+// `focusLost` tracks the window's focus for the caller: the level
+// backgrounds freeze their presentation clock while the window holds no
+// focus (task T078), beside the held levels the input adapter clears on the
+// same event.
 bool pollEvents(SDL_Renderer* sdlRenderer, Renderer& renderer,
                 ControllerSet& controllers, SdlInput& input,
                 AudioDriver& audio, const SettingsStore& settings,
-                SettingsValues& prefs, std::FILE* inputLog) {
+                SettingsValues& prefs, std::FILE* inputLog, bool& focusLost) {
   SDL_Event event;
   while (SDL_PollEvent(&event) != 0) {
     input.handleEvent(event);
@@ -1326,6 +1401,10 @@ bool pollEvents(SDL_Renderer* sdlRenderer, Renderer& renderer,
           stackfall::applyCanvas(sdlRenderer);
           logf("Window resized to %dx%d; canvas re-applied\n",
                event.window.data1, event.window.data2);
+        } else if (event.window.event == SDL_WINDOWEVENT_FOCUS_LOST) {
+          focusLost = true;
+        } else if (event.window.event == SDL_WINDOWEVENT_FOCUS_GAINED) {
+          focusLost = false;
         }
         break;
       case SDL_CONTROLLERDEVICEADDED:
@@ -1442,6 +1521,12 @@ int runMainLoop(Renderer& renderer, SDL_Renderer* sdlRenderer,
   bool roundActive = false;
   std::uint64_t roundTicks = 0;
 
+  // The level backgrounds of task T078: the window's focus state, and the
+  // flag a tick batch raises when a round began or restarted so the frame
+  // resets the presentation clock before it renders.
+  bool focusLost = false;
+  bool wallpaperRoundBegan = false;
+
   // The controls customization state of task T066. `captureRow` is the row
   // whose capture SdlInput is armed for, or -1 while none is; `rebindMessage`
   // is the status line the customization screen draws under its rows, and its
@@ -1458,7 +1543,7 @@ int runMainLoop(Renderer& renderer, SDL_Renderer* sdlRenderer,
 
     // Events next, before any simulation (specification section 5).
     running = pollEvents(sdlRenderer, renderer, controllers, input, audio,
-                         settings, prefs, inputLog);
+                         settings, prefs, inputLog, focusLost);
 
     // A capture the customization screen armed (task T066). The press that
     // named a control stopped at SdlInput instead of becoming adapter state,
@@ -1549,6 +1634,7 @@ int runMainLoop(Renderer& renderer, SDL_Renderer* sdlRenderer,
     }
 
     int batch = 0;
+    std::uint32_t wallpaperDeltaMs = 0;
     if (tickPerFrame) {
       batch = 1;
       accumulator = 0;
@@ -1581,6 +1667,11 @@ int runMainLoop(Renderer& renderer, SDL_Renderer* sdlRenderer,
              static_cast<unsigned long long>(countsToMs(delta, frequency)));
       }
       accumulator += delta * kSimulationHz;
+      // The presentation clock of the level backgrounds advances on the same
+      // clamped frame delta, below, after the batch: it never feeds the
+      // accumulator and never moves the simulation (task T078).
+      wallpaperDeltaMs =
+          static_cast<std::uint32_t>(countsToMs(delta, frequency));
 
       // Count the batch first, so every tick line knows its slot.
       for (Uint64 due = accumulator; due >= tickUnit; due -= tickUnit) {
@@ -1643,6 +1734,15 @@ int runMainLoop(Renderer& renderer, SDL_Renderer* sdlRenderer,
           tickInput.menu.selectPressed) {
         applyMusicSelect(renderer, audio, musicDirector, settings, prefs,
                          game.musicSelection(), inputLog);
+      }
+      // The backgrounds page's own rows (task T084): the opening press that
+      // entered the page belonged to the options screen, so the first select
+      // here is the first row action, exactly as the music page works.
+      if (sceneBeforeTick == Scene::BackgroundOptions &&
+          tickInput.menu.selectPressed &&
+          game.scene() == Scene::BackgroundOptions) {
+        applyBackgroundSelect(renderer, settings, prefs,
+                             game.backgroundsSelection(), inputLog);
       }
       // The customization screen's own rows (task T066): the opening press
       // that entered the screen belonged to the mappings page, so the first
@@ -1720,10 +1820,12 @@ int runMainLoop(Renderer& renderer, SDL_Renderer* sdlRenderer,
         roundEnded = true;
       } else if (sceneAfterTick == Scene::Playing && !roundActive) {
         roundActive = true;  // Start Game or Play Again began a round
+        wallpaperRoundBegan = true;
       } else if (roundActive && sceneAfterTick == Scene::Playing &&
                  game.tickCount() < roundTicks) {
         game.setHighScore(savedRecord);  // Restart replaced the round
         roundEnded = true;
+        wallpaperRoundBegan = true;      // a restart is a new round as well
       }
       // A round boundary is where the round's record becomes the session's
       // best, so it is also where the writer catches up: one flush waits for
@@ -1825,6 +1927,29 @@ int runMainLoop(Renderer& renderer, SDL_Renderer* sdlRenderer,
     // pointer stays valid.
     renderer.setRebindCaptureRow(captureRow);
     renderer.setRebindMessage(rebindMessage);
+    // The level backgrounds of task T078 run on their own presentation
+    // clock. It advances on rendered frames, never on simulation ticks, so
+    // the fixed step never moves. Pause and focus loss freeze motion and
+    // fade progress; resuming continues without a time jump. The level rides
+    // every frame, so Auto mode switches designs on a level change with the
+    // record's cut or stepped fade, and a round boundary resets the clock
+    // predictably before this frame renders. The deterministic harness mode
+    // advances whole frames, so a scripted session's wallpaper phase is a
+    // function of its frame count alone.
+    const bool wallpaperFrozen =
+        focusLost || game.scene() == Scene::Paused ||
+        game.scene() == Scene::PauseControls;
+    renderer.freezeBackgroundClock(wallpaperFrozen);
+    if (tickPerFrame) {
+      renderer.advanceBackgroundFrames(1);
+    } else {
+      renderer.advanceBackgroundClock(wallpaperDeltaMs);
+    }
+    renderer.setBackgroundLevel(game.level());
+    if (wallpaperRoundBegan) {
+      renderer.resetBackgroundRound();
+      wallpaperRoundBegan = false;
+    }
     renderFrame(renderer, game, sdlRenderer);
     ++framesRendered;
 
@@ -2115,16 +2240,25 @@ int main(int argc, char** argv) {
     // ORIENTATION row turns it again mid-session through the same call: the
     // layout and both input tables always move together (tasks T055 and T068).
     applyOrientation(prefs.orientation, sceneRenderer, input);
+    // The wallpaper pair of task T084 reaches its owner the same way: the
+    // preference first, then the mode, so a Fixed session opens on the saved
+    // design and an Auto session on the level's. The renderer keeps the
+    // preference in every mode, so the BACKGROUNDS page always reads it back.
+    sceneRenderer.setBackgroundPreference(prefs.backgroundId);
+    sceneRenderer.setBackgroundMode(prefs.backgroundMode);
     if (settings.hasDirectory()) {
       logf("Settings: sound %s, ghost preview %s, grid %s, hold %s, next "
            "previews %d, grayscale %s, orientation %s, music %s, volumes "
-           "%d/%d (%s) from %s\n",
+           "%d/%d, backgrounds %s %d, piece designs %s (%s) from %s\n",
            prefs.soundOn ? "on" : "off", prefs.ghostOn ? "on" : "off",
            prefs.gridOn ? "on" : "off", prefs.holdOn ? "on" : "off",
            prefs.nextPreviews, prefs.grayscaleOn ? "on" : "off",
            prefs.orientation == Orientation::Portrait ? "portrait" : "landscape",
            musicModeName(prefs.musicMode), prefs.musicVolume,
-           prefs.effectsVolume, saveStatusName(preferences.status),
+           prefs.effectsVolume,
+           stackfall::backgrounds::modeName(prefs.backgroundMode),
+           prefs.backgroundId, prefs.pieceDesignsOn ? "on" : "off",
+           saveStatusName(preferences.status),
            settings.filePath().c_str());
     } else {
       logf("No save directory: the player settings stay in memory this "
@@ -2145,6 +2279,11 @@ int main(int argc, char** argv) {
       std::fprintf(inputLog, "orientation start=%s\n",
                    prefs.orientation == Orientation::Portrait ? "portrait"
                                                               : "landscape");
+      std::fprintf(inputLog, "background start=%s\n",
+                   stackfall::backgrounds::modeName(prefs.backgroundMode));
+      std::fprintf(inputLog, "backgroundid start=%d\n", prefs.backgroundId);
+      std::fprintf(inputLog, "piecedesigns start=%s\n",
+                   prefs.pieceDesignsOn ? "on" : "off");
     }
     audio.open();
     // The opt-in callback timing of the T065 evidence (task T065): two

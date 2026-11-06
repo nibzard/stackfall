@@ -1,0 +1,329 @@
+# Stir chapter capture session (docs/backgrounds, task T080): real game
+# frames of the four moving designs, landscape half.
+#
+# The round walks the level ladder the only way the rules allow - by clearing
+# lines. Each `four-line-ready` fixture replaces the settled board with four
+# rows that miss only column 5, the forced vertical I completes them, and the
+# round clears four lines per cycle: 40 lines after ten cycles reaches
+# level 5, 52 after thirteen reaches level 6, 60 after fifteen reaches
+# level 7, 72 after eighteen reaches level 8. Each capture waits the
+# record's fade out (0.5 s for levels 6 and 7), reloads the tall-stack
+# fixture, and holds, so every frame carries the same real HUD over a real
+# board and the designs differ alone. Three frames per level, 64 ticks
+# apart on the presentation clock, give the motion check its phases: the
+# moving layer advances 64 * 1000 / 60 ms between them while the game
+# itself moves on.
+#
+#   stir-5..stir-8    the play frame of levels 5 through 8, 960x544
+#   stir-5b..stir-8b  the same levels 64 ticks later on the clock
+#   stir-5c..stir-8c  and 64 ticks later still
+#
+# `c` is hold, `x` rotates clockwise, `space` hard drops on the default
+# keyboard table.
+check stir-title
+wait 1
+key enter down
+wait 2
+key enter up
+wait 2
+wait 0
+fixture four-line-ready
+wait 2
+key x down
+wait 2
+key x up
+wait 2
+key space down
+wait 2
+key space up
+wait 10
+fixture four-line-ready
+wait 2
+key x down
+wait 2
+key x up
+wait 2
+key space down
+wait 2
+key space up
+wait 10
+fixture four-line-ready
+wait 2
+key x down
+wait 2
+key x up
+wait 2
+key space down
+wait 2
+key space up
+wait 10
+fixture four-line-ready
+wait 2
+key x down
+wait 2
+key x up
+wait 2
+key space down
+wait 2
+key space up
+wait 10
+fixture four-line-ready
+wait 2
+key x down
+wait 2
+key x up
+wait 2
+key space down
+wait 2
+key space up
+wait 10
+fixture four-line-ready
+wait 2
+key x down
+wait 2
+key x up
+wait 2
+key space down
+wait 2
+key space up
+wait 10
+fixture four-line-ready
+wait 2
+key x down
+wait 2
+key x up
+wait 2
+key space down
+wait 2
+key space up
+wait 10
+fixture four-line-ready
+wait 2
+key x down
+wait 2
+key x up
+wait 2
+key space down
+wait 2
+key space up
+wait 10
+fixture four-line-ready
+wait 2
+key x down
+wait 2
+key x up
+wait 2
+key space down
+wait 2
+key space up
+wait 10
+fixture four-line-ready
+wait 2
+key x down
+wait 2
+key x up
+wait 2
+key space down
+wait 2
+key space up
+wait 10
+wait 45
+fixture tall-stack-ready
+wait 2
+key c down
+wait 2
+key c up
+wait 2
+check stir-5
+wait 2
+wait 54
+fixture tall-stack-ready
+wait 2
+key c down
+wait 2
+key c up
+wait 2
+check stir-5b
+wait 2
+wait 54
+fixture tall-stack-ready
+wait 2
+key c down
+wait 2
+key c up
+wait 2
+check stir-5c
+wait 2
+wait 54
+wait 2
+# three more cycles: 52 lines reach level 6
+fixture four-line-ready
+wait 2
+key x down
+wait 2
+key x up
+wait 2
+key space down
+wait 2
+key space up
+wait 10
+fixture four-line-ready
+wait 2
+key x down
+wait 2
+key x up
+wait 2
+key space down
+wait 2
+key space up
+wait 10
+fixture four-line-ready
+wait 2
+key x down
+wait 2
+key x up
+wait 2
+key space down
+wait 2
+key space up
+wait 10
+wait 45
+fixture tall-stack-ready
+wait 2
+key c down
+wait 2
+key c up
+wait 2
+check stir-6
+wait 2
+wait 54
+fixture tall-stack-ready
+wait 2
+key c down
+wait 2
+key c up
+wait 2
+check stir-6b
+wait 2
+wait 54
+fixture tall-stack-ready
+wait 2
+key c down
+wait 2
+key c up
+wait 2
+check stir-6c
+wait 2
+wait 54
+wait 2
+# two more cycles: 60 lines reach level 7
+fixture four-line-ready
+wait 2
+key x down
+wait 2
+key x up
+wait 2
+key space down
+wait 2
+key space up
+wait 10
+fixture four-line-ready
+wait 2
+key x down
+wait 2
+key x up
+wait 2
+key space down
+wait 2
+key space up
+wait 10
+wait 45
+fixture tall-stack-ready
+wait 2
+key c down
+wait 2
+key c up
+wait 2
+check stir-7
+wait 2
+wait 54
+fixture tall-stack-ready
+wait 2
+key c down
+wait 2
+key c up
+wait 2
+check stir-7b
+wait 2
+wait 54
+fixture tall-stack-ready
+wait 2
+key c down
+wait 2
+key c up
+wait 2
+check stir-7c
+wait 2
+wait 54
+wait 2
+# three more cycles: 72 lines reach level 8
+fixture four-line-ready
+wait 2
+key x down
+wait 2
+key x up
+wait 2
+key space down
+wait 2
+key space up
+wait 10
+fixture four-line-ready
+wait 2
+key x down
+wait 2
+key x up
+wait 2
+key space down
+wait 2
+key space up
+wait 10
+fixture four-line-ready
+wait 2
+key x down
+wait 2
+key x up
+wait 2
+key space down
+wait 2
+key space up
+wait 10
+wait 45
+fixture tall-stack-ready
+wait 2
+key c down
+wait 2
+key c up
+wait 2
+check stir-8
+wait 2
+wait 54
+fixture tall-stack-ready
+wait 2
+key c down
+wait 2
+key c up
+wait 2
+check stir-8b
+wait 2
+wait 54
+fixture tall-stack-ready
+wait 2
+key c down
+wait 2
+key c up
+wait 2
+check stir-8c
+wait 2
+wait 54
+wait 2
+quit

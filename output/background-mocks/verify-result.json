@@ -1,0 +1,232 @@
+{
+  "schema_version": "ax.cli.v1",
+  "command": "verify",
+  "status": "ok",
+  "run_id": "run_mw3dlrxfirvj",
+  "data": {
+    "safe_to_return_web_url": true,
+    "status": {
+      "drop_id": "01M6NJE34446PR85HRV4BCDSFJ",
+      "state": "ready",
+      "current_phase": "READY",
+      "progress_reason": "All checks passed for handoff; HTML render verification is pending.",
+      "lifecycle": "liminal",
+      "web_url": "https://axinbox.com/h/hnd_SPp-Z2ogfsMJv4nP8y2yZguf7-cbUgX1xWKl43nXCH8",
+      "summary": "5 artifacts uploaded. Drop is ready.",
+      "used_bytes": 20460144,
+      "max_bytes": 20971520,
+      "expires_at": "2026-11-08T10:00:25.476Z",
+      "safe_to_return_web_url": true,
+      "scan_clean": true,
+      "render_verification": "pending",
+      "settled": false,
+      "open_revision_requests": 0,
+      "return_url": "https://axinbox.com/h/hnd_SPp-Z2ogfsMJv4nP8y2yZguf7-cbUgX1xWKl43nXCH8",
+      "preview_url": "https://axinbox.com/h/hnd_SPp-Z2ogfsMJv4nP8y2yZguf7-cbUgX1xWKl43nXCH8/index.html/preview",
+      "preview_urls": [
+        {
+          "path": "index.html",
+          "preview_url": "https://axinbox.com/h/hnd_SPp-Z2ogfsMJv4nP8y2yZguf7-cbUgX1xWKl43nXCH8/index.html/preview"
+        }
+      ],
+      "return_blockers": [],
+      "required_checks": [],
+      "diagnostics_url": "https://axinbox.com/v1/drops/01M6NJE34446PR85HRV4BCDSFJ/diagnostics",
+      "notes_url": "https://axinbox.com/v1/drops/01M6NJE34446PR85HRV4BCDSFJ/notes",
+      "logs_url": "https://axinbox.com/v1/drops/01M6NJE34446PR85HRV4BCDSFJ/logs?tail=50",
+      "markdown_sidecar": {
+        "recommended": false,
+        "present": true,
+        "path": "summary.md",
+        "content_type": "text/markdown; charset=utf-8",
+        "max_recommended_bytes": 262144,
+        "max_served_bytes": 1048576,
+        "purpose": "Agent-readable drop summary served when clients request text/markdown.",
+        "markdown_url": "https://axinbox.com/d/01M6NJE34446PR85HRV4BCDSFJ.md"
+      },
+      "errors": [],
+      "warnings": [],
+      "agent_notes": [],
+      "objects": [
+        {
+          "object_id": "obj_01M6NJE3QBW89A09C8VQ57K8JA",
+          "path": "concepts.json",
+          "size": 10332,
+          "content_type": "application/json",
+          "sha256": "cd8357503c7ede92703e2c41759f2230faf257cf98e953558bb67536d80bb900",
+          "state": "clean",
+          "scan_verdict": "clean",
+          "role": "raw_results",
+          "primary": false,
+          "preview_url": "https://axinbox.com/h/hnd_SPp-Z2ogfsMJv4nP8y2yZguf7-cbUgX1xWKl43nXCH8/concepts.json/preview",
+          "diagnostics_url": "https://axinbox.com/v1/objects/obj_01M6NJE3QBW89A09C8VQ57K8JA/diagnostics",
+          "log_url": "https://axinbox.com/v1/drops/01M6NJE34446PR85HRV4BCDSFJ/logs?object=concepts.json&tail=50",
+          "metadata": {
+            "r2": {
+              "key": "drops/01M6NJE34446PR85HRV4BCDSFJ/objects/obj_01M6NJE3QBW89A09C8VQ57K8JA/concepts.json",
+              "uploaded_at": "2026-11-05T10:00:26.967Z",
+              "checksums": {
+                "md5": "31be5fe72eb6a33af7e29485b6f77da8"
+              },
+              "storage_class": "Standard"
+            },
+            "scan": {
+              "scanned_at": "2026-11-05T10:00:29.858Z",
+              "scanner": "axinbox_v0_static",
+              "sampled_bytes": 10332
+            },
+            "manifest": {
+              "content_type": "application/json",
+              "size": 10332,
+              "sha256": "cd8357503c7ede92703e2c41759f2230faf257cf98e953558bb67536d80bb900"
+            }
+          },
+          "preview_state": "ok"
+        },
+        {
+          "object_id": "obj_01M6NJE5Y35B64E794B9JHB120",
+          "path": "index.html",
+          "size": 20386704,
+          "content_type": "text/html",
+          "sha256": "53842967664038cf1d3f1e47775c3f7e4517f1f7ea62dc29d008d2c9da23467e",
+          "state": "clean",
+          "scan_verdict": "clean",
+          "role": "entrypoint",
+          "primary": true,
+          "preview_url": "https://axinbox.com/h/hnd_SPp-Z2ogfsMJv4nP8y2yZguf7-cbUgX1xWKl43nXCH8/index.html/preview",
+          "diagnostics_url": "https://axinbox.com/v1/objects/obj_01M6NJE5Y35B64E794B9JHB120/diagnostics",
+          "log_url": "https://axinbox.com/v1/drops/01M6NJE34446PR85HRV4BCDSFJ/logs?object=index.html&tail=50",
+          "metadata": {
+            "r2": {
+              "key": "drops/01M6NJE34446PR85HRV4BCDSFJ/objects/obj_01M6NJE5Y35B64E794B9JHB120/index.html",
+              "uploaded_at": "2026-11-05T10:00:29.683Z",
+              "checksums": {
+                "md5": "17ee85e9167a396e3933e4e7a4b9988e"
+              },
+              "storage_class": "Standard"
+            },
+            "scan": {
+              "scanned_at": "2026-11-05T10:00:34.551Z",
+              "scanner": "axinbox_v0_static",
+              "sampled_bytes": 1576960
+            },
+            "manifest": {
+              "content_type": "text/html",
+              "size": 20386704,
+              "sha256": "53842967664038cf1d3f1e47775c3f7e4517f1f7ea62dc29d008d2c9da23467e"
+            }
+          },
+          "preview_state": "unverified"
+        },
+        {
+          "object_id": "obj_01M6NJEA3XJJ090F0WQVZABNFQ",
+          "path": "manifest.json",
+          "size": 778,
+          "content_type": "application/json",
+          "sha256": "ff65d944763c14bf855ab5759bef52e983910eab5f6079ddd6b8098515d90c72",
+          "state": "clean",
+          "scan_verdict": "clean",
+          "role": null,
+          "primary": false,
+          "diagnostics_url": "https://axinbox.com/v1/objects/obj_01M6NJEA3XJJ090F0WQVZABNFQ/diagnostics",
+          "log_url": "https://axinbox.com/v1/drops/01M6NJE34446PR85HRV4BCDSFJ/logs?object=manifest.json&tail=50",
+          "metadata": {
+            "r2": {
+              "key": "drops/01M6NJE34446PR85HRV4BCDSFJ/objects/obj_01M6NJFJGNPDYPDP1THCBR71TV/manifest.json",
+              "uploaded_at": "2026-11-05T10:01:14.814Z",
+              "checksums": {
+                "md5": "02e80a432a3baba1a142d18dc64df08d"
+              },
+              "storage_class": "Standard"
+            },
+            "scan": {
+              "scanned_at": "2026-11-05T10:01:23.055Z",
+              "scanner": "axinbox_v0_static",
+              "sampled_bytes": 778
+            }
+          },
+          "preview_state": "ok"
+        },
+        {
+          "object_id": "obj_01M6NJE7TWVA1PQ5SJ4B6P24Y4",
+          "path": "prompts.md",
+          "size": 58918,
+          "content_type": "text/markdown",
+          "sha256": "cf536761f0517e2d46f50849daaed544996437daaf7372d7118d2a32249b564f",
+          "state": "clean",
+          "scan_verdict": "clean",
+          "role": "human_summary",
+          "primary": false,
+          "preview_url": "https://axinbox.com/h/hnd_SPp-Z2ogfsMJv4nP8y2yZguf7-cbUgX1xWKl43nXCH8/prompts.md/preview",
+          "diagnostics_url": "https://axinbox.com/v1/objects/obj_01M6NJE7TWVA1PQ5SJ4B6P24Y4/diagnostics",
+          "log_url": "https://axinbox.com/v1/drops/01M6NJE34446PR85HRV4BCDSFJ/logs?object=prompts.md&tail=50",
+          "metadata": {
+            "r2": {
+              "key": "drops/01M6NJE34446PR85HRV4BCDSFJ/objects/obj_01M6NJE7TWVA1PQ5SJ4B6P24Y4/prompts.md",
+              "uploaded_at": "2026-11-05T10:00:30.795Z",
+              "checksums": {
+                "md5": "fbbddc4651efada8db39011b0c272153"
+              },
+              "storage_class": "Standard"
+            },
+            "scan": {
+              "scanned_at": "2026-11-05T10:00:38.080Z",
+              "scanner": "axinbox_v0_static",
+              "sampled_bytes": 58918
+            },
+            "manifest": {
+              "content_type": "text/markdown",
+              "size": 58918,
+              "sha256": "cf536761f0517e2d46f50849daaed544996437daaf7372d7118d2a32249b564f"
+            }
+          },
+          "preview_state": "ok"
+        },
+        {
+          "object_id": "obj_01M6NJE90M5S6WY8THFG7W1S5B",
+          "path": "summary.md",
+          "size": 3412,
+          "content_type": "text/markdown",
+          "sha256": "27a8f7bba887912ec40aecdc719a632644803117e0159294064db278181a6a84",
+          "state": "clean",
+          "scan_verdict": "clean",
+          "role": "human_summary",
+          "primary": false,
+          "preview_url": "https://axinbox.com/h/hnd_SPp-Z2ogfsMJv4nP8y2yZguf7-cbUgX1xWKl43nXCH8/summary.md/preview",
+          "diagnostics_url": "https://axinbox.com/v1/objects/obj_01M6NJE90M5S6WY8THFG7W1S5B/diagnostics",
+          "log_url": "https://axinbox.com/v1/drops/01M6NJE34446PR85HRV4BCDSFJ/logs?object=summary.md&tail=50",
+          "metadata": {
+            "r2": {
+              "key": "drops/01M6NJE34446PR85HRV4BCDSFJ/objects/obj_01M6NJE90M5S6WY8THFG7W1S5B/summary.md",
+              "uploaded_at": "2026-11-05T10:00:31.936Z",
+              "checksums": {
+                "md5": "09603913abf811cd6c879547aeb24db8"
+              },
+              "storage_class": "Standard"
+            },
+            "scan": {
+              "scanned_at": "2026-11-05T10:00:40.021Z",
+              "scanner": "axinbox_v0_static",
+              "sampled_bytes": 3412
+            },
+            "manifest": {
+              "content_type": "text/markdown",
+              "size": 3412,
+              "sha256": "27a8f7bba887912ec40aecdc719a632644803117e0159294064db278181a6a84"
+            }
+          },
+          "preview_state": "ok"
+        }
+      ],
+      "agent_next_actions": [
+        "Return the web_url to the user.",
+        "This drop expires 2026-11-08T10:00:25.476Z unless claimed — hand the human web_url or share_url before then."
+      ]
+    }
+  },
+  "errors": [],
+  "warnings": [],
+  "metrics": {
+    "duration_ms": 188
+  }
+}

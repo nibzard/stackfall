@@ -32,6 +32,7 @@
 
 #include <algorithm>
 #include <cstdio>
+#include <cstring>
 
 #include "stackfall/font.hpp"
 #include "stackfall/pieces.hpp"
@@ -204,6 +205,10 @@ void Renderer::setGrayscale(bool on) noexcept { grayscale_ = on; }
 
 bool Renderer::grayscale() const noexcept { return grayscale_; }
 
+void Renderer::setPieceDesigns(bool on) noexcept { pieceDesigns_ = on; }
+
+bool Renderer::pieceDesigns() const noexcept { return pieceDesigns_; }
+
 void Renderer::setOrientation(Orientation orientation) noexcept {
   orientation_ = orientation;
 }
@@ -255,6 +260,106 @@ void Renderer::setMusicTrackTitle(const char* title) noexcept {
 const char* Renderer::musicTrackTitle() const noexcept {
   return musicTrackTitle_;
 }
+
+// ---------------------------------------------------------------------------
+// The level backgrounds of task T078: the wallpaper state the platform layer
+// drives, and the zones the design contract clips every background draw with.
+// ---------------------------------------------------------------------------
+
+void Renderer::setBackgroundMode(backgrounds::Mode mode) noexcept {
+  wallpaper_.setMode(mode);
+}
+
+backgrounds::Mode Renderer::backgroundMode() const noexcept {
+  return wallpaper_.mode();
+}
+
+void Renderer::setBackgroundPreference(int designId) noexcept {
+  wallpaper_.setPreference(designId);
+}
+
+int Renderer::backgroundPreference() const noexcept {
+  return wallpaper_.preference();
+}
+
+void Renderer::setBackgroundLevel(int level) noexcept {
+  wallpaper_.setLevel(level);
+}
+
+int Renderer::backgroundLevel() const noexcept {
+  return wallpaper_.level();
+}
+
+void Renderer::advanceBackgroundClock(std::uint32_t deltaMs) {
+  wallpaper_.advance(deltaMs);
+}
+
+void Renderer::advanceBackgroundFrames(int frames) {
+  wallpaper_.advanceFrames(frames);
+}
+
+void Renderer::freezeBackgroundClock(bool frozen) noexcept {
+  wallpaper_.setFrozen(frozen);
+}
+
+bool Renderer::backgroundClockFrozen() const noexcept {
+  return wallpaper_.frozen();
+}
+
+void Renderer::resetBackgroundRound() { wallpaper_.beginRound(); }
+
+backgrounds::Zones backgroundZones(Orientation orientation) {
+  backgrounds::Zones zones;
+  if (orientation == Orientation::Portrait) {
+    const SDL_Rect frame = portraitBoardFrame();
+    zones.canvasWidth = kPortraitCanvasWidth;
+    zones.canvasHeight = kPortraitCanvasHeight;
+    zones.frame = backgrounds::BgRect{frame.x, frame.y, frame.w, frame.h};
+    // The loud margins beside the board start outside the 12 px guards; the
+    // strip below the frame is loud across the full width. The HUD strip
+    // above the frame stays quiet implicitly: no accent draws there because
+    // no loud margin covers it.
+    const int leftWidth = frame.x - kPortraitBackgroundGuard;
+    const int rightX = frame.x + frame.w + kPortraitBackgroundGuard;
+    zones.loud[0] = backgrounds::BgRect{0, frame.y, leftWidth, frame.h};
+    zones.loud[1] = backgrounds::BgRect{rightX, frame.y,
+                                        kPortraitCanvasWidth - rightX,
+                                        frame.h};
+    zones.loud[2] = backgrounds::BgRect{
+        0, frame.y + frame.h, kPortraitCanvasWidth,
+        kPortraitCanvasHeight - (frame.y + frame.h)};
+    zones.loudCount = 3;
+    return zones;
+  }
+  const SDL_Rect frame = boardFrame();
+  zones.canvasWidth = kCanvasWidth;
+  zones.canvasHeight = kCanvasHeight;
+  zones.frame = backgrounds::BgRect{frame.x, frame.y, frame.w, frame.h};
+  // The quiet span of the two HUD columns and their gaps runs from the left
+  // column's outer edge to the right column's outer edge; the canvas outside
+  // it is loud.
+  const int quietEnd = kRightPanelX + kRightPanelWidth;
+  zones.loud[0] = backgrounds::BgRect{0, 0, kLeftPanelX, kCanvasHeight};
+  zones.loud[1] =
+      backgrounds::BgRect{quietEnd, 0, kCanvasWidth - quietEnd, kCanvasHeight};
+  zones.loudCount = 2;
+  return zones;
+}
+
+// The backgrounds::Painter adapter: one background fill is one renderer
+// fillRect, so every background pixel passes the same logical-space drawing
+// path - including the portrait rotation - as every other pixel.
+class Renderer::WallpaperPainter final : public backgrounds::Painter {
+ public:
+  explicit WallpaperPainter(const Renderer& renderer) : renderer_(renderer) {}
+
+  void fill(backgrounds::BgColor color, int x, int y, int w, int h) override {
+    renderer_.fillRect(SDL_Color{color.r, color.g, color.b, 255}, x, y, w, h);
+  }
+
+ private:
+  const Renderer& renderer_;
+};
 
 // ---------------------------------------------------------------------------
 // The letterbox canvas (section 6.1, design review finding
@@ -345,10 +450,86 @@ void Renderer::drawRectOutline(SDL_Color color, int x, int y, int w,
   drawUnitLine(color, x + w - 1, y, 1, h);
 }
 
+// ---------------------------------------------------------------------------
+// The per-piece in-cell designs of task T95 (see the pattern table in
+// stackfall/renderer_sdl.hpp). One mark per piece type, built from at most
+// four filled rectangles inside the interior the cell frame leaves: the
+// interior starts two pixels in from each edge - the one-pixel outline plus
+// the one-pixel light and dark frame - and measures n = size - 4 on a side.
+//
+//   rule thickness t: one pixel below a 16 px interior, two to 31, three above
+//   rule inset     m: max(1, n / 8), the margin a rule keeps inside the frame
+//   square side    d: max(2, n / 4), the small squares of S, Z, and L
+//   ring inset     q: n / 4, where the hollow square of O sits
+//
+// Every mark centers with (n - extent) / 2, so it sits in the middle of its
+// cell at every supported size - the 12 px portrait preview, the 15 px
+// landscape preview, the 27 px landscape cell, and the 40 px portrait cell -
+// and a smaller or odd extent is off by one pixel at most. A size below 8
+// leaves no interior a mark fits in and yields the empty design, and a mark
+// that would cross the interior of a small odd cell is dropped rather than
+// clipped, so a degenerate call draws the plain cell instead of an
+// unpredictable one.
+// ---------------------------------------------------------------------------
+CellDesign cellDesign(PieceId id, int size) {
+  CellDesign design;
+  const int n = size - 4;
+  if (n < 4) {
+    return design;
+  }
+  const int t = n < 16 ? 1 : (n < 32 ? 2 : 3);
+  const int m = std::max(1, n / 8);
+  const int d = std::max(2, n / 4);
+  const int q = n / 4;
+  const int rule = (n - t) / 2;  // where a centered rule of thickness t starts
+  const int square = (n - d) / 2;  // where a centered square of side d starts
+  const int o = 2;                // the interior origin, inside the frame
+  const auto add = [&design, size](int x, int y, int w, int h) {
+    if (design.count < kCellDesignMaxRects && w > 0 && h > 0 && x >= 2 &&
+        y >= 2 && x + w <= size - 2 && y + h <= size - 2) {
+      design.rects[design.count] = SDL_Rect{x, y, w, h};
+      ++design.count;
+    }
+  };
+  switch (id) {
+    case PieceId::I:  // one wide horizontal rule
+      add(o + m, o + rule, n - 2 * m, t);
+      break;
+    case PieceId::O:  // one hollow square
+      add(o + q, o + q, n - 2 * q, t);
+      add(o + q, o + n - q - t, n - 2 * q, t);
+      add(o + q, o + q + t, t, n - 2 * q - 2 * t);
+      add(o + n - q - t, o + q + t, t, n - 2 * q - 2 * t);
+      break;
+    case PieceId::T:  // one plus, two crossing rules
+      add(o + m, o + rule, n - 2 * m, t);
+      add(o + rule, o + m, t, n - 2 * m);
+      break;
+    case PieceId::S:  // two squares stacked
+      add(o + square, o + m, d, d);
+      add(o + square, o + n - m - d, d, d);
+      break;
+    case PieceId::Z:  // two squares side by side
+      add(o + m, o + square, d, d);
+      add(o + n - m - d, o + square, d, d);
+      break;
+    case PieceId::J:  // one tall vertical rule
+      add(o + rule, o + m, t, n - 2 * m);
+      break;
+    case PieceId::L:  // one small filled square
+      add(o + square, o + square, d, d);
+      break;
+  }
+  return design;
+}
+
 // One block: a dark one-pixel outline, the flat fill, a lighter top and left
 // edge, and a darker bottom and right edge. Straight rectangles and lines
 // give the flat geometric look of section 6.2 without any shading texture.
-void Renderer::drawCell(int x, int y, int size,
+// The per-piece designs of task T95 add the type's mark inside the interior
+// the frame leaves, in the palette's own dark shade, so the mark reads as
+// part of the cell's shading language rather than a new color.
+void Renderer::drawCell(int x, int y, int size, PieceId id,
                         const CellPalette& palette) const {
   fillRect(palette.edge, x, y, size, size);
   fillRect(palette.fill, x + 1, y + 1, size - 2, size - 2);
@@ -356,6 +537,13 @@ void Renderer::drawCell(int x, int y, int size,
   drawUnitLine(palette.light, x + 1, y + 1, 1, size - 2);
   drawUnitLine(palette.dark, x + 1, y + size - 2, size - 2, 1);
   drawUnitLine(palette.dark, x + size - 2, y + 1, 1, size - 2);
+  if (pieceDesigns_) {
+    const CellDesign design = cellDesign(id, size);
+    for (int index = 0; index < design.count; ++index) {
+      const SDL_Rect& mark = design.rects[index];
+      fillRect(palette.dark, x + mark.x, y + mark.y, mark.w, mark.h);
+    }
+  }
 }
 
 // The ghost draws as a hollow outline in a fraction of the piece color
@@ -434,6 +622,9 @@ void Renderer::draw(const Game& game) {
     case Scene::MusicOptions:
       drawMusicOptionsScreen(game);
       return;
+    case Scene::BackgroundOptions:
+      drawBackgroundOptionsScreen(game);
+      return;
     case Scene::Playing:
       drawPlayScene(game);
       return;
@@ -466,11 +657,24 @@ void Renderer::drawPlayScene(const Game& game) const {
   drawStatsPanel(game);      // 6. the statistics fields of the left column
 }
 
-// The play background is the canvas color plus the darker board well, so the
-// field reads as a recessed area before anything else lands on it
-// (specification section 6.2, step 1).
+// The play background is the wallpaper layer plus the darker board well, so
+// the field reads as a recessed area before anything else lands on it
+// (specification section 6.2, step 1; task T078 for the wallpaper).
+//
+// Mode Off keeps the legacy path exactly: the flat canvas clear and nothing
+// else, so Off skips all pattern and animation work and the play pixels of
+// the years before the designs stay as they were. A design mode paints the
+// wallpaper: one whole-canvas base fill - the ground layer the opaque well
+// and its ring then cover - and the design's shapes on top, every one of
+// them held outside the frame by the clipping layer, so no shape ever lands
+// inside the well or over its ring. The menus keep clearBackground(); only
+// the play scene, and the pause and game-over overlays above its frozen
+// frame, carry the wallpaper.
 void Renderer::drawBackground() const {
-  clearBackground();
+  WallpaperPainter painter(*this);
+  if (!wallpaper_.draw(backgroundZones(orientation_), painter)) {
+    clearBackground();
+  }
   fillRect(kBoardWell, boardOriginX(), boardOriginY(), boardPixelWidth(),
            boardPixelHeight());
 }
@@ -514,6 +718,7 @@ void Renderer::drawSettledCells(const Game& game) const {
         continue;
       }
       drawCell(cellXNow(x), cellYNow(y), boardCellSize(),
+               static_cast<PieceId>(code),
                piecePalette(static_cast<PieceId>(code), false));
     }
   }
@@ -547,7 +752,8 @@ void Renderer::drawActivePiece(const Game& game) const {
     if (cell.y < 0) {
       continue;  // the part of a spawning piece in the hidden rows
     }
-    drawCell(cellXNow(cell.x), cellYNow(cell.y), boardCellSize(), palette);
+    drawCell(cellXNow(cell.x), cellYNow(cell.y), boardCellSize(), active.id,
+             palette);
   }
 }
 
@@ -589,7 +795,7 @@ void Renderer::drawPreviewPiece(PieceId id, const SDL_Rect& box, bool dimmed,
   const int originY = box.y + (box.h - height) / 2 - minY * cellSize;
   for (const Cell& cell : cells) {
     drawCell(originX + cell.x * cellSize, originY + cell.y * cellSize,
-             cellSize, palette);
+             cellSize, id, palette);
   }
 }
 
@@ -926,17 +1132,18 @@ void Renderer::drawRebindScreen(const Game& game) const {
                                           : rebindHintText());
 }
 
-// The options page of tasks T040, T044, T055, T062, and T068: one heading,
-// the eight setting rows at the shared menu metrics, and one footer line. The
-// rows carry their value as ON/OFF, the NEXT PIECES count digit, or the
-// ORIENTATION or MUSIC name, read from the preferences this renderer mirrors,
-// because the rules core moves the cursor alone and never holds a row value
-// (specification section 7). A changes the highlighted row - and on the MUSIC
-// row opens the music settings page, which the core owns - and B returns to
-// the title; the platform layer owns the value actions. The ORIENTATION row
-// names the layout this process draws, because the select that changes it
-// turns the session at once (task T068): the row and the layout can no longer
-// disagree, so one mirror serves both.
+// The options page of tasks T040, T044, T055, T062, T068, T084, and T095:
+// one heading, the ten setting rows at the shared menu metrics, and one
+// footer line. The rows carry their value as ON/OFF, the NEXT PIECES count
+// digit, or the ORIENTATION, MUSIC, or background mode name, read from the
+// preferences this renderer mirrors, because the rules core moves the cursor
+// alone and never holds a row value (specification section 7). A changes the
+// highlighted row - and on the MUSIC row opens the music settings page, on
+// the BACKGROUNDS row the backgrounds page, both of which the core owns -
+// and B returns to the title; the platform layer owns the value actions. The
+// ORIENTATION row names the layout this process draws, because the select
+// that changes it turns the session at once (task T068): the row and the
+// layout can no longer disagree, so one mirror serves both.
 void Renderer::drawOptionsScreen(const Game& game) const {
   clearBackground();
   const int centerX = canvasWidth() / 2;
@@ -947,6 +1154,9 @@ void Renderer::drawOptionsScreen(const Game& game) const {
   char musicText[20];
   std::snprintf(musicText, sizeof(musicText), "MUSIC %s",
                 musicModeDisplayName(musicMode_));
+  char backgroundsText[20];
+  std::snprintf(backgroundsText, sizeof(backgroundsText), "BACKGROUNDS %s",
+                backgrounds::modeDisplayName(wallpaper_.mode()));
   const char* rows[kOptionsItemCount] = {
       soundOn_ ? "SOUND ON" : "SOUND OFF",
       showGhost_ ? "GHOST ON" : "GHOST OFF",
@@ -957,6 +1167,8 @@ void Renderer::drawOptionsScreen(const Game& game) const {
       orientation_ == Orientation::Portrait ? "ORIENTATION PORTRAIT"
                                             : "ORIENTATION LANDSCAPE",
       musicText,
+      backgroundsText,
+      pieceDesigns_ ? "PIECE DESIGNS ON" : "PIECE DESIGNS OFF",
   };
   const int menuY = portrait() ? kPOptionsMenuY : kOptionsMenuY;
   for (int index = 0; index < kOptionsItemCount; ++index) {
@@ -1002,6 +1214,53 @@ void Renderer::drawMusicOptionsScreen(const Game& game) const {
   }
   drawTextCentered(centerX, portrait() ? kPMusicTrackY : kMusicTrackY,
                    kMenuScale, kTextDim, musicTrackTitle_);
+  drawTextCentered(centerX, portrait() ? kPOptionsFooterY : kOptionsFooterY,
+                   kHintScale, kTextDim, optionsHintText());
+}
+
+// The backgrounds page behind the BACKGROUNDS row (task T084,
+// docs/BACKGROUND_IMPLEMENTATION.md): the same heading, menu metrics, and
+// footer hint as the options page, over its two rows - the wallpaper mode
+// Auto / Off / Fixed and the preferred design with its stable number and
+// approved name. Both values are the wallpaper state this renderer already
+// mirrors: the mode row reads the mode the play scene draws, and the design
+// row the preference that survives switches to Off and Auto, so the page and
+// the wallpaper can never disagree. A cycles the highlighted row and B
+// returns to the options screen; the platform layer owns both actions.
+void Renderer::drawBackgroundOptionsScreen(const Game& game) const {
+  clearBackground();
+  const int centerX = canvasWidth() / 2;
+  drawTextCentered(centerX, portrait() ? kPOptionsHeadingY : kOptionsHeadingY,
+                   kOptionsHeadingScale, kText, "BACKGROUNDS");
+  char modeText[16];
+  std::snprintf(modeText, sizeof(modeText), "MODE %s",
+                backgrounds::modeDisplayName(wallpaper_.mode()));
+  char designText[48];
+  const backgrounds::Design* design =
+      backgrounds::designOf(wallpaper_.preference());
+  std::snprintf(designText, sizeof(designText), "DESIGN %d",
+                wallpaper_.preference());
+  if (design != nullptr) {
+    // The approved name in the menu's uppercase spelling, after the number.
+    const std::size_t at = std::strlen(designText);
+    designText[at] = ' ';
+    std::size_t out = at + 1;
+    for (const char* p = design->name;
+         *p != '\0' && out + 1 < sizeof(designText); ++p) {
+      designText[out++] =
+          *p >= 'a' && *p <= 'z' ? static_cast<char>(*p - 'a' + 'A') : *p;
+    }
+    designText[out] = '\0';
+  }
+  const char* rows[kBackgroundOptionsItemCount] = {
+      modeText,
+      designText,
+  };
+  const int menuY = portrait() ? kPOptionsMenuY : kOptionsMenuY;
+  for (int index = 0; index < kBackgroundOptionsItemCount; ++index) {
+    drawMenuItem(centerX, menuY + index * kMenuItemHeight, kMenuScale,
+                 rows[index], index == game.backgroundsSelection());
+  }
   drawTextCentered(centerX, portrait() ? kPOptionsFooterY : kOptionsFooterY,
                    kHintScale, kTextDim, optionsHintText());
 }

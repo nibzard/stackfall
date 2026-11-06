@@ -135,10 +135,16 @@ enum KeyboardControl : int {
 inline constexpr int kKeyboardControlCount = kKeyboardKeyZ + 1;
 
 // ---------------------------------------------------------------------------
-// Controller controls, the ten buttons of the RG503 layout of section 3 and
-// of the developer virtual pad. The order matches the pad-button table of
+// Controller controls, the eleven buttons of the RG503 layout of section 3
+// and of the developer virtual pad: the cluster, both shoulders, Start, and
+// the four D-pad arms. The order matches the pad-button table of
 // tests/harness/reference_replay.cpp so a script name and a binding name are
-// the same word.
+// the same word. The right shoulder joined with task T87, which let the
+// player move the hard-drop trigger off Up onto any button of the device:
+// the left shoulder holds by default (it is Hold's spare), so without the
+// right one no shoulder was free to take a rebound action. R1 carries
+// nothing in either default table - the defaults stay per T067 - and it
+// carries no menu role, so it is the one control a capture can always take.
 // ---------------------------------------------------------------------------
 enum ControllerControl : int {
   kControllerButtonA = 0,
@@ -146,6 +152,7 @@ enum ControllerControl : int {
   kControllerButtonX,
   kControllerButtonY,
   kControllerButtonL1,
+  kControllerButtonR1,
   kControllerButtonStart,
   kControllerButtonUp,     // the D-pad up arm
   kControllerButtonDown,   // the D-pad down arm
@@ -155,6 +162,46 @@ enum ControllerControl : int {
 
 // How many controller controls the list holds.
 inline constexpr int kControllerControlCount = kControllerButtonRight + 1;
+
+// ---------------------------------------------------------------------------
+// The analog thumbstick (task T86). The RG503's left stick reaches the game
+// as two SDL game controller axes, and each axis reading resolves to the
+// D-pad arm that points the same physical way. The stick therefore plays
+// through the very tables the D-pad plays through: the binding table of the
+// orientation in force gives the reading its gameplay action, the fixed menu
+// role of that arm rides along, and a rebound table moves the stick with the
+// arm. No second mapping exists anywhere, so the stick can never disagree
+// with the D-pad about what a direction means.
+//
+// This translation is plain integer logic over control ids, so it lives in
+// the SDL-free core beside the vocabulary it resolves into: the SDL layer
+// feeds it the axis values of real events, and the headless reference replay
+// feeds it the values a script names, which is what keeps the two streams
+// comparable.
+// ---------------------------------------------------------------------------
+
+// The two axes the game reads: the left stick's horizontal and vertical
+// reading. The right stick and the triggers are not controls of the layout.
+enum class StickAxis : std::uint8_t {
+  X = 0,
+  Y = 1,
+};
+
+inline constexpr int kStickAxisCount = 2;
+
+// The deadzone, in SDL axis units. SDL reports each axis in -32768..32767,
+// and a resting stick wanders near zero, so a reading whose magnitude stays
+// below this value holds no direction at all. The unit is the SDL axis unit,
+// not a percentage, so the SDL layer and the reference replay compare the
+// same integer the event carried.
+inline constexpr int kStickDeadzone = 8000;
+
+// The D-pad control `value` deflects `axis` toward, or kNoControl while the
+// reading sits inside the deadzone. Negative X is the left arm, positive X
+// the right arm, negative Y the up arm, and positive Y the down arm - the
+// physical directions of the device, before any orientation applies them.
+// A reading of exactly the deadzone counts as deflected.
+int controllerControlOfStickAxis(StickAxis axis, int value);
 
 // One table: the controls of each of the eight actions, in action order.
 // Every slot holds a control id or kNoControl; the first slot is never empty

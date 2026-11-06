@@ -70,6 +70,7 @@ const ControlNames kControllerNames[kControllerControlCount] = {
     {"x", "X", "X"},
     {"y", "Y", "Y"},
     {"l1", "L1", "L1"},
+    {"r1", "R1", "R1"},
     {"start", "START", "START"},
     {"up", "D-PAD UP", "D-PAD UP (RIGHT)"},
     {"down", "D-PAD DOWN", "D-PAD DOWN (LEFT)"},
@@ -266,6 +267,19 @@ int controlsOfAction(const ControlTable& table, GameAction action, int* out) {
     }
   }
   return count;
+}
+
+int controllerControlOfStickAxis(StickAxis axis, int value) {
+  if (value >= kStickDeadzone) {
+    // Positive readings point right on X and down on Y, the directions SDL
+    // gives the two axes of a gamepad.
+    return axis == StickAxis::X ? kControllerButtonRight
+                                : kControllerButtonDown;
+  }
+  if (value <= -kStickDeadzone) {
+    return axis == StickAxis::X ? kControllerButtonLeft : kControllerButtonUp;
+  }
+  return kNoControl;  // a resting stick, inside the deadzone
 }
 
 const char* keyboardControlName(int control) {

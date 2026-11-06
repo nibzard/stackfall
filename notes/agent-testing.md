@@ -5127,3 +5127,1762 @@ Findings and open questions:
 - The blocked gates are otherwise unchanged: T018 (the RG503 checklist, now
   with the four device-feedback items), T020 (the fresh ROCKNIX install),
   T021 (publication), and T036 (device frame-time percentiles).
+
+## T077: the approved backgrounds retained and reconciled (2026-11-05)
+
+Task T077, design-documentation round, no game code changed. Sources: the
+task contract of T077, the operator brief retained at
+`docs/backgrounds/reference/operator-background-brief.md`, the approved
+concept metadata at `docs/backgrounds/reference/concepts.json`, and the
+implementation plan retained at `docs/BACKGROUND_IMPLEMENTATION.md`.
+Tested in the detached worktree of `a0c80d6` plus the uncommitted task
+changes. The intake paths named by the task contract under
+`/home/agent/stackfall/output/` do not exist in the primary workspace;
+the same files were located under `/tmp/operator-untracked/` and copied
+byte-identical (verified by `diff` for the text files).
+
+What the round delivered, in the order the contract lists:
+
+- Intake retained under tracked paths: the operator brief, the
+  implementation plan at `docs/BACKGROUND_IMPLEMENTATION.md`,
+  `concepts.json`, `prompts.md`, and the 20 original concept plates
+  under `docs/backgrounds/reference/` (24 MiB, copied byte-identical,
+  no AXINBOX records or credentials). `docs/backgrounds/reference/
+  README.md` documents the provenance and how to read the plates.
+- Reconciliation of the T075 catalogue with the approved set: approved
+  names (1 Still ground through 20 Collapse), palettes, concept lines,
+  exact element counts, motion, transitions, and decimal intensities,
+  all drawn with the retained T075 grammar machinery. Grammar details
+  adjusted where the approved concept required it: level 4 carries
+  eight bands with stepped ends; level 6 zones live in the margins with
+  alternating tones; level 7 gains 14 stepped towers with breathing
+  windows; level 8 scanlines group into bursts; level 9 carries two
+  fractures with sinking ticks; level 10 paths have two bends with
+  pulsing node cores; level 11 ribbons rise seamlessly; level 13 states
+  22 lines as 12 rules plus 10 guides; level 15 bands carry mirrored
+  phases; level 16 nests nine broken contours; level 19 presses 30
+  broken bands over a 12 s cycle; level 20 caps debris at 3 x 7 px.
+- Motion corrections documented where the approved proposal would wrap
+  discontinuously or blink: the level 7 window pulse and level 10 node
+  pulse are 1 px size swells over the approved cycles (a brightness
+  pulse would blink); the level 19 inward slide is a 54 px triangle
+  pulse (a linear inward scroll would teleport on wrap); drift wraps
+  over margin span plus element extent, so nothing re-enters while
+  visible. The four-second cycle floor now binds pulses only, the way
+  brief rule 12 states it; drift keeps the 10 px/s ceiling.
+- Cap comparisons are componentwise, and accent coverage is accounted
+  over the complete logical canvas, both stated in the index contract
+  section. The grayscale separation rule now covers base fields and
+  secondary shades, with every piece gray required above the base
+  field; accents may echo a piece hue, as brief rule 6 allows. The
+  approved accents `#79869B`, `#7A879E`, and `#7C88A0` sit within two
+  gray steps of the blue piece `#5880F0` in grayscale, which is what
+  forced the refinement; T075's blanket rule contradicted the brief's
+  own allowance for accent hue echoes.
+
+Verification, all local and deterministic:
+
+- `tools/backgrounds/run.sh` (full pipeline, fresh captures, seed
+  31337): **907 checks, 0 failures**; results in
+  `build/backgrounds/check-results.json`. The suite covers plates,
+  mockups, motion with the new seamless-wrap rule, verified element
+  counts by tag in both orientations, budgets, palette, grammar, and
+  the chapter arc.
+- Chapter means rise on all three arc measures: mark density 78.6,
+  88.0, 89.4, 179.8, 193.8 per 1000 samples; element count 19.8, 77.0,
+  87.8, 89.0, 260.0; peak speed 0, 3, 4, 6, 10 px/s. Adjacent levels
+  stay at least 1.9 percent distinct at one-eighth scale.
+- Every level record states its exact grammar, role palette, protected
+  regions, verified counts, motion with wrap spans, orientation
+  adaptation, cut or stepped-fade transition, and the reconciliation
+  note against its T075 predecessor; the index carries both orientation
+  masks and the chapter overview.
+
+Open: the on-device look and the playtest revision pass stay with task
+T076 until the implementation tasks T078 through T085 land.
+
+## T078: the procedural background renderer and clock (2026-11-05)
+
+Task: build the bounded background renderer, the catalog of the twenty
+approved designs, and the presentation clock, with the clipping, caps,
+cuts, and stepped fades the finalized contracts state. The chapter
+grammars stay with T079 through T083; until they land, every design
+paints its approved base field alone, so a frame costs exactly one
+background fill and every play scene at level 1 keeps the legacy
+`#10121A` pixels byte for byte.
+
+What landed:
+
+- `include/stackfall/backgrounds.hpp` and `src/backgrounds.cpp`, an
+  SDL-free core library: the twenty-design catalog restated from the
+  approved records (names, chapters, palettes, motion, transitions,
+  budgets, the rising intensity arc), the componentwise cap comparisons
+  of the design contract, the cosmetic `hash32` (the package's `h32()`,
+  CRC-32 over packed little-endian integers, independent of gameplay
+  randomness), the bounded `PresentationClock` (250 ms per-advance
+  clamp, freeze that drops time, resume without a jump, reset, exact
+  1000/60 ms frame steps, 32-bit wrap), the clipping layer
+  (`paintElement`: nothing inside the well or frame, accents only in
+  the loud margins, at most 12 fills per element), and the `Wallpaper`
+  state machine (Off, Auto with the 1..20 level clamp, Fixed across
+  levels and rounds, cuts, stepped fades of at most 1 s in the record's
+  own step counts).
+- The fade design: one fade frame draws exactly one design's grammar -
+  the outgoing one in the first half, the incoming one in the second -
+  with every color stepped in whole integers toward the midpoint of the
+  two base fields, so the first step reproduces the old frame exactly,
+  the last reproduces the new one, every intermediate color stays under
+  its cap componentwise, and the budget never doubles. The clip
+  classification uses the untinted color, so a faded accent keeps its
+  loud-margin placement.
+- The base field is one whole-canvas fill, exactly as each record's
+  grammar opens; the opaque well and ring cover their rectangle after
+  it. Cutting the base around the frame instead leaves an uncovered
+  sub-pixel gap on a scaled window (device pixel 923 of the 1440x816
+  letterbox test), which the suite caught and the single fill fixes.
+- The SDL half in `renderer_sdl.cpp`: `backgroundZones(Orientation)`
+  derives the mask from `boardFrame()`, the HUD column constants, and
+  the 12 px portrait guard; a nested painter adapter carries each
+  background fill through the renderer's own `fillRect`, so the portrait
+  rotation covers the wallpaper too. Mode Off keeps the literal legacy
+  path; the menus and letterboxes never change.
+- `main.cpp` drives the clock: it advances on rendered frames (whole
+  frames exactly in the deterministic harness mode), freezes on pause,
+  the pause controls screen, and window focus loss, pushes the level
+  every frame so Auto follows level changes with the record's cut or
+  fade, and resets on every round boundary (a start, a Play Again, or a
+  restart). Fixed mode keeps its design and clock running across
+  rounds, as the owner's plan states.
+
+Verification, all local:
+
+- `./build/stackfall_tests`: **2212434 checks, 0 failures** (the new
+  `run_backgrounds_tests` suite pins the catalog, the caps, ten `h32`
+  vectors against `zlib.crc32` values produced by the design tooling,
+  the clock arithmetic including the 2^32 ms wrap, the clipping layer
+  over both mask restatements, the fade step colors, and wallpaper
+  streams identical across two diverging games on different seeds).
+- `./build/stackfall_render_tests`: **13406 checks, 0 failures** (the
+  new `run_background_checks` plus every pre-existing pixel suite).
+- `ctest` in Debug and Release: 5 of 5 suites pass in both, and the
+  seeded replay `--seed 987654321` holds its pinned hashes, so the
+  rules, the randomizer, and the fixed step never moved.
+- `tests/harness/run.sh`: **1232 checks passed, 0 failed**, the full
+  24-session unattended harness over the real SDL binary; every session
+  plays at level 1, where design 1's base is the legacy color, so the
+  captures and the checker's pixel expectations stay valid.
+- No asset loading anywhere in the path, no per-frame allocation (all
+  clip buffers are fixed-size stack arrays), and the retained wallpaper
+  state is two design IDs, one timestamp, and the clock.
+
+Open: the chapter grammars (T079 through T083), the options submenu
+with saved Auto, Off, and Fixed (T084), and the visual, behavioral, and
+cost validation on a playable build (T085) remain, exactly as the
+owner's plan orders them.
+
+## T079: the Still backgrounds of levels 1 through 4 (2026-11-05)
+
+Task: implement the approved Still chapter - 1 Still ground, 2 First
+light, 3 Distant stars, 4 Quiet strata - from the retained records of
+`docs/backgrounds`, statically, in both orientations, with real game
+frames as the acceptance.
+
+What landed:
+
+- `src/backgrounds.cpp`: the four grammars behind `paintGrammar()`,
+  ported formula by formula from `tools/backgrounds/designs.py` - the
+  same `hash32` seeds, the same `round()` arithmetic (halves to even,
+  through `nearbyint`), the same candidate ranking. A bridge check
+  painted both orientations of all four designs through the runtime and
+  through the design package's own grammars and compared the canvases
+  pixel for pixel outside the board frame: **0 differing pixels** on
+  every plate. The star field reproduces the package's `exact_dots()`
+  with a bounded insertion that keeps the `count` best candidates by
+  (rank, enumeration) - the order the package's stable sort walks -
+  without sorting the grid or allocating, so a frame walks fixed-size
+  stack state only (352 candidates at level 3; the ceiling of 1024
+  covers the finest grid of the whole catalog).
+- The emitted counts, restated in the header's draw-cost contract:
+  Still ground 1 base fill plus 8 elements (13 fills portrait, where
+  the outer corners split around the frame ring), First light 3
+  elements cut into 6 fills, Distant stars 28 single-fill stars, Quiet
+  strata 8 bands plus 32 stepped ends landscape (49 fills) and 28
+  portrait (46 fills, the ring's bottom edge crosses the first band).
+  All inside the record budgets: 8 and 40 band elements, 3 and 28
+  small elements.
+- `tests/test_backgrounds.cpp`: `run_backgrounds_still_checks()` pins
+  each plate against its record on both orientations (exact rectangles
+  for the corners, the rule rows, and the strata; a FNV-1a digest over
+  the whole approved star stream, its per-margin counts, its color and
+  size split, and three anchors), plus the chapter contract: caps,
+  accent share under two percent, accents inside the loud margins,
+  byte-identical streams at six arbitrary clock values including the
+  `uint32` wrap, and distinctness at the one-eighth review scale.
+- `tests/test_renderer_sdl.cpp`: the level 1 play pixels are now the
+  Still ground (the corner ink `#0C0E16` inside the loud margins), and
+  the suite pins levels 2 through 4 in the real frame - the rule cut by
+  the frame ring, the star anchors, the strata rows and steps - and a
+  whole turned portrait frame redrawn byte-identically after 40 s of
+  presentation clock. The suites that pin the board, the HUD, and the
+  letterbox on the flat legacy ground now run in background mode Off
+  (`useFlatPlayGround()`), which is exactly what Off exists for; the
+  wallpaper's own placement is pinned by `run_background_checks()`.
+- `tools/backgrounds/still-capture.script.txt` and its portrait twin:
+  two scripted sessions that walk the level ladder the only way the
+  rules allow - the `four-line-ready` fixture cleared four lines at a
+  time, 12 lines to level 2, 20 to level 3, 32 to level 4 - and write
+  two frames per level about a second apart on the presentation clock,
+  each over the same tall-stack board with a stashed Hold piece.
+  `tools/backgrounds/still_check.py` reads those captures through the
+  renderer's rotation and checks the record pixels, the caps over the
+  regions the wallpaper owns alone, the accent share over the complete
+  canvas, the absence of every wallpaper color inside the opaque well,
+  the loud margins byte-identical between each level's two frames while
+  the round moved on, and the adjacent levels at one-eighth scale.
+
+Verification, all local, at the captures of
+`build/agent-checks/t079-still-2026-11-05`:
+
+- `./build/stackfall_tests`: **6392557 checks, 0 failures**, the new
+  Still suite included.
+- `./build/stackfall_render_tests` under `SDL_VIDEODRIVER=dummy`:
+  **13478 checks, 0 failures**.
+- `ctest` in Debug and in Release: 5 of 5 suites pass in both, no
+  warnings, and the seeded replay holds its pinned hashes, so the
+  rules, the randomizer, and the fixed step never moved.
+- `python3 tools/backgrounds/still_check.py` over the eight captured
+  frames: **223 checks, 0 failures**. One-eighth distinctness measured
+  over the whole captured frames: landscape 5.33, 4.58, and 28.71
+  percent of samples between adjacent levels, portrait 3.65, 1.76, and
+  14.29.
+- `tests/harness/run.sh` (`HARNESS_RUN_ID=t079-still`): **1232 checks
+  passed, 0 failed**, the full 24-session harness over the real SDL
+  binary, so the level 1 corner steps broke no pinned whole-game
+  expectation - the well scans, the portrait margin probes, and the
+  byte-identical repeats all still hold.
+
+Evidence: the candidate changes sit uncommitted in the detached worktree,
+so the tested sources are the sha256 sums
+`3e96d0a9ca544960` (`src/backgrounds.cpp`),
+`84749dd84efda5f3` (`include/stackfall/backgrounds.hpp`),
+`6823d2f75d3294aa` (`tests/test_backgrounds.cpp`),
+`064bafe2c1b230a2` (`tests/test_renderer_sdl.cpp`),
+`d0f44e6f3ef4d684` (`tools/backgrounds/still_check.py`), and
+`11206500dd3ac181` (`tools/backgrounds/designs.py`). Both capture
+sessions re-ran against the final binary; every frame is byte-identical
+to the recorded set, and `still_check.py` holds 223 of 223 over the
+fresh captures. The review sheet (`still-review-sheet.png` beside the
+captures) lays the eight frames against the approved mockups at
+one-eighth scale; a visual pass over it and over a half-scale landscape
+sheet confirms the four motifs - corner steps, rule with under-bands,
+star scatter, strata stack - each in its own level and clear of the
+board, the frame ring, and the HUD.
+
+Contract correction recorded in `docs/backgrounds`: the landscape rule
+row of First light is 440, which the record's own formula
+(`round(height * 0.82)` floored to a multiple of 8), the retained
+mockups, and the runtime all draw; the record prose mistyped it as 448.
+Fixed in `docs/backgrounds/level-02.md` and in the generator
+(`tools/backgrounds/designs.py`), and noted in the index.
+
+Observation for T085: at the one-eighth review scale the Still designs
+are subtler in portrait than in landscape, because the portrait board
+covers 74 percent of the canvas width and the wallpaper may draw only
+the base under it. The design package's own 1 percent rule was
+calibrated on unclipped landscape plates; on the real frame the
+portrait floors run at half of it, which the suites and the capture
+check state where they assert it.
+
+Open: the Stir chapter (T080), Build (T081), Pressure (T082), Peak
+(T083), the options submenu with saved Auto, Off, and Fixed (T084), and
+the full visual, behavioral, and cost validation (T085) remain, exactly
+as the owner's plan orders them.
+
+## T080: the Stir backgrounds of levels 5 through 8 (2026-11-05)
+
+Task: implement the approved Stir chapter - 5 Slow drift, 6 Dither dusk,
+7 Sleeping skyline, 8 Low signal - from the retained records of
+`docs/backgrounds`, first motion of the catalog, in both orientations,
+with real game frames as the acceptance.
+
+What landed:
+
+- `src/backgrounds.cpp`: the four grammars behind `paintGrammar()`,
+  ported formula by formula from `tools/backgrounds/designs.py` - the
+  same `hash32` seeds, the same candidate ranking, and now the same
+  motion arithmetic. Two helpers carry it: `roundMilliPx` (Python's
+  `round`, halves to even, over milli-pixels in pure integers) and
+  `driftWrapped` (the seamless wrap, which rounds `home + wrapped`, the
+  total the package rounds, not the offset alone - the exact-half clock
+  values exposed the difference). `exactDots` gained the drift as an
+  optional vertical argument, so the level 5 star field and the level 3
+  one share one code path. The window swell of level 7 reproduces
+  `round(triangle(t, 8.0))` as one integer compare on the phase
+  quarter, and the whole chapter follows the presentation clock the
+  renderer already owns: 50/3 ms per rendered frame, frozen on pause,
+  reset at round begin.
+- The emitted counts, restated in the header's draw-cost contract: Slow
+  drift 67 fills, Dither dusk 139, Sleeping skyline 211, Low signal 55
+  - the busiest a quarter of the 300-element small budget, and every
+  design moves one layer at most (stars, patches, window height,
+  scanlines; the towers, zones, and bars hold still).
+- `tests/test_backgrounds.cpp`: `run_backgrounds_stir_checks()` pins
+  each plate against its record on both orientations - literal zone
+  rectangles and tower tables where the record names them, a FNV-1a
+  digest over the whole approved placement stream elsewhere - plus the
+  motion itself: the wrap returns (272000 ms stars, 278000 ms patches,
+  8000 ms swell, 3333 ms scanlines), drift displacement inside a
+  milli-pixel window over a 150 s sweep, the swell quiet and swelled at
+  the exact phase edges (2000/2001 and 5999/6000/6001 ms), and the
+  chapter contract: caps, accent share, well purity, one moving layer,
+  and the chapter arc - mark density at the one-eighth review scale
+  rises from Still to Stir (55 to 62 per 1000 landscape, 19 to 36
+  portrait) and every adjacent pair clears the distinctness floors by
+  an order of magnitude.
+- `tests/test_renderer_sdl.cpp`: the Stir designs pinned in the real
+  frame - the level 5 cut with star and dust anchors and 500 ms of
+  star motion, the level 6 zones and caps with a dither patch lifting,
+  the level 7 tower, roofs, and window swelling after 4000 ms, the
+  level 8 bars and rule set after 333 ms - plus portrait star pins and
+  a grayscale pass that byte-compares the left margin with the mode off
+  and on, so the moving wallpaper keeps the pieces readable in the
+  colorblind mode.
+- `tools/backgrounds/stir-capture.script.txt` and its portrait twin:
+  two scripted sessions that walk the ladder four lines at a time (40
+  to level 5, 52 to 6, 60 to 7, 72 to 8) and write three frames per
+  level, 62 ticks apart, over the tall-stack board.
+  `tools/backgrounds/stir_check.py` reads those captures through the
+  renderer's rotation and solves the one free variable of the session -
+  the frame offset K of the clock - jointly over every frame of all
+  four levels, then requires each frame's loud margins to equal the
+  design package's own plate at its solved clock, checks the caps, the
+  accent share, the well purity, the quiet strips still between the
+  frames of a level, that the moving layer really moved, and the
+  adjacent levels at one-eighth scale.
+
+Verification, all local, at the captures of
+`build/agent-checks/t080-stir-2026-11-05`:
+
+- `./build/stackfall_tests`: **23155179 checks, 0 failures**, the new
+  Stir suite included.
+- `./build/stackfall_render_tests` under `SDL_VIDEODRIVER=dummy`:
+  **13554 checks, 0 failures**.
+- `ctest` in Debug and in Release: 5 of 5 suites pass in both, no
+  warnings, and the seeded replay holds its pinned hashes, so the
+  rules, the randomizer, and the fixed step never moved.
+- The bridge sweep: a C++ rasterizer painted the runtime grammar and
+  the design package's grammar over 2536 (level, orientation, clock)
+  plates - every 7 ms of the first two seconds, the rounding and pulse
+  edges (2000/2001, 5999/6000/6001 ms), the wrap spans, and the
+  `uint32` clock wrap - and compared them pixel for pixel: **0
+  differing pixels** on every plate.
+- `python3 tools/backgrounds/stir_check.py` over the twelve captured
+  frames: **210 checks, 0 failures**. One unique frame offset (K=0)
+  holds both sessions; one-eighth distinctness runs at 18.22, 24.01,
+  and 18.28 percent landscape and 11.76, 12.32, and 9.98 portrait
+  between adjacent levels.
+- `tests/harness/run.sh` (`HARNESS_RUN_ID=t080-stir`): **1232 checks
+  passed, 0 failed**, the full 24-session harness over the real SDL
+  binary, so the first moving wallpaper broke no pinned whole-game
+  expectation.
+
+Evidence: the candidate changes sit uncommitted in the detached worktree,
+so the tested sources are the sha256 sums
+`69a92b9fb49e6bed` (`src/backgrounds.cpp`),
+`382f239f32633e4b` (`include/stackfall/backgrounds.hpp`),
+`5e0d2ed971fd1571` (`tests/test_backgrounds.cpp`),
+`7dbbf541699a062b` (`tests/test_renderer_sdl.cpp`),
+`d4190b622cd6ed34` (`tools/backgrounds/stir_check.py`), and
+`ae16cbf1c00fced9` (`tools/backgrounds/designs.py`). Both capture
+sessions re-ran against the final binary; every frame is byte-identical
+to the recorded set, and `stir_check.py` holds 210 of 210 over the fresh
+captures. The review sheet (`stir-review-sheet.png` beside the captures)
+lays the twelve frames against the approved mockups at one-eighth scale,
+and a full-resolution left-strip sheet (`stir-left-strips.png`) against
+the Still chapter beside them; the visual pass over both confirms the
+four motifs - star specks, dither blocks, stepped skyline with dotted
+windows, scanline groups with the edge bar - each in its own level,
+all dimmer than the HUD text, and no letterforms or symbols anywhere
+the wallpaper draws.
+
+Contract correction recorded in `docs/backgrounds`: the tower-height
+share of Sleeping skyline is `0.10 + 0.24 * (1 - corner closeness)`,
+which the record's own machinery, the retained mockups, and the runtime
+all draw; the record prose mistyped 0.24 as 0.30. Fixed in
+`docs/backgrounds/level-07.md` through the generator
+(`tools/backgrounds/designs.py`, `records.py`), so the record files
+regenerate wholesale, and noted in the index alongside the T079
+correction.
+
+Open: the Build chapter (T081), Pressure (T082), Peak (T083), the
+options submenu with saved Auto, Off, and Fixed (T084), and the full
+visual, behavioral, and cost validation (T085) remain, exactly as the
+owner's plan orders them.
+
+## T081: the Build backgrounds of levels 9 through 12 (2026-11-05)
+
+Task: implement the approved Build chapter - 9 Fracture, 10 Circuit
+hush, 11 Band aurora, 12 Long trails - from the retained records of
+`docs/backgrounds`, the chapter of right-angle structure, in both
+orientations, with real game frames as the acceptance.
+
+What landed:
+
+- `src/backgrounds.cpp`: the four grammars behind `paintGrammar()`,
+  ported formula by formula from `tools/backgrounds/designs.py`. Two
+  helpers carry the chapter: `floorDiv`/`pyMod` (Python's floor
+  division and modulo, which the band staircase's negative phase
+  indices need) and `exactDots` with a horizontal drift argument, so
+  the level 12 star field drifts both axes at once. The fracture ticks
+  sink through `driftWrapped` at 3 px/s, the circuit cores swell
+  through one integer compare on the 7 s pulse quarter, the ribbons
+  rise 4 px/s wrapped over the canvas height plus their own extent,
+  and the trails drift one shared diagonal, 2.4 px/s left and
+  3.2 px/s down.
+- The emitted counts, restated in the header's draw-cost contract and
+  measured over whole motion passes: Fracture 96 fills at the busiest,
+  Circuit hush 87, Band aurora 181 (the portrait ribbons close to
+  double past their rest count when the frame ring releases steps),
+  Long trails 159 - the busiest three fifths of the 300-element small
+  budget, one moving layer per design.
+- `tests/test_backgrounds.cpp`: `run_backgrounds_build_checks()` pins
+  each plate against its record on both orientations - literal seam,
+  ledge, path, and staircase tables where the record names them, a
+  FNV-1a digest over the whole approved placement stream elsewhere -
+  plus the motion: the wrap returns (544000/802000 ms ticks, 7000 ms
+  pulse, 29347500/132996500 ms ribbon-and-tick least common multiple,
+  1360000 ms landscape trails), the swell quiet and swelled at the
+  exact phase edges (1750/1751 and 5249/5250 ms), displacement audits
+  over adjacent 250 ms probes, a whole-pass repaint bound that the
+  corrected Band aurora wrap holds and a pop would break (worst
+  measured 10432 px landscape, under a tenth of the canvas), and the
+  chapter contract: caps, accent share, element ceilings through whole
+  motion passes, one moving layer, the arc over the landscape plates
+  (marks Build 65 against Stir 62, elements 126 against 85, peak speed
+  4 against 3 px/s), and distinctness at one-eighth scale across the
+  chapter boundary and inside it.
+- `tests/test_renderer_sdl.cpp`: the Build designs pinned in the real
+  frame both orientations - the seam, ledge, and tick pixels of level
+  9 with the ticks sunk at 333 ms, the node core of level 10 swelled
+  at 4 s and quiet at 3 s, the ribbon staircase of level 11 risen at
+  250 ms with its guard-gap crossings at the secondary shade, the
+  diagonal of level 12 at 333 ms - with the veil, grayscale, and
+  portrait-zone suites moved to the not-yet-landed design 13.
+- `tools/backgrounds/build-capture.script.txt` and its portrait twin:
+  two scripted sessions that walk the ladder four lines at a time (80
+  to level 9, 92 to 10, 104 to 11, 116 to 12) and write three frames
+  per level, 64 ticks apart, over the tall-stack board, each level's
+  first frame past its record's fade.
+  `tools/backgrounds/build_check.py` reads those captures through the
+  renderer's rotation, solves the frame offset K jointly over every
+  frame, and requires each frame's loud margins to equal the design
+  package's own plate at its solved clock, beside the caps, the accent
+  share, the well purity, the HUD strip free of accent shades, guard
+  gaps that change only inside the design's shades, the motion between
+  phases, and the adjacent levels at one-eighth scale.
+
+Verification, all local, at the captures of
+`build/agent-checks/t081-build-2026-11-05`:
+
+- `./build/stackfall_tests`: **39878265 checks, 0 failures**, the new
+  Build suite included.
+- `./build/stackfall_render_tests` under `SDL_VIDEODRIVER=dummy`:
+  **13638 checks, 0 failures**.
+- `ctest` in Debug and in Release: 5 of 5 suites pass in both, and the
+  seeded replay holds its pinned hashes, so the rules, the randomizer,
+  and the fixed step never moved.
+- `tools/backgrounds/run.sh` (full pipeline, fresh captures, seed
+  31337): **907 checks, 0 failures**; the regenerated records carry
+  the two corrections below.
+- The bridge sweep: a C++ rasterizer painted the runtime grammar and
+  the design package's grammar over 4240 (level, orientation, clock)
+  plates - every 7 ms of the first two seconds, the pulse and
+  rounding edges, the wrap spans, the exact-half clocks of the 2.4
+  px/s axis, and random clocks across the full 32-bit range - and
+  compared them pixel for pixel: **0 differing pixels** on every
+  plate.
+- `python3 tools/backgrounds/build_check.py` over the twelve captured
+  frames per orientation: **210 checks, 0 failures**. One frame offset
+  (K=0) holds both sessions; one-eighth distinctness runs at 5.89,
+  32.45, and 32.06 percent landscape and 4.15, 14.33, and 13.66
+  portrait between adjacent levels.
+- `tests/harness/run.sh` (`HARNESS_RUN_ID=t081-build`): **1232 checks
+  passed, 0 failed**, so the structured wallpaper broke no pinned
+  whole-game expectation.
+
+Evidence: the candidate changes sit uncommitted in the detached
+worktree, so the tested sources are the sha256 sums `d3b61540dda562be`
+(`src/backgrounds.cpp`), `c384a5eb7ec35cd9`
+(`include/stackfall/backgrounds.hpp`), `7505f2b2413a7557`
+(`tests/test_backgrounds.cpp`), `b818c6264dfca6ef`
+(`tests/test_renderer_sdl.cpp`), `1e57a72033a9bba5`
+(`tools/backgrounds/build_check.py`), `0a48239984e37e12`
+(`tools/backgrounds/designs.py`), and `1e8657d347f5876b`
+(`tools/backgrounds/records.py`). Both capture sessions re-ran against
+the final binary; every frame is byte-identical to the recorded set,
+the title frames apart, which carry the persisted high score. The
+review sheet (`build-review-sheet.png`, sha256 `c499c7874442f94c`)
+lays the frames against the approved mockups at one-eighth scale, and
+`build-frames-full.png` (sha256 `5ac69026ef13d5de`) holds the four
+landscape and four un-turned portrait frames at full resolution; the
+visual pass over both, and an independent model read of the full
+sheet, confirm the four motifs - stepped crack staircases with sunk
+ticks, orthogonal traces with square nodes, broad stepped ribbons,
+square stars with stepped diagonal trails - each in its own level, all
+dimmer than the HUD text, and no letterforms, digits, arrows,
+tetromino clusters, curves, or gradients anywhere the wallpaper draws.
+
+Contract corrections recorded in `docs/backgrounds`: the Band aurora
+wrap phase must carry the ribbon's own extent - the phase anchors one
+extent below the base row, so a ribbon leaves the top edge fully
+before re-entering below the bottom edge, every 161.25 s landscape and
+276.5 s portrait; the record prose popped all three ribbons back at
+their base rows at the wrap, a visible third-of-canvas repaint. And
+the Long trails drift note's periods are 12.2 s per bottom strip
+height, 24.6 s per side margin width, and 170 s per landscape height,
+not the note's "7.4 s per margin width". Both fixed in
+`docs/backgrounds/level-11.md`, `docs/backgrounds/level-12.md`, and
+the generator, and noted in the index alongside the earlier
+corrections.
+
+Open: Pressure (T082), Peak (T083), the options submenu with saved
+Auto, Off, and Fixed (T084), and the full visual, behavioral, and cost
+validation (T085) remain, exactly as the owner's plan orders them.
+
+## T082: the Pressure backgrounds of levels 13 through 16 (2026-11-05)
+
+Task: implement the approved Pressure chapter - 13 Deep grid, 14 Fine
+snow, 15 Undertow, 16 Slow pulse - from the retained records of
+`docs/backgrounds`, the chapter that tightens the density and quickens
+the motion over Build, in both orientations, with real game frames as
+the acceptance.
+
+What landed:
+
+- `src/backgrounds.cpp`: the four grammars behind `paintGrammar()`,
+  ported formula by formula from `tools/backgrounds/designs.py`.
+  `deepGrid` scrolls its rule rows through `driftWrapped` at 5 px/s
+  over each margin's own height, holds its guides and accent nodes
+  still, and steps the guides toward the canvas center through the
+  package's floor-division placement. `fineSnow` places exactly 160
+  flakes by `exactDots` rank and drifts them 6 px/s down, with three
+  static frame-split bands that paint after the field, in the
+  package's own emission order. `undertow` builds its seven bands
+  with `staircaseBand` at a negatively advancing offset, phase
+  mirrored across the band stack, and drops one foam tick per band
+  edge step. `contourBars` breaks the nested rectangles of `slowPulse`
+  with a hashed gap per side, and the swell advances through exact
+  integer millionths of a pixel on the 8 s triangle, with corner tips
+  on the three outer contours.
+- The emitted counts, restated in the header's draw-cost contract and
+  measured over whole motion passes: 74, 167, 287, and 97 fills at
+  the busiest landscape, 74, 168, 101, and 36 portrait - the
+  Undertow stack the largest, still seven band elements inside the
+  40-band budget. One moving layer per design; the chapter peaks at
+  6 px/s against the 10 px/s cap; the pulse cycle runs 8 s against
+  the 4 s floor; the fades hold the 600 ms and 18-step contract.
+- `tests/test_backgrounds.cpp`: `run_backgrounds_pressure_checks()`
+  pins each plate against its record on both orientations - FNV-1a
+  digests over the approved fill streams, literal fill tables where
+  the geometry is sparse enough to read, the wrap returns (108.8 s
+  and 160.4 s for the grid, 272 s and 5213 s for the snow, 120 s for
+  the slide, 8 s for the pulse), the displacement audits between
+  adjacent probes, the stream as a pure function of the clock far
+  along it and across its 32-bit wrap, the element ceilings through
+  whole passes, the accent share under two percent at rest and
+  mid-motion, and the chapter arc over the landscape plates: 155
+  review-scale marks per 1000 against Build's 65, 153 elements per
+  design against 126, and a faster peak speed - with distinctness
+  floors across the chapter boundary and inside it.
+- `tests/test_renderer_sdl.cpp`: landscape and portrait pins of all
+  four designs in the real frame, each with its motion advance - the
+  rule set one pixel down at 200 ms, a flake pair three pixels down
+  at 500 ms, the staircase three pixels left at 500 ms, the contour
+  nest swelled to inset 34 at 4 s and back at 8 s. The veil,
+  grayscale, and portrait-zone suites that read a flat margin moved
+  to the not-yet-landed design 17.
+- `tools/backgrounds/pressure-capture.script.txt`, its portrait twin,
+  and `tools/backgrounds/pressure_check.py`: the real-game sessions
+  that walk the level ladder to levels 13 through 16 and write three
+  clock phases per level, and the acceptance check that solves the
+  frame offset over every frame and requires each frame's loud
+  margins to equal the design package's own plate at that exact
+  clock.
+
+Verified (2026-11-05):
+
+- `./build/stackfall_tests`: **56,602,152 checks, 0 failures**.
+- `SDL_VIDEODRIVER=dummy ./build/stackfall_render_tests`:
+  **13,762 checks, 0 failures**.
+- `ctest` in Debug and in Release: 5 of 5 suites pass in both, and
+  the seeded replay holds its pinned hashes, so the rules, the
+  randomizer, and the fixed step never moved.
+- `tools/backgrounds/run.sh` (full pipeline, fresh captures, seed
+  31337): **907 checks, 0 failures**; the regenerated records carry
+  the correction below and nothing else moved.
+- `python3 tools/backgrounds/pressure_check.py` over the twelve
+  captured frames per orientation: **210 checks, 0 failures**, one
+  frame offset (K=0) holding both sessions; the motion spans read
+  2066 to 2067 ms of clock, the pulse frames cover the swell phases
+  16, 10, and 3, and one-eighth distinctness runs at 17.28, 40.56,
+  and 46.89 percent landscape and 12.17, 14.11, and 18.26 portrait
+  between adjacent levels.
+- The bridge sweep: a C++ rasterizer painted the runtime grammar and
+  the design package's grammar over 69336 (level, orientation,
+  clock) plates - every 2 ms of the first two seconds, every 7 ms
+  through the twentieth, 50 ms steps through the wrap spans, the
+  pulse and rounding edges, the exact-half clocks of the 5 and 6 px/s
+  axes, the 32-bit clock wrap, and 3000 random clocks across the
+  full range - and compared them pixel for pixel: **0 differing
+  pixels** on every plate.
+- `tests/harness/run.sh` (`HARNESS_RUN_ID=t082-pressure`): **1232
+  checks passed, 0 failed**, so the chapter broke no pinned
+  whole-game expectation.
+- Both capture sessions re-ran against the final binary: **24 of 24
+  play frames byte-identical** to the recorded set, the title frames
+  apart, which carry the persisted high score.
+- The visual pass read the full-resolution frames and the one-eighth
+  review sheet beside the approved mockups, and an independent model
+  read confirmed it: each motif reads at a glance - the receding
+  grid, the snow field, the two-current wave stack, the breathing
+  contour nest - no shape forms a letter, a digit, an arrow, or a
+  tetromino cluster, every mark is an axis-aligned rectangle or a
+  staircase of them, and the board and HUD stay the brightest planes
+  of the frame.
+
+Evidence: the candidate changes sit uncommitted in the detached
+worktree, so the tested sources are the sha256 sums `b87b85bd393019dc`
+(`src/backgrounds.cpp`), `cb7698d28d268391`
+(`include/stackfall/backgrounds.hpp`), `b3f409d109e0a494`
+(`tests/test_backgrounds.cpp`), `4787d91cc12ad42e`
+(`tests/test_renderer_sdl.cpp`), `280ef98ced723606`
+(`tools/backgrounds/pressure_check.py`), `563c275770caa9a5`
+(`tools/backgrounds/designs.py`), `f1b13fe879d82047`
+(`tools/backgrounds/records.py`), `578eed97cdc9027e`
+(`tools/backgrounds/README.md`), `c722260c9803b653`
+(`docs/AGENT_TESTING.md`), `e23073ee72795c94` and `5a5e6753e2d866f8`
+(the two capture scripts), and `ba0b227439e377e3` with
+`7e353d4f4b892f82` (`docs/backgrounds/index.md` and
+`docs/backgrounds/level-15.md`). The captures sit under
+`build/agent-checks/t082-pressure-2026-11-05/`: the review sheet
+(`pressure-review-sheet.png`, sha256 `8983dc4e99a8527d`) lays the
+frames against the approved mockups at one-eighth scale, and
+`pressure-frames-full.png` (sha256 `883e0b6e3323f22f`) holds the four
+landscape and four un-turned portrait frames at full resolution, with
+the observations, session logs, and the re-run sets that prove the
+frames reproduce byte for byte.
+
+Contract correction recorded in `docs/backgrounds`: the Undertow slide
+direction. The pre-T082 generator advanced its band offset
+positively, sliding the staircase right, while its own declared
+velocity, its record, and the approved concept all name the leftward
+6 px/s slide. Fixed in `tools/backgrounds/designs.py` and recorded in
+`docs/backgrounds/level-15.md`, noted in the index alongside the
+earlier corrections; the retained t = 0 mockups never moved.
+
+Open: Peak (T083), the options submenu with saved Auto, Off, and
+Fixed (T084), and the full visual, behavioral, and cost validation
+(T085) remain, exactly as the owner's plan orders them.
+
+## T083: the Peak backgrounds of levels 17 through 20 (2026-11-05)
+
+Task: implement the approved Peak chapter - 17 Rising ember, 18 Storm
+lines, 19 Compression, 20 Collapse - from the retained records of
+`docs/backgrounds`, the closing chapter of the catalog with its
+densest fields and quickest motion, in both orientations, with real
+game frames as the acceptance.
+
+What landed:
+
+- `src/backgrounds.cpp`: the four grammars behind `paintGrammar()`,
+  ported formula by formula from `tools/backgrounds/designs.py`.
+  `risingEmber` places exactly 190 embers through `exactDots` and
+  drifts them 7 px/s up, past static stepped columns that climb from
+  the base row. `stormLines` places 200 dashes the same way and drops
+  them 8 px/s beside four stepped trails that share the fall, one
+  combined layer. `compression` presses its 30 broken bands inward
+  54 px on the 12 s triangle through `contourBars`, with tick dots
+  riding the top band across the loud margins. `collapse` places 280
+  fragments through the rank with a new outer bias - `outerCloseness`
+  orders the candidates toward the canvas edges, so the middle stays
+  clear - and drops them 10 px/s past static slabs with stepped caps.
+  Two rounding depths carry the chapter: the drift runs through exact
+  integer millionths of a pixel with the wrap rounding `home +
+  wrapped` over the margin height plus each element's own extent, and
+  the press runs through IEEE-754 doubles - `std::fmod` of the phase,
+  `std::nearbyint` of `54 * triangle(t)` - because the exact-half
+  clocks of the pulse land on inexact phases where CPython's round of
+  the double product is the only bit-exact match. The integer
+  micro-precision of levels 7 and 16 stops one short of that; the
+  first port used it, and the 8500 and 9500 ms ties moved two pixels.
+- The emitted counts, restated in the header's draw-cost contract and
+  measured over whole motion passes: 268, 220, 301, and 292 fills at
+  the busiest landscape, 261, 222, 80, and 293 portrait. The
+  Compression design places 260 elements - 238 press bars and 22
+  ticks - inside the 300-element budget while the frame ring's clip
+  splits its wide bars, the documented primitive expansion. One
+  moving layer per design; the chapter peaks at 10 px/s against the
+  10 px/s cap; the pulse cycle runs 12 s against the 4 s floor; the
+  fades hold the 600 ms and 18-step contract. The catalog is whole:
+  every design id 1 through 20 now has its own complete grammar, no
+  placeholder, no fallback.
+- `tests/test_backgrounds.cpp`: `run_backgrounds_peak_checks()` pins
+  each plate against its record on both orientations - FNV-1a digests
+  over the approved fill streams, literal tables where the geometry
+  reads, the wrap returns (544.0 s and 31278.0 s for the embers,
+  68.75 s and 4545 s for the dashes, the 12 s press cycle, 55.1 s and
+  3721.4 s for the fragments), the displacement audits between
+  adjacent probes, the twelve exact-half press ties with their own
+  digests, the quiet window through 55 ms and from 11945 ms with the
+  first step at 56 ms, the crest at the half cycle, the changed-pixel
+  footprint bounds, the element ceilings through whole passes, the
+  accent share under two percent at rest and mid-motion, the stream
+  as a pure function of the clock far along it and across its 32-bit
+  wrap, and the chapter arc over the landscape plates: 166
+  review-scale marks per 1000 against Pressure's 155, 267 elements
+  per design against 153, and the faster peak speed - with
+  distinctness floors across the chapter boundary and inside it. The
+  scene suites that count a fading frame and the determinism check
+  now read the landed design 20.
+- `tests/test_renderer_sdl.cpp`: landscape and portrait pins of all
+  four designs in the real frame, each with its motion advance - the
+  embers four pixels up at 500 ms, a dash pair two pixels down at
+  250 ms, the band nest at the 54 px crest at 6 s and at rest at
+  12 s, the debris five pixels down at 500 ms over its slabs. The
+  Fixed-mode, fade, and pause suites that read a flat margin moved to
+  base-only windows of the landed grammars - the 48 x 48 block of
+  design 20 clear of the ranked fragments, the 40 x 40 block of
+  design 17 above its columns - because the whole margin no longer
+  holds one color at any clock.
+- `tools/backgrounds/peak-capture.script.txt`, its portrait twin, and
+  `tools/backgrounds/peak_check.py`: the real-game sessions that walk
+  the level ladder to levels 17 through 20 - 160 cleared lines reach
+  level 17, 196 reach 20 - and write three clock phases per level,
+  62 ticks apart, and the acceptance check that solves the frame
+  offset over every frame and requires each frame's loud margins to
+  equal the design package's own plate at that exact clock, press
+  rounding included.
+
+Verified (2026-11-05):
+
+- `./build/stackfall_tests`: **73,350,148 checks, 0 failures**.
+- `SDL_VIDEODRIVER=dummy ./build/stackfall_render_tests`:
+  **13,858 checks, 0 failures**.
+- `ctest` in Debug and in Release: 5 of 5 suites pass in both, and
+  the seeded replay holds its pinned hashes, so the rules, the
+  randomizer, and the fixed step never moved.
+- `tools/backgrounds/run.sh` (full pipeline, fresh captures, seed
+  31337): **907 checks, 0 failures**; the regenerated records carry
+  the corrections below and nothing else moved.
+- `python3 tools/backgrounds/peak_check.py` over the twelve captured
+  frames per orientation: **210 checks, 0 failures**, one frame
+  offset (K=0) holding both sessions; the motion spans read 2066 to
+  2067 ms of clock, the pulse frames cover the press phases 31, 22,
+  and 12, and one-eighth distinctness runs at 5.55, 41.56, and 38.81
+  percent landscape and 4.68, 20.87, and 18.53 portrait between
+  adjacent levels. The HUD strip check carries one documented
+  exception: #8A94AC, design 20's accent, is the scene's own dim text
+  shade, so its presence there proves nothing either way - the frame
+  equality against the package plate and the placement audits carry
+  the accent proof instead.
+- The bridge sweep: a C++ dump of the runtime grammar and the design
+  package's own grammar over 16648 (level, orientation, clock)
+  plates - every millisecond of the first 260 ms, every 7 ms through
+  the 12 s cycles, the exact-half neighborhoods of the 7, 8, and
+  10 px/s drifts and the 54 px press, the wrap spans, the late
+  clocks, and the 32-bit wrap - compared element for element:
+  **0 mismatches** on every plate.
+- `tests/harness/run.sh` (`HARNESS_RUN_ID=t083-peak`): **1232 checks
+  passed, 0 failed**, so the last chapter broke no pinned whole-game
+  expectation.
+- Both capture sessions re-ran against the final binary: **26 of 26
+  frames byte-identical**, title frames included. The portrait half
+  seeds its save with orientation=portrait before the run, the same
+  seeding the design package's run.sh applies; the re-run sets sit
+  under the evidence directory with the byte-comparison results.
+- The visual pass read the twenty-level thumbnail arc, the acceptance
+  pair of level 17 beside level 9, the full-resolution frames, and
+  the one-eighth review sheet beside the approved mockups, and an
+  independent model read confirmed each: the four motifs read at a
+  glance - rising specks over stepped columns, the rain field with
+  its stepped trails, the closing band ring, the edge debris over
+  slabs - levels 17 and 9 read as two different fields (a cool
+  blue-gray fracture chain against a sparse dot field with warm
+  specks), the warm tones live in the tiny ember marks alone, no
+  shape forms a letter, a digit, an arrow, or a tetromino cluster,
+  every mark is an axis-aligned rectangle or a staircase of them,
+  and the board and HUD stay the brightest planes of the frame.
+
+Evidence: the candidate changes sit uncommitted in the detached
+worktree, so the tested sources are the sha256 sums `5e4a0934948308e6`
+(`src/backgrounds.cpp`), `9cf5e8c752c62a71`
+(`include/stackfall/backgrounds.hpp`), `a27029de47efb418`
+(`tests/test_backgrounds.cpp`), `784ba2282e773d34`
+(`tests/test_renderer_sdl.cpp`), `5a2fc4c59e77ed71`
+(`tools/backgrounds/peak_check.py`), `8ce5452eb5ba8fd0`
+(`tools/backgrounds/designs.py`), `b5a96f85b66ed420`
+(`tools/backgrounds/records.py`), `a66699e866500459`
+(`tools/backgrounds/README.md`), `cab078aa2237d37e` and
+`cc455fd7dd0976fc` (the two capture scripts), `2f54fbae7b5aeb06`
+(`docs/AGENT_TESTING.md`), and `ba72f3bb58e6b7eb` with
+`590a85c79e12c579` (`docs/backgrounds/index.md` and
+`docs/backgrounds/level-18.md`). The captures and their proof sit
+under `build/agent-checks/t083-peak-2026-11-05/`: both capture
+sessions with logs and observations, the re-run sets
+(`recheck/landscape`, `recheck/portrait`, all frames byte-identical,
+`REPRODUCTION.txt` records how), the bridge sweep log
+(`bridge-sweep.txt`, 16648 clocks, 0 mismatches), the review sheet
+(`peak-review-sheet.png`, sha256 `51936010f2eb8a8a`) laying the
+frames against the approved mockups at one-eighth scale, and
+`peak-frames-full.png` (sha256 `da446e16902688d4`) holding the four
+landscape and four portrait device frames at full resolution. The
+working captures the check reads sit under
+`build/agent-checks/peak-capture/`, and the whole-game harness wrote
+`build/agent-checks/t083-peak/`.
+
+Contract corrections recorded in `docs/backgrounds`, both in level
+18: the Storm-lines cell pitch is 16 px - the generator, the
+retained mockups, and the runtime all draw the 16 px grid against
+the record prose's 22 px - and the wrap note of the same design -
+its dashes wrap over the margin height plus the tallest dash's 6 px
+exactly as its trails do, not at the bare margin span. Fixed in
+`tools/backgrounds/designs.py` and regenerated through `records.py`
+into `docs/backgrounds/level-18.md`, noted in the index alongside
+the earlier corrections; the retained t = 0 mockups never moved.
+
+Open: the options submenu with saved Auto, Off, and Fixed (T084),
+and the full visual, behavioral, and cost validation (T085) remain,
+exactly as the owner's plan orders them.
+
+## T084: the saved Auto, Off, and Fixed background options (2026-11-05)
+
+Task: add the BACKGROUNDS row to the options screen and the compact
+backgrounds page behind it, with the saved wallpaper mode
+Auto/Off/Fixed and the preferred design 1..20, per
+`docs/BACKGROUND_IMPLEMENTATION.md` and the owner approval of
+2026-11-05.
+
+What landed:
+
+- `include/stackfall/game.hpp`, `src/game.cpp`: the ninth options row
+  (`kOptionsBackgroundsRow` 8, appended so every earlier row keeps its
+  index) and the `BackgroundOptions` scene behind it, appended after
+  `Rebind` so the regression scene values never move. The page takes
+  the same menu edges as every settings screen: up/down over its two
+  rows (MODE, DESIGN), select changes nothing in the core - the mode
+  and the preferred design are platform state - and back returns to
+  the options screen with the cursor still on BACKGROUNDS.
+  `src/observe.cpp` names the scene `backgrounds` and the cursor
+  `backgrounds:<row>` for the observation records.
+- `include/stackfall/storage.hpp`, `src/storage.cpp`: the settings
+  file grows to twelve preferences - `background=auto|off|fixed` and
+  `backgroundid=1..20` appended after `effectsvolume`, version 1
+  unchanged. The parser accepts every complete-file prefix that ever
+  shipped (2, 3, 7, 8, 11, and now 13 lines) and rejects unknown
+  mode words and IDs outside 1..20 under the established recovery
+  policy; a load never rewrites the file. `SettingsStore::load()` now
+  copies the whole preference set out of the parse - the music mode
+  and both volumes of T062 were silently dropped by the old
+  field-by-field copy on every relaunch, and the new background pair
+  rides the same fix, pinned by a twelve-value round-trip case.
+- `src/main.cpp`: startup applies the saved pair to the renderer's
+  wallpaper (preference first, then mode, so a Fixed relaunch opens
+  on the saved design), the session log's Settings line and the
+  input log's start lines name both values, and the page's selects
+  run through `applyBackgroundSelect()`: the MODE ring Auto -> Off ->
+  Fixed -> Auto and the DESIGN ring 1 -> 20 -> 1, each through one
+  atomic `savePreference` write. A mode change never touches the
+  preferred design and a design change never touches the mode.
+- `include/stackfall/renderer_sdl.hpp`, `src/renderer_sdl.cpp`: the
+  options page draws its ninth row `BACKGROUNDS <MODE>` and its
+  footer moved to y=500 so all nine rows keep the shared 44 px
+  metrics inside the canvas; the backgrounds page reuses the options
+  heading, metrics, and footer over `MODE <AUTO|OFF|FIXED>` and
+  `DESIGN <n> <NAME>`, the approved name in the menu's uppercase
+  spelling, both values read from the renderer's own wallpaper state
+  so the page and the play scene cannot disagree. The widest row,
+  `DESIGN 20 SLEEPING SKYLINE`, keeps its marker on the canvas in
+  both orientations.
+- `src/backgrounds.cpp`: `modeName`/`modeFromName`/`modeDisplayName`
+  hold the one word list the file, the menus, and the parser share.
+  The `Wallpaper` semantics the page relies on were already the
+  owner's plan and stay pinned by `tests/test_backgrounds.cpp`: the
+  preference survives Off and Auto, Fixed ignores levels and rounds
+  without resetting the clock, Off draws nothing, Auto clamps the
+  level into 1..20.
+
+Verification (all at the integrated tree, seed 20261103):
+
+- `ctest` passes in Debug and Release (5/5 suites, 343k + 73M+
+  checks). New coverage: the storage suite crosses every mode with
+  every design ID round-trip, the legacy eleven-line file, the
+  damaged-pair shapes (`backgroundid=0/21/99`, `background=maybe`,
+  one line without its pair, reordering, padding), and the
+  twelve-preference relaunch round-trip; the screens suite walks the
+  nine options rows, the page's two rows with both wraps, and the
+  back-with-cursor rule; the SDL suite draws all 60 mode x design
+  combinations of the page with each row's string pinned by its
+  exact glyph count, plus the portrait pass of the widest row and
+  the nine-row options layout with nothing clipped; the backgrounds
+  suite pins the mode words and word-to-mode mapping.
+- `tests/harness/run.sh` drives twenty-seven sessions (was
+  twenty-four) and `check_harness.py` passes 1524 checks with no
+  failure. The three new sessions:
+  `backgrounds-keyboard` lands the mode ring on Fixed and then
+  walks every design ID 1..20 with the wrap, each select a saved
+  Fixed ID, before stepping the mode to Auto and Off (every page
+  checkpoint proves the two-row layout from pixels, the input log
+  carries the whole ring in order, the saved file ends
+  `background=off backgroundid=7`);
+  `backgrounds-pad` proves the same-session application from play
+  pixels - the round after Off holds the flat #10121A at four
+  probes, the round after Fixed holds the design 2 base #10131C,
+  and the round after Auto holds the level 1 corner ink #0C0E16
+  with its #10121A base, the Auto boundary - and the options cursor
+  keeps the BACKGROUNDS row across round trips;
+  `backgrounds-relaunch` runs three stages: the saved portrait
+  fixed/7 pair applied at startup (the page at the portrait metrics,
+  the first play frame holding the design 7 base #11151F at three
+  device probes of the tall frame), the corrupted `backgroundid=99`
+  file recovering to the defaults while its exact broken bytes
+  survive the read, and the legacy eleven-line music-era file
+  keeping every saved value, receiving the new defaults, and
+  upgrading to the thirteen-line canonical form on its one save.
+- Evidence: `build/agent-checks/t084-final/` (harness pass, 1524/0,
+  `sessions.txt` lists 27) and the earlier
+  `build/agent-checks/t084-harness/` pass of the same suites before
+  the Auto-frame extension.
+
+The options-six sessions gained one navigation pair each for the
+ninth row and their wrap now crosses BACKGROUNDS; every other
+session, gate, and pinned hash is unchanged.
+
+Open: the integrated visual, behavioral, and cost validation of the
+full catalog remains T085, and the playable visual review T076;
+nothing here claims device performance.
+
+## T085: the integrated background validation (2026-11-06)
+
+Task: validate all twenty backgrounds, the saved options, and the
+rendering cost - the acceptance wave that closes the background
+implementation (T077 through T084) before the playable visual review
+T076.
+
+What landed (all under `tools/`, none of it shipped game code):
+
+- `tools/backgrounds/catalog_gen.py`: every scripted session of the
+  validation, a pure function of its name - the two full-catalog ladder
+  walks (four-line fixture cycles to level 20 with per-level transition,
+  motion, cap, pause, and restart probes), the comparison pair, the
+  orientation continuity probe, the rapid ring probe, the two stress
+  workloads, the determinism ladder, and the X11 focus probe. Comment
+  lines wrap at 76 columns for the session reader's 255-byte limit; a
+  `wait 1` follows every check because a checkpoint flushes at the end
+  of its own frame.
+- `tools/backgrounds/catalog_check.py`: the integrated acceptance check
+  (968 checks on the current captures). It solves the presentation
+  clock's one constant frame offset per session jointly over the moving
+  designs, then holds every captured frame against the design package's
+  own plate: the loud margins byte for byte, the guard gaps inside the
+  design's shades, the fade arithmetic with the runtime's truncating
+  integer division, the two-percent accent share over the complete
+  canvas, the caps, well purity, static levels 1 through 4, the motion
+  proofs of levels 5 through 20 (pulse designs over a 186-tick window
+  with fixture reloads inside the wait, so peak gravity cannot top the
+  board out), the pause freeze and clamp-bounded resume, the restart
+  cut, the level cap, the grayscale pairs (wallpaper identical, pieces
+  changed), Off (the legacy flat alone in every margin and gap), the
+  orientation clock continuity across three turns, the rapid ring
+  result, and the arc distinctness at the one-eighth review scale. It
+  writes the two captured twenty-level thumbnail sheets.
+- `tools/backgrounds/t085.sh`: the one-command driver (phases generate,
+  capture, focus, determinism, legacy, perf, gates; `SKIP_CAPTURE=1`
+  reuses captures).
+- `tools/backgrounds/focus_session.sh` and `focus_check.py`: the X11
+  focus probe (openbox under `xvfb-run`, `xdotool windowminimize` and
+  `windowactivate` around the scripted checkpoints) and its check, which
+  solves each frame's clock from the pixels and proves the freeze and
+  the clamp-bounded resume.
+- `tools/backgrounds/determinism_runs.sh`, `legacy_off_compare.sh`,
+  `perf_runs.sh`: the phase drivers below.
+- `tools/perf/bg_draw_counts.cpp` (CMake target `stackfall_bg_counts`):
+  the counting painter of the draw-count evidence.
+
+Source identity: commit `bba0d35` ("Integrate T084") plus the files this
+task adds. Tool sha256 at run time:
+
+    0f6f65b7 tools/backgrounds/catalog_gen.py
+    3b076642 tools/backgrounds/catalog_check.py
+    5ae98228 tools/backgrounds/t085.sh
+    d20c93dd tools/backgrounds/focus_session.sh
+    4714bd77 tools/backgrounds/focus_check.py
+    ba59a0eb tools/backgrounds/determinism_runs.sh
+    b48d7ab1 tools/backgrounds/legacy_off_compare.sh
+    04598afd tools/backgrounds/perf_runs.sh
+    eebcbd16 tools/perf/bg_draw_counts.cpp
+
+Commands (repository root, seed 31337 unless named):
+
+1. The whole validation: `tools/backgrounds/t085.sh`.
+2. The integrated check alone:
+   `python3 tools/backgrounds/catalog_check.py build/backgrounds/t085`.
+3. The focus probe: `xvfb-run -a -s "-screen 0 960x544x24" \
+   tools/backgrounds/focus_session.sh` then
+   `python3 tools/backgrounds/focus_check.py \
+   build/backgrounds/t085/focus`.
+4. The legacy comparison: `tools/backgrounds/legacy_off_compare.sh`
+   (extracts `git archive cd54ba2` into `$TMPDIR` under the Looper
+   resource prefix, registered in the resource cleanup file).
+5. The cost set: `tools/backgrounds/perf_runs.sh` (see the T085 section
+   of `notes/performance.md`).
+
+Verified, all passed:
+
+- Catalog check: **968 checks, 0 failures** over the 186 captured
+  frames of the two ladder walks (94 playing frames, two paused, one
+  title each orientation). Landscape and portrait both solve at frame
+  offset K=0; the pause probe froze at 56150 ms and resumed 0 frames
+  later with no jump; the orientation probe holds one clock at offsets
+  3 -> 99 -> 196 across three turns; the rapid probe lands Fixed design
+  18 at K=58; the grayscale pairs hold the wallpaper bytes identical at
+  K=-1 (design 17) and K=3 (design 20) while the wells differ; Off
+  holds `#10121A` in every margin and guard pixel; adjacent levels stay
+  distinct at one-eighth scale by 4.58 to 48.54 percent of the canvas
+  landscape and 3.65 to 18.77 percent portrait.
+- The two captured thumbnail sheets (real frames, one per level, both
+  orientations): every cell holds 51 or more distinct colors and every
+  adjacent pair differs in at least 41.2 percent (landscape) and 46.3
+  percent (portrait) of its pixels - no blank, corrupted, or duplicated
+  cell. The sheets stay in `build/backgrounds/t085/` as the T076 review
+  input; the host-side look at them is this programmatic review, and
+  the image-analysis service of this session could not parse the sheet
+  (HTTP 400), so the owner-facing visual read remains T076's.
+- Focus loss: 19 checks, 0 failures. The pre-minimize frame solves at
+  60..140 ms, the frame 120 unfocused frames later at 260..340 ms (a
+  running clock would sit two seconds ahead; design 20 drifts ten
+  pixels a second), and the frame after the restore at 760..840 ms -
+  moved on from the frozen clock, within the 250 ms resume clamp plus
+  the refocused half second, no jump. The settings still hold Fixed 20.
+- Determinism across modes: the same scripted round (a checkpoint after
+  every four-line cycle, levels 1 through 20, 192 lines) under a fresh
+  save, Off, Auto, and Fixed 17 produces byte-identical stripped
+  observation streams - scores, levels, boards, piece queues, all four.
+- Background Off against the pre-backgrounds revision: the scripted
+  planned game through the `cd54ba2` binary and through the current
+  binary with `background=off` staged writes 28 of 28 frames byte for
+  byte identical, and the observation streams match byte for byte too.
+- The cost set: see the T085 section of `notes/performance.md` - 0
+  fills Off, worst steady frame 303 fills, worst fade frame one
+  grammar's fills, worst work-mode delta +41 percent landscape and +16
+  percent portrait, every paced median in the 60 Hz slot, RSS flat
+  across modes. Nothing there measures the RG503.
+
+One caution for reruns: the determinism and capture drivers pass
+`--fixture-dir tests/fixtures` - pointing them at any other directory
+fails silently into natural-bag play (the records then top out at level
+1 within eight cycles), which is how the first determinism pass looked
+before the fix. The harness's own `run.sh` carries the correct path.
+
+Open: the playable visual review T076 on a playable build (its
+prerequisite is this pass), and the device gates T018 and T036.
+
+## T86: the analog thumbstick plays through the D-pad arms (2026-11-06)
+
+Task: the left analog thumbstick of the RG503 could not move pieces in
+portrait - the operator device report of 2026-11-05 - because the
+platform layer read controller buttons and the D-pad only, so the stick
+was dead in every orientation.
+
+What landed:
+
+- `stackfall/bindings.hpp`/`.cpp`: the SDL-free translation
+  `controllerControlOfStickAxis(axis, value)` with the deadzone
+  `kStickDeadzone = 8000`. Each axis reading resolves to the D-pad arm
+  it points at physically - negative X the left arm, positive X the
+  right, negative Y the up arm, positive Y the down arm - and a reading
+  inside the deadzone resolves to none. It lives in the core because it
+  produces control ids, so the game's SDL layer and the headless
+  reference replay share one definition and the deadzone has one home.
+- `src/input_sdl.cpp`: `SDL_CONTROLLERAXISMOTION` of `leftx` and `lefty`
+  resolves through that translation and the arm then travels the exact
+  path a D-pad press travels - `mapControllerControl()` is the refactored
+  half of `mapControllerButton()`, so a rebound table and the fixed menu
+  roles move the stick with the arm. Per controller the layer keeps the
+  arm each axis last resolved to, which turns the continuous reading into
+  the same press and release transitions an arm produces, so DAS, the
+  repeat interval, and the once-per-press rule come from the machinery
+  the D-pad already uses. The orientation turn and a binding change
+  forget the deflected arms beside `clearHeldAndPending()`, a controller
+  removal forgets its stick with its source, and a deflection never
+  reaches the adapter while a capture is armed because it names no
+  rebindable control. The virtual pad grew the two axes
+  (`naxes = 2`, `leftx:a0,lefty:a1` in its mapping) and
+  `virtualPadAxisFromName()`.
+- `stackfall/script.hpp`/`.cpp`: `parseScriptAxisValue()`, the bounded
+  signed-16-bit parser behind the new script command
+  `stick <x|y> <value>`, shared by the game's driver
+  (`src/developer_session.cpp`, `SDL_JoystickSetVirtualAxis` plus the
+  same immediate `SDL_JoystickUpdate` a button takes) and by the
+  reference replay, exactly as the `wait` count is shared.
+- `tests/harness/reference_replay.cpp`: the stick mirror. It tracks the
+  arm each axis last resolved to, applies the same release-then-press
+  order, drops a deflection while a capture is armed, and forgets the
+  arms on the same turn, restore, capture, and detach edges the game
+  does - so a session that plays the stick compares field by field.
+- Two harness sessions (`stick-pad`, `stick-portrait`) and their
+  independent checks in `tests/harness/check_harness.py`.
+- `docs/SPEC.md` section 5 gained "The analog thumbstick (task T86)"
+  with the mapping table and the deadzone rule; the acceptance list and
+  the device checklist gained their T86 items.
+
+The logical mapping both orientations give the same physical reading,
+pinned by the headless suite, the SDL suite, the harness records, and
+the ordered action bits of the per-tick input log:
+
+| Stick reading | Resolves to | Landscape | Portrait |
+| --- | --- | --- | --- |
+| X negative (push left) | D-pad left | move left | hard drop, menu up |
+| X positive (push right) | D-pad right | move right | soft drop, menu down |
+| Y negative (push up) | D-pad up | hard drop, menu up | move right |
+| Y positive (push down) | D-pad down | soft drop, menu down | move left |
+
+Portrait is the turned frame of specification section 5: a physical
+reading takes the action whose on-screen direction the arm it points at
+carries there, so the stick is neither dead nor inverted - the Y axis
+swaps the two move directions and the X axis carries soft drop and hard
+drop, exactly as the D-pad arms do. The deadzone is per axis and
+magnitude only, so a diagonal reading holds both arms it points at and
+left plus right still cancels. Nothing else reads an axis: the right
+stick and the triggers are ignored, exactly as a button outside the
+ten-button layout is.
+
+Runs (seed 20261103 everywhere, no commit yet - the tree is the
+candidate; SHA-256 of the sources the change touched, which tie the
+runs below to it):
+`src/input_sdl.cpp` 1f8558c4..., `src/bindings.cpp` 66b4fd46...,
+`src/script.cpp` 7d8d1f34..., `src/developer_session.cpp` 075659a5...,
+`include/stackfall/input_sdl.hpp` 742e7a92...,
+`include/stackfall/bindings.hpp` 12d276a0...,
+`include/stackfall/script.hpp` 6ba9dccd...,
+`include/stackfall/developer_session.hpp` a52c6a35...,
+`tests/test_input_sdl.cpp` eed22a22...,
+`tests/test_bindings.cpp` 348d766e...,
+`tests/test_script.cpp` f0f341b8...,
+`tests/harness/reference_replay.cpp` db018344...,
+`tests/harness/check_harness.py` 615ec7a1...,
+`tests/harness/run.sh` acf7dc27...,
+`tests/harness/scripts/stick-pad.script.txt` cfe0d140...,
+`tests/harness/scripts/stick-portrait.script.txt` 8a0d1c1f....
+
+- `tests/harness/run.sh` with `HARNESS_RUN_ID=t86-final-debug` into
+  `build/agent-checks/t86-final-debug/` (Debug) and
+  `HARNESS_BUILD_DIR=build-rel HARNESS_RUN_ID=t86-final-release` into
+  `build/agent-checks/t86-final-release/` (Release): twenty-nine
+  sessions, `checks passed: 1608, failed: 0` in both configurations.
+  The two new sessions replay through the headless reference with
+  byte-equal checkpoint streams (18 records landscape, 27 portrait) and
+  pass their own pins:
+  - `stick-pad`: the stick walks the title menu on its Y axis both ways,
+    the round moves one column left on X negative and one back on X
+    positive, holds still through 7999 on both axes, moves again at the
+    deadzone boundary 8000, soft drops two cells for two points on Y
+    positive, hard drops four settled cells for two points per travelled
+    cell on Y negative, and closes with a D-pad and a keyboard move that
+    prove neither changed. The round's input log carries 14 acting ticks
+    in the pinned order.
+  - `stick-portrait`: the ORIENTATION select lands with the stick
+    deflected, and the tick that carried it (`L=1 cw=1 menu=0010`) is the
+    last one to carry anything until the script presses again - the
+    deflected arm is spent with every held level and pending edge, three
+    turns over. The turned round then proves the table reading by
+    reading: physical down moves left, physical up moves right, physical
+    right soft drops two cells for two points, B rotates clockwise, A
+    back, Y holds the stashed piece, X carries nothing, a 7999 reading
+    holds the turned round, and physical left hard drops four settled
+    cells. The round's input log carries 11 acting ticks in the pinned
+    order, and the session leaves `orientation=portrait` saved.
+- `ctest` in both configurations: all five suites pass.
+  `stackfall_input_tests` reports 996 checks, 0 failures in Debug and in
+  Release; six new checks cover the landscape table, the portrait table,
+  a round driven by the stick with the DAS charge and the soft-drop and
+  hard-drop arithmetic, a turned round with the face buttons beside the
+  stick, the orientation turn forgetting a deflection, a capture
+  ignoring one, and a removal dropping one.
+- `tests/harness/t024.sh` with `T024_BUILD_DIR=build` and
+  `HARNESS_RUN_ID=t86-t024-debug`: the retained play sessions pass on the
+  changed input path (evidence in `build/agent-checks/t024-2026-11-06-020029`).
+- Determinism: `stackfall_tests --seed 987654321` prints the five pinned
+  replay hashes byte-identically in Debug and Release
+  (`0x21f9ca462e951bde`, `0x18e1e402eb9d7d35`, `0x202208fd127052b3`,
+  `0x81bfc4d20c4c70ee`, `0xca3dd820c7751a5b`) and 0 failures. The rules
+  core is untouched by the change - no axis event arrives in a rules
+  replay - and every pre-existing session's observation stream is
+  unchanged.
+
+Verified findings:
+
+- The stick and the D-pad cannot disagree: both resolve to control ids
+  and the ids travel one table per orientation and device, so a rebound
+  table (the T066 capture path) moves the stick with the arm, and the
+  fixed menu roles ride along - the stick navigates every menu in both
+  orientations.
+- SDL delivers `SDL_CONTROLLERAXISMOTION` for a virtual axis change
+  after `SDL_JoystickUpdate()`, and an initial value-0 event when the
+  controller opens; the rest state resolves to no arm, so the open event
+  is a no-op. Probed with a standalone SDL program before the
+  implementation began.
+- A deflection held across the orientation turn is spent by the turn,
+  and the release that follows it lands on an arm nobody believes in
+  anymore: `check_stick_orientation_turn_clears` pins both halves.
+
+Open: the physical RG503 remains the final authority for the stick's
+feel - the deadzone value and the axis signs are SDL's report of the
+device, and the device acceptance item of section 12 covers them. The
+playable visual review T076 and the device gates T018/T036 stay open.
+
+## T87: hard drop leaves Up, the right shoulder joins the layout (2026-11-06)
+
+Task: the operator device report of 2026-11-05 found Up too sensitive on
+both devices - the D-pad's up arm and the stick reading that reaches it -
+so an accidental touch hard dropped a piece. The player needed a way to
+move the trigger off Up, and a stick that never drops on a light touch.
+
+What landed:
+
+- `stackfall/bindings.hpp`/`.cpp`: `kControllerButtonR1`, the right
+  shoulder, as the eleventh rebindable controller control, with the
+  canonical name `r1`, the display name `R1`, and no menu role. The gap
+  was structural: the left shoulder is Hold's spare in both default pad
+  tables, so the one-control-one-action rule of T066 rejected every
+  shoulder a capture could name - no rebind could ever put hard drop on a
+  shoulder. R1 carries nothing in the defaults of either orientation, so
+  nothing else moves.
+- `src/input_sdl.cpp`/`stackfall/input_sdl.hpp`:
+  `SDL_CONTROLLER_BUTTON_RIGHTSHOULDER` closes the button table, the
+  virtual pad's mapping string gains `rightshoulder:b5`, and the script
+  command `pad r1 down` presses it. `kControllerControlCount` grows with
+  the enum, so the capture path, the conflict rule, and the file writer
+  accept the new control with no further change.
+- `tests/test_bindings.cpp`: `test_right_shoulder_control` pins the name
+  round trip, R1 free in both default tables while L1 stays Hold's
+  spare, the rebind of hard drop to R1 with the file round trip
+  (`landscape.pad.harddrop=r1`, the portrait table untouched), the
+  defaults rendering without `r1`, and the freed Up naming no action.
+- `tests/test_input_sdl.cpp`: `check_harddrop_rebind_off_up` drives the
+  virtual controller through the defaults - a reading of 7999 raises
+  nothing, a full deflection raises one hard-drop edge, eight held ticks
+  raise nothing more - and through both rebound tables - R1 drops once,
+  the freed D-pad up and the freed stick reading carry the menu role
+  only - in landscape and in portrait. The device translation tables
+  gained the R1 button and name round trips.
+- The staged harness session `harddrop-rebind` (three scripts and a
+  manifest) and its independent checks in `tests/harness/check_harness.py`.
+- `docs/SPEC.md` gained "Hard drop off Up (task T87)" in section 5, the
+  `r1` control word and the legacy-file rule in section 9, acceptance
+  item 23, and the device checklist item. `docs/AGENT_TESTING.md` and
+  `README.md` describe the session and the rebind.
+
+The stick needed no new code. The T86 design already resolves a reading
+to a D-pad arm behind the deadzone and gives that arm one edge per
+deflection; T87 pins the rule the operator asked for. A reading inside
+the deadzone - 7999 on either axis, at rest or wobbling across the
+boundary - drops nothing. One full deflection drops exactly once,
+however long it is held. After a rebind takes Up, a full deflection
+carries only the arm's fixed menu role, and the freed D-pad up does the
+same: no second trigger remains, because a rebound action holds exactly
+the control the capture took.
+
+Runs (seed 20261103 everywhere, no commit yet - the tree is the
+candidate; SHA-256 of the sources the change touched, which tie the
+runs below to it):
+`include/stackfall/bindings.hpp` a06e254e..., `src/bindings.cpp`
+5b56d384..., `include/stackfall/input_sdl.hpp` 7c3033b5...,
+`src/input_sdl.cpp` 56321e01..., `tests/test_bindings.cpp` ab6f7166...,
+`tests/test_input_sdl.cpp` a468aa78..., `tests/harness/run.sh`
+b7338848..., `tests/harness/check_harness.py` 4da67f0a...,
+`tests/harness/scripts/harddrop-rebind-landscape.script.txt` e724ceeb...,
+`tests/harness/scripts/harddrop-rebind-portrait.script.txt` db3348d4...,
+`tests/harness/scripts/harddrop-rebind-relaunch.script.txt` 85c71073...,
+`tests/harness/scripts/harddrop-rebind.stages.txt` cc91ca7a....
+
+- `tests/harness/run.sh` with `HARNESS_RUN_ID=t87-final` into
+  `build/agent-checks/t87-final/` (Debug) and
+  `HARNESS_BUILD_DIR=build-rel HARNESS_RUN_ID=t87-final-release` into
+  `build/agent-checks/t87-final-release/` (Release): thirty sessions,
+  `checks passed: 1766, failed: 0` in both configurations. The new
+  session replays through the headless reference with byte-equal
+  checkpoint streams in all three stages (31, 42, and 27 records) and
+  passes its own 158 pins:
+  - stage one (marked `settings=none`, so it also proves the rebind path
+    writes no settings file): the T067 defaults with the stick's edge
+    rule pinned from both sides, then three captures - X, R1, and the
+    key D - each `result=applied` in the input log, and the rebound
+    round: D-pad up, the stick reading, and X settle nothing while R1
+    and D drop, with exactly four drop edges in the log and the controls
+    snapshot holding the two landscape overrides.
+  - stage two: the relaunch reads that file (`controls start=custom`),
+    plays it, turns portrait through the ORIENTATION row, proves the
+    untouched portrait defaults still hard drop from the grip's up arm -
+    the landscape rebind leaked into no other table - then rebinds the
+    portrait hard drop to R1 through the turned menu roles and plays the
+    rebound portrait table, with the orientation saved and the third
+    override in the snapshot.
+  - stage three: the relaunch opens portrait (`orientation start=portrait`)
+    on the saved custom tables, proves the persisted rebind in a round,
+    and ends on RESTORE DEFAULTS (`controls restore result=defaults`),
+    whose snapshot is the section 5 bytes again, played once more before
+    the quit.
+- `ctest` in both configurations: all five suites pass.
+  `stackfall_input_tests` reports 1043 checks, 0 failures in Debug and in
+  Release; `stackfall_tests` reports 73,350,523 checks, 0 failures.
+- `tests/harness/t024.sh` with `HARNESS_RUN_ID=t87-t024-debug`: the
+  retained play sessions pass on the changed input path (evidence in
+  `build/agent-checks/t024-2026-11-06-030937`).
+- Determinism: `stackfall_tests --seed 987654321` prints the five pinned
+  replay hashes byte-identically in Debug and Release
+  (`0x21f9ca462e951bde`, `0x18e1e402eb9d7d35`, `0x202208fd127052b3`,
+  `0x81bfc4d20c4c70ee`, `0xca3dd820c7751a5b`) and 0 failures.
+
+Verified findings:
+
+- Legacy `controls.dat` files load unchanged: a control that holds
+  nothing appears in no line, so a pre-T87 file is the same canonical
+  33 lines and needs no migration. The defaults render without `r1`,
+  pinned by the bindings suite and by stage three's restore snapshot.
+- A rebind to R1 is possible in both orientation tables and both survive
+  relaunches: stage two relaunches on the landscape pair (R1 and D) and
+  adds the portrait R1; stage three relaunches on all three and restores.
+- The freed Up keeps its fixed menu role in both orientations - the
+  title, pause, options, and rebind rows all keep moving on it - while
+  it settles no piece, pinned by the `settled=0` records and the
+  drop-edge count of the input log.
+
+Screenshots (the rebind flow in both orientations, from
+`build/agent-checks/t87-final/harddrop-rebind/`): landscape
+`stage1/shots/rebind-open-landscape.bmp`, `rebind-at-harddrop.bmp`,
+`rebind-capture-armed.bmp`, `rebind-harddrop-x.bmp`, and
+`rebind-harddrop-r1.bmp` walk the flow from the open page to the R1
+binding; portrait `stage2/shots/rebind-open-portrait.bmp`,
+`rebind-at-harddrop-portrait.bmp`, `rebind-capture-armed-portrait.bmp`,
+and `rebind-harddrop-r1-portrait.bmp` walk it again through the turned
+menu roles; `stage3/shots/rebind-at-restore-portrait.bmp` and
+`defaults-restored-portrait.bmp` close on the restore. Pixel diffs bound
+what each step changed: armed to applied moves 3176 pixels inside
+(110,292)-(683,478) in landscape and 5076 inside (474,51)-(762,493) in
+portrait - the rebound row and the status line - while the landscape and
+portrait applied pages differ by 36,550 pixels, the turned layout. The
+checker pins the scene and cursor row of each image from its observation
+record and requires the portrait page quiet outside its bands.
+
+Open: the physical RG503 remains the final judge of the fix the operator
+asked for - the deadzone feel, the freed arm, and the shoulder's reach.
+The device acceptance item of section 12 covers them; the device gates
+T018/T036 stay open.
+
+## T95: per-piece in-cell designs, off by default (2026-11-06)
+
+Task: the owner concept of 2026-11-05 - color is the only cue a flat fill
+gives a piece, so grayscale screens and colorblind players get no second
+signal. Each block needed its own detailing, drawn only with the
+rectangles-and-lines grammar of SPEC section 6, and the setting needed a
+new options row with Off as the default.
+
+What landed:
+
+- `include/stackfall/renderer_sdl.hpp`/`src/renderer_sdl.cpp`:
+  `cellDesign(PieceId, size)` and `CellDesign` (at most four rects) build
+  each piece's mark from plain integer math - no allocation, no state -
+  and `Renderer::drawCell` paints them in the palette's own dark shade
+  inside the two-pixel interior band, past the outline and the bevel. The
+  pattern-to-piece mapping, which this note also records below, is
+  documented at the declaration.
+- The PIECE DESIGNS row, tenth of the options screen
+  (`kOptionsPieceDesignsRow = 9`, `kOptionsItemCount = 10`); the band
+  moved up to fit ten rows at the shared 44-px metrics (heading 40, menu
+  88, footer 516) and the render suite pins that nothing reaches the
+  canvas edge.
+- `piecedesigns=on|off`, the fourteenth line of `settings.dat`
+  (`include/stackfall/storage.hpp`, `src/storage.cpp`): strict prefix
+  parsing keeps every earlier form - a legacy thirteen-line file loads
+  with the designs off - and the accepted complete-file line counts are
+  2, 3, 7, 8, 11, 13, and 14.
+- `src/main.cpp`: `togglePieceDesigns` on select, the
+  `piecedesigns start=` input-log line, and the startup Settings line
+  naming the value.
+- `tests/test_renderer_sdl.cpp` `run_piece_design_checks`: mark geometry
+  bounds at every drawn cell size (12, 15, 27, and 40 px, and the
+  too-small 9 and 8), empty designs below 8 px, pairwise-distinct masks
+  at every size that draws them, board cells in color and in gray in
+  both orientations, the Next and Hold previews, and the ghost interior
+  free of fill and dark.
+- `tests/fixtures/all-pieces.board.txt`: the seven tetrominoes settled
+  once each in spawn shape, no full row, free spawn cells - one frame
+  draws every mark side by side.
+- The harness sessions `piece-designs-keyboard`,
+  `piece-designs-pad`, and `piece-designs-gray` (scripts, checker
+  branches, `run.sh`), the checker's `check_piece_design_marks`
+  pixel reader, the options-six scripts extended to the tenth row, and
+  `tools/perf/t095_piece_designs.sh` for the cost measurement.
+- `docs/SPEC.md` sections 4.7, 6.2, 6.3, 9, and acceptance item 24;
+  `docs/AGENT_TESTING.md` describes the sessions.
+
+The pattern-to-piece mapping, at the 27-px board cell (mark extents grow
+with the cell; below 8 px the interior is too small and no mark draws):
+
+- I, cyan/gray 205: one wide horizontal rule, 2 px tall, across the
+  interior.
+- O, amber/gray 235: one hollow square, the ring one quarter of the
+  interior in from its own edge.
+- T, violet/gray 150: one plus - the I rule crossed by a 2-px-wide
+  vertical rule.
+- S, green/gray 190: two filled squares stacked with a gap.
+- Z, crimson/gray 140: the same two squares side by side.
+- J, blue/gray 130: one tall vertical rule, 2 px wide.
+- L, orange/gray 170: one small filled square, centered.
+
+The ghost keeps its hollow outline alone - a landing preview carries no
+fill, so it carries no mark.
+
+Runs (seed 20261103 for the harness, 31337 for the perf driver, no commit
+yet - the tree is the candidate; SHA-256 of the sources the change
+touched, which tie the runs below to it):
+`include/stackfall/renderer_sdl.hpp` f85b3b3a...,
+`include/stackfall/game.hpp` 64ea8777...,
+`include/stackfall/storage.hpp` f43a046f...,
+`src/renderer_sdl.cpp` 267376a1..., `src/storage.cpp` 8600789e...,
+`src/main.cpp` dc5ac2c2..., `tests/test_renderer_sdl.cpp` abbae521...,
+`tests/test_screens.cpp` 242b0431..., `tests/test_storage.cpp`
+a6cd6e43..., `tests/fixtures/all-pieces.board.txt` 209515d0...,
+`tests/harness/run.sh` 490c0ea2..., `tests/harness/check_harness.py`
+3ca47c38...,
+`tests/harness/scripts/piece-designs-keyboard.script.txt` ce5c9a13...,
+`tests/harness/scripts/piece-designs-pad.script.txt` 7d4cd2ab...,
+`tests/harness/scripts/piece-designs-gray.script.txt` dce698f9...,
+`tools/perf/t095_piece_designs.sh` 0129b0c0....
+
+- `tests/harness/run.sh` with `HARNESS_RUN_ID=t095-final` into
+  `build/agent-checks/t095-final/` (Debug): thirty-three sessions,
+  `checks passed: 1940, failed: 0`. The three new sessions replay through
+  the headless reference with byte-equal checkpoint streams (29, 14, and
+  27 records):
+  - `piece-designs-keyboard`: nine downs reach the tenth row, one select
+    saves `piecedesigns=on`, the fixture round draws every mark, the
+    same select twice more walks the value off and back on with a plain
+    control round between, and the input log carries
+    `piecedesigns on status=ok` and `piecedesigns off status=ok` after
+    `piecedesigns start=off`.
+  - `piece-designs-pad`: the same row on the developer virtual
+    controller, `pad down` nine times and A, ending with the saved
+    `piecedesigns=on`.
+  - `piece-designs-gray`: GRAYSCALE and PIECE DESIGNS on in one visit,
+    the landscape frame, the turn through the ORIENTATION row, the
+    portrait frame, and the quit through the turned menu roles; the file
+    ends at grayscale on, portrait, designs on.
+  The checker's `check_piece_design_marks` reads one settled cell of
+  every piece type from each captured frame - I (0,3), O (6,4), T (1,6),
+  J (6,7), S (1,9), L (8,10), Z (0,12) of the fixture - through the
+  portrait rotation where the frame is turned, and requires the interior
+  to hold only the palette fill and dark shade, the mark pixels to be
+  nonempty, and no two pieces to share one mask; the plain frame of the
+  keyboard session requires the same interiors to hold no dark pixel at
+  all.
+- `ctest` in Debug (`build`) and Release (`build-rel`): all five suites
+  pass both configurations, so the render suite covers every pattern in
+  Debug and in Release. `stackfall_render_tests` reports 20648 checks,
+  0 failures; `stackfall_tests` reports 73,350,547 checks, 0 failures.
+- Visual confirmation of the acceptance's grayscale screenshots: the two
+  capture frames read again by an independent image model, which named
+  every mark - dash, ring, plus, stacked pair, side-by-side pair, post,
+  and dot - and called the seven "clearly distinguishable"; a
+  pixel-level extraction of the same cells (Pillow, `/tmp/t95dbg`)
+  reproduced each mask exactly, with zero pixels of any third shade in
+  any interior, in both orientations.
+
+Verified findings:
+
+- The marks never leave the cell: the `add` bounds check drops any rect
+  that would cross the two-pixel interior band, and below 8 px the
+  interior is too small for any mark (a 7-, 6-, or 5-px cell draws none
+  rather than a wrong one; at 8 and 9 px a reduced mark fits, and the
+  suite pins its geometry). The 12-px portrait preview - the smallest
+  supported cell - draws all seven distinctly.
+- The default path is the old code: with the setting off, `drawCell`
+  runs the same statements as before plus one false branch, the render
+  suite pins the off frame's interiors to the flat fill alone, and every
+  non-options observation stream of the harness is byte-identical to the
+  headless reference. The measured default-path check is the T95 section
+  of `notes/performance.md`: the same Off workload against a build of
+  HEAD, the commit the worktree started from.
+- Two script defects were found and fixed by the reference replay before
+  any evidence was kept: the first drafts walked only eight downs (the
+  select opened the BACKGROUNDS page and the session derailed), and the
+  final title walks were one down off in both new sessions. The
+  reference's `menu=options:8` against the expected `9` caught the first;
+  the `scene=playing` at `quit-confirmed` caught the second.
+
+Open: none for this task. The physical RG503 check of the marks at its
+screen size and viewing angles stays with the device acceptance list
+(section 12) and the blocked device gates T018/T036.
+
+## T022: front pages state the piece-designs and archive state (2026-11-06)
+
+Task T022, the standing documentation repair: the front pages state the
+actual integrated state and agree with each other. Sources: the T022
+contract, the T086, T087, and T095 records above, and the blocked T094
+refresh. Tested in the detached worktree of `c216a0d` plus the uncommitted
+task changes. No production source changed.
+
+The repair: `README.md` still said the harness "drives thirty sessions"
+while `tests/harness/run.sh` and the testing guide drive thirty-three, and
+its coverage list omitted the three per-piece design sessions of T095.
+The status paragraph still counted "all twelve preferences" while the
+settings file carries thirteen since T095, listed the options rows
+without PIECE DESIGNS, and named neither the ten-row count nor the
+per-piece marks among the landed work. It also claimed the release
+archive "was refreshed at the integrated revision", which the
+`portmaster/BUILDING.md` pin contradicts: line 91 still names
+`91c9f102...`, the binary of the T071 refresh (the file last changed in
+`cd54ba2`), so the archive carries none of the background wave, the T86
+thumbstick play, the T87 rebind, or the T95 marks, and the release notes
+name none of them either. `docs/SPEC.md` still called the options screen
+"the ten-setting screen" (the preference count of the T071 era), still
+said section 5's options bullet "moves its nine rows", and its status
+line carried the same stale archive claim. The testing guide's
+backgrounds-relaunch stage three still said the legacy file upgrades to
+"the current thirteen-line canonical form" with "the two new lines",
+although T095 made it fourteen lines with three new ones.
+
+The README now counts thirty-three sessions and names the per-piece
+design coverage, counts thirteen preferences, names the ten-row screen
+with the piece-designs row, lists the per-piece marks among the landed
+work, and states that the archive was refreshed at the device-feedback
+revision and that the background catalog, the thumbstick play, the
+shoulder-button hard-drop rebind, and the piece designs are not in it
+yet. `docs/SPEC.md` names the ten-row screen with its thirteen saved
+preferences, moves the section 5 bullet to ten rows with PIECE DESIGNS
+changing no input handling, and states the archive predates the
+background wave with the end-of-wave ARM64 refresh pending, so both front
+pages agree again. The guide's stage-three text names the three new
+lines and the fourteen-line form.
+
+Verification, all passed:
+
+- `HARNESS_RUN_ID=t022-readme-check-2026-11-06 tests/harness/run.sh`:
+  PASS, thirty-three sessions, 1940 of 1940 checks, 0 failures, evidence
+  in `build/agent-checks/t022-readme-check-2026-11-06/` (`source.sha256`
+  pins the game and reference binaries and every source the harness
+  reads). The run proves the rewritten sentences: `sessions.txt` lists
+  the thirty-three names, the 168 checks of the three `piece-designs-*`
+  sessions pass - among them `piece-designs-keyboard/designs-on` at
+  `menu=options:9` and the three `saved-settings` checks that end on
+  `designs=on` - and `backgrounds-relaunch/stage3-settings-upgraded`
+  still passes against the checker's canonical helper, the fourteen-line
+  form the guide now names; its record line already reads `designs=off`.
+- `ctest` in Debug (`build`) and Release (`build-rel`): 5 of 5 suites in
+  each.
+- The session count agrees across `README.md`, `docs/AGENT_TESTING.md`,
+  and the `run.sh` header (thirty-three in each). The preference count
+  agrees between `README.md` and `docs/SPEC.md` (thirteen), and the
+  guide's canonical-form line count matches it (fourteen lines, one of
+  them the version line). No "thirty sessions", "twelve preferences",
+  "ten-setting", or options-screen "nine rows" remains in any of the
+  three. Every relative link in `README.md` resolves, and the lines the
+  repair touched keep each file's width.
+
+Findings and open questions:
+
+- The archive staleness the README now states is the blocked task T094:
+  the pin, the zip, the release notes, and the T018 operator handoff all
+  need the end-of-wave ARM64 rebuild. The blocked gates are unchanged:
+  T018 (the RG503 checklist), T020 and T021 (device validation and
+  publication), T063 and T064 (the soundtrack listening and design
+  passes), T076 (the playable background review), and T057 through T059
+  (the per-class resolution strategy).
+
+## T095: the unused-parameter warning off the build gate (2026-11-06)
+
+Task: the review of revision bba37fa found one compiler warning in both
+configurations - `tests/test_renderer_sdl.cpp:1040:36: warning: unused
+parameter 'what' [-Wunused-parameter]`, traced to the `checkCellInterior`
+helper that commit b7349be ("Complete T95") added - so the t015 builds
+phase failed its zero-warning gate while `ctest` and the harness stayed
+green. Only the warning gate had regressed.
+
+What landed:
+
+- `tests/test_renderer_sdl.cpp` `checkCellInterior`: the failure path now
+  prints the `what` label it was handed, following the context-line
+  precedent of `checkPiece` in `tests/test_pieces.cpp` and
+  `boardMatchesModel` in `tests/test_board.cpp`. A wrong interior pixel
+  names the check that failed, its offset inside the cell, the drawn RGB,
+  and the wanted shade, instead of a bare `SC_CHECK(false)` at one line
+  shared by every caller.
+
+Runs (no commit yet - the tree is the candidate; repository head bba37fa,
+`tests/test_renderer_sdl.cpp` post-edit SHA-256
+`c91118887cc41c19a2aaf7daff400f65b16659e5642cbac8081a7488b2b2da93`):
+
+```bash
+T015_PHASES='builds' T015_RUN_ID=t095-bba37fa-builds tests/harness/t015.sh
+```
+
+- Debug, `build/agent-checks/t095-bba37fa-builds/builds/build-debug.log`:
+  59 of 59 compile and link steps, zero `warning:` lines; `ctest` 5 of 5
+  suites pass, `stackfall_render_tests` among them.
+- Release, `build-release.log`: 59 of 59 steps, zero `warning:` lines;
+  `ctest` 5 of 5 suites pass.
+- The driver prints `t015: M3 GATE PASS` and exits 0. The review run that
+  filed this task - `T015_RUN_ID=review-t015-bba37fa` on the unmodified
+  tree, its evidence directory not retained here - had reported exactly one
+  warning per configuration and the exit 1 of "Debug build has 1 compiler
+  warnings", so this pass is the repair of that finding.
+
+Verified findings:
+
+- The warning is gone in both configurations and the render suite still
+  passes, so the helper's checks read the same pixels as before; only the
+  failure report gained text.
+
+Open questions: none.
+
+## T093: the one-time parallel ctest flake in the record-writer suite (2026-11-06)
+
+Task: the first `ctest -j4` run of a fresh Debug build reported three
+failures inside `stackfall_tests_seed` that vanished on a serial rerun and
+never returned (Papercut pc_01M6NVGZY80XPVSZW5317AGBQ4, the T078 session of
+2026-11-05). Reproduce under `-j4` with load, then widen the tolerance or
+document the suite as serial-only for the gate scripts.
+
+Root cause, from `tests/test_record_writer.cpp` as it stood: the suite was
+the only one in the headless binary that times real waits, and exactly two
+of its checks raced the clock rather than a synchronization fact.
+
+- `submit_does_not_wait_for_storage` held `elapsedMs < 8` around a
+  `submit()` that includes `std::thread` creation. Any preemption longer
+  than 8 ms under a loaded parallel run fails it.
+- `poll_empties_completed_writes` polled `pollCompleted().empty()` right
+  after `submit()` and bet the sink's 80 ms sleep had not elapsed. A longer
+  deschedule fails that check *and* the `first.size() == 1` two lines
+  later, because the earlier poll already drained the completed write.
+  One plus two is exactly the three failures the papercut reported.
+- `stackfall_tests` and `stackfall_tests_seed` are the same suite; `-j4`
+  ran both copies of the timing suite at once, doubling the load the waits
+  were timed under.
+
+Reproduction, on this 8-core host (evidence in
+`build/agent-checks/t093-parallel-flake/`):
+
+- `ctest -j4`, no extra load: pass. With 16 busy loops (a 3x slowdown,
+  42 s to 135 s): pass, including both whole-suite tests.
+- `taskset -c 0-3 ctest -j4` against 24 busy loops: the record-writer
+  checks survived every attempt, but the sibling wall-clock check
+  `tests/test_audio_sdl.cpp:979` (`p99 * 2 < bufferNs`) FAILED - the same
+  disease in another suite, reproduced twice, before and after the fix.
+  The record-writer flake itself stayed one-time, exactly as the papercut
+  says; the failure class is confirmed, the exact check is not.
+- Six concurrent copies of `stackfall_tests --seed 987654321` under the
+  same 24-loop, 4-core starvation: all passed, before and after the fix.
+
+What landed:
+
+- `tests/test_record_writer.cpp`: the submit ceiling widens from a tenth
+  to half of the injected 80 ms write (`elapsedMs < 40`). The old
+  synchronous path paid the sink's full sleep, so it still fails the check
+  by 2x; only the margin against preemption grew. The in-flight poll now
+  blocks the write on a latch (`BlockedSink`): the case waits until the
+  sink is running inside the write, proves the poll empty, releases, and
+  then pins the completed record's score, tick, and status - the check got
+  stronger while losing its clock race.
+- `CMakeLists.txt`: the two whole-suite ctest entries share
+  `RESOURCE_LOCK stackfall_suite_timing`, so a `-j` run never overlaps the
+  two copies of the timing suite. Verified: post-fix, `stackfall_tests_seed`
+  starts only after `stackfall_tests` passes (79 s total instead of 42 s),
+  while the SDL suites still run beside them.
+- `docs/AGENT_TESTING.md`: a new "Parallel ctest runs" section states the
+  gate scripts run `ctest` serially by design, that a manual `-j4` is safe
+  for the record-writer suite and why, and that the audio p99 ceiling
+  remains load-sensitive with no owning task.
+
+Verification, all local (fresh Debug build `build-t093`, post-fix):
+
+- Serial `ctest`: 5 of 5 suites pass.
+- `ctest -j4`: 5 of 5 pass, the resource lock verified as above
+  (`postfix-j4-lock.log`).
+- `taskset -c 0-3 ctest -j4` against 24 busy loops: `stackfall_tests` and
+  `stackfall_tests_seed` both pass under the starvation that reproduces
+  the audio flake; `stackfall_audio_tests` fails its p99 check
+  (`postfix-load24-4cores-j4.log`), the pre-existing sibling finding.
+- Six concurrent `stackfall_tests --seed 987654321` copies under the same
+  starvation: 73,350,556 checks, 0 failures each (4 more checks per run
+  from the strengthened poll case).
+- `tests/test_record_writer.cpp` recompiles with zero `warning:` lines,
+  holding the T095 zero-warning gate.
+
+Open: the audio callback's p99 ceiling in `tests/test_audio_sdl.cpp` still
+flakes under CPU starvation beyond anything a gate script produces; it
+needs its own task before anyone widens a performance pin. T096, later the
+same day, took that task; see the next section.
+
+## T096: the audio callback p99 ceiling under parallel ctest starvation (2026-11-06)
+
+Task: `tests/test_audio_sdl.cpp`'s `p99 * 2 < bufferNs` failed twice under
+`taskset -c 0-3 ctest -j4` with 24 busy loops (T093's evidence), the same
+wall-clock-under-load failure class in the only other suite that times real
+work. Decide how to handle it without weakening the performance pin.
+
+Root cause, from the measured pair: the check timed the callback with the
+wall clock alone. A starved parallel run deschedules the thread mid-mix, so
+the wall p99 measures the load the host carries, not the mix - while the
+work itself is unchanged. The reproduction below shows exactly that shape:
+p50 flat at 0.044 ms, p99 at 8.1 ms, seventy percent of the buffer. The
+ceiling was never in danger from the software; only the clock was.
+
+What landed, a stronger check with the same ceiling (task T096):
+
+- `tests/test_audio_sdl.cpp` measures both clocks per callback: the wall
+  clock that always printed for `notes/performance.md`, and the calling
+  thread's own CPU clock (`clock_gettime(CLOCK_THREAD_CPUTIME_ID)`, wall
+  fallback on a host with no POSIX thread clock). The pin reads the CPU
+  clock; the wall percentiles still print unchanged beside it.
+- The ceiling stays exactly where it was - p99 under half the buffer - so
+  the pin is not widened. Preemption adds no CPU time, so no amount of host
+  load can trip it; a mix that genuinely costs more still misses it by far.
+  The margin reasoning is unchanged: the desktop p99 sits near one percent
+  of the buffer, so a real overrun misses by about 50x.
+- The printed line names the clock the pin read, so a run on a fallback
+  host says so in its own evidence instead of failing quietly later.
+
+Reproduction and verification, all local (Debug build `build`, evidence in
+`build/agent-checks/t096-parallel-flake/`; `starve.sh` is the driver that
+pins N busy loops to the same four cores the command is taskset to):
+
+- Baseline `ctest -j4`, no extra load: 5 of 5 pass, 79 s
+  (`prefix-baseline-j4.log`).
+- Pre-fix `taskset -c 0-3 ctest -j4` against 24 busy loops: 4 of 5,
+  `stackfall_audio_tests` fails `test_audio_sdl.cpp:979` with wall p50
+  0.044 ms and p99 8.108 ms - 70 percent of the 11.61 ms buffer
+  (`prefix-load24-4cores-j4.log`, 496 s). The flake reproduces on demand,
+  not one-time like T093's.
+- Pin-bites probe (temporary local edit, reverted immediately): the same
+  measured region running the mix 151 times reads p99 6.8 to 7.1 ms of
+  buffer on both clocks and fails the half-buffer ceiling
+  (`pin-still-bites.log`) - the pin still catches a genuinely expensive
+  mix at the old threshold.
+- Post-fix `taskset -c 0-3 ctest -j4` against the same 24 loops: 5 of 5
+  pass, 510 s (`postfix-load24-4cores-j4.log`), and again at 510 s after
+  the final shape of the clock helpers (`postfix2-load24-4cores-j4.log`).
+- Post-fix audio suite alone under the same starvation, for the numbers:
+  wall p99 12.216 ms - 105 percent of the buffer, worse than the failing
+  pre-fix run - beside a CPU p99 of 0.075 ms, one percent, and the check
+  passes (`postfix-load24-4cores-audio.log`). That pair is the whole
+  diagnosis in one line. A second run of the final code read wall p99
+  5.384 ms (46 percent) against the same CPU p99
+  (`postfix2-load24-4cores-audio.log`).
+- Post-fix serial `ctest`: 5 of 5 pass, 84 to 85 s.
+- Release build (`build-rel`): zero `warning:` lines, 5 of 5 equivalents
+  pass, wall p50 0.009 ms and p99 0.016 ms with both clocks agreeing.
+
+Open questions: none. A host with no POSIX thread clock falls back to the
+wall clock and stays load-sensitive there; every build host this project
+uses (desktop Linux, the Ubuntu 22.04 ARM64 container) has one, and the
+printed line names the fallback when it happens.

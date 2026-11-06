@@ -1,0 +1,9 @@
+# The three keyboard processes of the backgrounds-relaunch session (T084),
+# in order, over the session's one save directory. Each stage's `settings=`
+# field names a template under tests/harness/settings/ that the driver copies
+# into that directory first: stage one relaunches on the saved Fixed design 7
+# in portrait, stage two on a corrupted background ID, stage three on the
+# legacy eleven-line file of the music era.
+script=backgrounds-relaunch-fixed.script.txt settings=fixed-seven-portrait.dat
+script=backgrounds-relaunch-broken.script.txt settings=broken-background.dat
+script=backgrounds-relaunch-legacy.script.txt settings=legacy-music-eleven.dat

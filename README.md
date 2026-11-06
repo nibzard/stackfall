@@ -8,9 +8,12 @@ Clear lines, keep room for the next piece, and chase your high score as the game
 Hold a piece for later, plan around five previews, and use the ghost outline to place each drop.
 
 The desktop build is playable with a keyboard or controller.
+The play scene paints twenty procedural level backgrounds behind the HUD,
+and the Backgrounds option saves an Auto, Off, or Fixed choice.
 The handheld target is the RG503 running ROCKNIX through PortMaster.
-The PortMaster package is assembled and checked locally; testing on the
-device and publication remain unfinished.
+The PortMaster package is assembled and checked locally, from the sources
+before the background wave; its refresh, testing on the device, and
+publication remain unfinished.
 
 ## Play on desktop
 
@@ -33,8 +36,9 @@ Install the development files for Simple DirectMedia Layer (SDL) 2.
 3. Select **Start Game**. Open **Controls** from the title screen to see the
    bindings, and press **Enter** or **A** there to change them. Open
    **Options** to change the sound, ghost outline, board grid, hold
-   preview, Next preview count, grayscale play scene, and screen
-   orientation, and open **Music** from there for the soundtrack settings.
+   preview, Next preview count, grayscale play scene, screen orientation,
+   and piece designs, and open **Music** from there for the soundtrack
+   settings or **Backgrounds** for the level wallpaper.
 
 ### Controls
 
@@ -67,6 +71,12 @@ press any key or button to bind it to that action. Your changes apply to
 the orientation you are playing, save automatically, and survive a
 relaunch.
 
+If up on the D-pad or the stick drops pieces you do not mean to drop, bind
+hard drop to another input. Every face button and both shoulders are
+bindable, and the right shoulder holds nothing in the default table, so it
+is free. Once you rebind, the freed up drops nothing at all, and a stick
+reading drops only when you push it past its deadzone, once per push.
+
 - Press the control an action already uses to leave it unchanged.
 - A key or button can hold one gameplay action at a time. The screen tells
   you when a press belongs to another action, and nothing changes.
@@ -80,7 +90,7 @@ the default table and keeps playing.
 
 ### Your progress
 
-The game saves your high score, all ten options settings, and your custom
+The game saves your high score, every options setting, and your custom
 controls between sessions. A round you quit, close, or interrupt keeps
 every point it scored, so an abandoned run still counts toward the high
 score.
@@ -101,6 +111,12 @@ You can also play in portrait. Set **Options** to Portrait and the whole
 scene turns at once into a 544 × 960 frame with 40-pixel board squares, in
 the session you are playing. Hold the device sideways, and each control
 keeps the on-screen action it points at in the turned frame.
+
+Turn **Piece Designs** on and every block carries its own small mark - a
+rule, a ring, a plus, a pair of squares, a post, or a dot - so you can
+tell the pieces apart by pattern alone when color is hard to read. The
+marks draw on the board and on the Hold and Next previews, and the setting
+is off by default.
 
 ### The soundtrack
 
@@ -210,32 +226,54 @@ launcher does and how the two layouts relate.
 
 ### Project status
 
-The project stands in milestone M5, packaging and release: the M3 desktop gate
-and the M4 software checks passed, and the release package is assembled locally.
-The rules, menus, options screen, saves, sound, the generated twelve-track
-soundtrack, and the desktop verification harness are implemented. The options
-screen changes the sound, ghost outline, board grid, hold preview, Next
-preview count, grayscale play scene, and screen orientation, and the Music
-submenu selects the track pool, both volumes, and the next track; all ten
-preferences persist between sessions.
+The project stands in milestone M5, packaging and release: the M3 desktop
+gate and the M4 software checks passed, and the release package is
+assembled locally. The rules, menus, options screen, saves, sound, the
+generated twelve-track soundtrack, and the desktop verification harness
+are implemented. The ten-row options screen changes the sound, ghost
+outline, board grid, hold preview, Next preview count, grayscale play
+scene, screen orientation, and piece designs, the Music submenu selects
+the track pool, both volumes, and the next track, and the Backgrounds
+submenu selects the Auto, Off, or Fixed wallpaper mode and the preferred
+design of the twenty level backgrounds; all thirteen preferences persist
+between sessions. The play scene paints the twenty procedural level
+backgrounds behind the HUD - rectangles only, no image assets - and Off
+restores the original flat wallpaper.
 Desktop stability checks, performance work, the 27-pixel board layout, the
 focused gameplay HUD (statistics left, Next right, no gameplay legend,
 pause route to the controls screen), portrait play with its rotated
-controls, the controls customization screen, the D-pad-up default for hard
-drop, and the orientation switch that applies in the running session have
+controls, the controls customization screen with the right shoulder among
+the bindable inputs, the D-pad-up default for hard
+drop, the analog stick playing through the D-pad arms behind its deadzone,
+the orientation switch that applies in the running session, and the
+per-piece in-cell design marks behind their off-by-default row have
 landed.
-The unattended harness (`tests/harness/run.sh`) drives twenty-four sessions
-through the real application, covering the scene cycle on both inputs, a
-planned game from an empty board, both inputs on every options row, the
-music settings page and its saved mode and volumes, the settings file after
-each change and across relaunches and legacy files, the hold-off rules, the
-five Next preview counts at one seed, the grayscale play scene, the record
-saved when a round is abandoned mid-game, a portrait round played on the
-rotated controls after a mid-session orientation turn, the landscape
-default hard drop on D-pad up with X carrying nothing, the controls
+The unattended harness (`tests/harness/run.sh`) drives thirty-three
+sessions through the real application, covering the scene cycle on both
+inputs, a planned game from an empty board, both inputs on every options
+row, the music settings page and its saved mode and volumes, the
+backgrounds page on both inputs with every design ID walked, the mode
+changes applied on the next play frame, and the saved, corrupted, and
+legacy settings files, the settings file after each change and across
+relaunches and legacy files, the hold-off rules, the five Next preview
+counts at one seed, the grayscale play scene, the record saved when a
+round is abandoned mid-game, a portrait round played on the rotated
+controls after a mid-session orientation turn, the landscape default hard
+drop on D-pad up with X carrying nothing, stick rounds in both
+orientations with the deadzone pinned from both sides, the controls
 customization screen on both inputs with the custom table kept across a
-relaunch and a damaged file recovered to the defaults, and three labeled
-board fixtures, each against a headless reference replay and pixel checks.
+relaunch and a damaged file recovered to the defaults, a staged rebind of
+hard drop to a face button, to the right shoulder, and to a key in both
+orientations with the freed up proven dead, the per-piece design row
+saved on, walked off and back on through a fixture round of every mark,
+and combined with grayscale and a mid-session portrait turn, and three
+labeled board fixtures, each against a headless reference replay and
+pixel checks.
+The integrated background validation (`tools/backgrounds/t085.sh`) walks
+the twenty-design catalog through the real game in both orientations, holds
+every captured frame against the design package, checks the saved options,
+the clocks, Off against the pre-backgrounds pixels, and the rendering cost
+against Off.
 The full desktop regression (`tests/harness/t015.sh`) covers the input
 repeat tuning, lock delay, the seven-bag randomizer, restart paths, and
 high-score persistence in Debug and Release, with deterministic hashes
@@ -255,8 +293,13 @@ project version, the sanity pin, the state-hash pins, the startup banner,
 and the package release notes; `tests/harness/t035.sh` holds them together.
 The assembled archive carries the performance fixes, the controls
 customization screen, the D-pad-up default, and the same-session
-orientation switch; it was refreshed at the integrated revision and its
-binary reproduces byte for byte in a clean container.
+orientation switch; it was refreshed at the device-feedback revision
+(T071) and its binary reproduces byte for byte in a clean container. The
+background catalog and its options, the thumbstick play, the
+shoulder-button hard-drop rebind, and the piece designs are not in that
+archive yet, because they landed after the refresh; the end-of-wave
+refresh rebuilds the ARM64 binary and the package from the integrated
+sources.
 Testing on the RG503 and public publication follow. The panel research in
 `notes/anbernic-resolutions.md` covers every Anbernic device class and the
 letterbox result on each; the owner's choice of a strategy per class sets

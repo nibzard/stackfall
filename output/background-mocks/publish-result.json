@@ -1,0 +1,327 @@
+{
+  "schema_version": "ax.cli.v1",
+  "command": "publish",
+  "status": "ok",
+  "run_id": "run_mw3dka8wpdaf",
+  "data": {
+    "drop_id": "01M6NJE34446PR85HRV4BCDSFJ",
+    "owned": false,
+    "expires_at": "2026-11-08T10:00:25.476Z",
+    "lifecycle": "liminal",
+    "state": "needs_attention",
+    "status": {
+      "drop_id": "01M6NJE34446PR85HRV4BCDSFJ",
+      "state": "needs_attention",
+      "current_phase": "SCANNING",
+      "progress_reason": "Scanning artifacts for malicious content.",
+      "lifecycle": "liminal",
+      "summary": "5 artifacts uploaded. Drop is needs_attention.",
+      "used_bytes": 20460146,
+      "max_bytes": 20971520,
+      "expires_at": "2026-11-08T10:00:25.476Z",
+      "retry_after_seconds": 5,
+      "safe_to_return_web_url": false,
+      "scan_clean": false,
+      "render_verification": "waiting_for_scan",
+      "settled": false,
+      "open_revision_requests": 0,
+      "preview_urls": [],
+      "return_blockers": [
+        {
+          "code": "manifest_invalid",
+          "source": "manifest",
+          "message": "Manifest name must be 1-128 safe display characters.",
+          "path": "manifest.json",
+          "object_id": "obj_01M6NJEA3XJJ090F0WQVZABNFQ",
+          "agent_next_action": "Fix manifest.json and upload it again."
+        }
+      ],
+      "required_checks": [
+        {
+          "check": "scan_complete",
+          "status": "pending",
+          "endpoint": "https://axinbox.com/v1/drops/01M6NJE34446PR85HRV4BCDSFJ/status",
+          "agent_next_action": "Poll status with backoff until scanning finishes."
+        },
+        {
+          "check": "repair_diagnostics",
+          "status": "failed",
+          "endpoint": "https://axinbox.com/v1/drops/01M6NJE34446PR85HRV4BCDSFJ/diagnostics",
+          "agent_next_action": "Read diagnostics and repair the blocking errors before returning the web_url."
+        }
+      ],
+      "diagnostics_url": "https://axinbox.com/v1/drops/01M6NJE34446PR85HRV4BCDSFJ/diagnostics",
+      "notes_url": "https://axinbox.com/v1/drops/01M6NJE34446PR85HRV4BCDSFJ/notes",
+      "logs_url": "https://axinbox.com/v1/drops/01M6NJE34446PR85HRV4BCDSFJ/logs?tail=50",
+      "markdown_sidecar": {
+        "recommended": false,
+        "present": false,
+        "path": "summary.md",
+        "content_type": "text/markdown; charset=utf-8",
+        "max_recommended_bytes": 262144,
+        "max_served_bytes": 1048576,
+        "purpose": "Agent-readable drop summary served when clients request text/markdown.",
+        "upload": {
+          "endpoint": "https://axinbox.com/v1/drops/01M6NJE34446PR85HRV4BCDSFJ/objects",
+          "metadata": {
+            "axinbox": {
+              "kind": "drop_markdown_sidecar",
+              "version": 1
+            }
+          }
+        }
+      },
+      "inferred_manifest": {
+        "primary_artifact": "index.html",
+        "preview": {
+          "entrypoint": "index.html",
+          "mode": "html_sandbox",
+          "network": "none"
+        },
+        "artifacts": [
+          {
+            "path": "concepts.json",
+            "role": "raw_results"
+          },
+          {
+            "path": "index.html",
+            "role": "entrypoint"
+          },
+          {
+            "path": "prompts.md",
+            "role": "human_summary"
+          },
+          {
+            "path": "summary.md",
+            "role": "human_summary"
+          }
+        ]
+      },
+      "errors": [
+        {
+          "id": "diag_01M6NJEB5J32YC4Y559WMM1TSW",
+          "code": "manifest_invalid",
+          "severity": "error",
+          "source": "manifest",
+          "message": "Manifest name must be 1-128 safe display characters.",
+          "expected": "The manifest must match the AXINBOX drop manifest schema.",
+          "docs_url": "https://axinbox.com/docs/agents/manifests.md",
+          "agent_next_action": "Fix manifest.json and upload it again.",
+          "path": "manifest.json",
+          "drop_id": "01M6NJE34446PR85HRV4BCDSFJ",
+          "object_id": "obj_01M6NJEA3XJJ090F0WQVZABNFQ",
+          "created_at": "2026-11-05T10:00:33.714Z",
+          "metadata": {}
+        }
+      ],
+      "warnings": [],
+      "agent_notes": [],
+      "objects": [
+        {
+          "object_id": "obj_01M6NJE3QBW89A09C8VQ57K8JA",
+          "path": "concepts.json",
+          "size": 10332,
+          "content_type": "application/json",
+          "sha256": "cd8357503c7ede92703e2c41759f2230faf257cf98e953558bb67536d80bb900",
+          "state": "clean",
+          "scan_verdict": "clean",
+          "role": null,
+          "primary": false,
+          "preview_url": "https://axinbox.com/h/hnd_SPp-Z2ogfsMJv4nP8y2yZguf7-cbUgX1xWKl43nXCH8/concepts.json/preview",
+          "diagnostics_url": "https://axinbox.com/v1/objects/obj_01M6NJE3QBW89A09C8VQ57K8JA/diagnostics",
+          "log_url": "https://axinbox.com/v1/drops/01M6NJE34446PR85HRV4BCDSFJ/logs?object=concepts.json&tail=50",
+          "metadata": {
+            "r2": {
+              "key": "drops/01M6NJE34446PR85HRV4BCDSFJ/objects/obj_01M6NJE3QBW89A09C8VQ57K8JA/concepts.json",
+              "uploaded_at": "2026-11-05T10:00:26.967Z",
+              "checksums": {
+                "md5": "31be5fe72eb6a33af7e29485b6f77da8"
+              },
+              "storage_class": "Standard"
+            },
+            "scan": {
+              "scanned_at": "2026-11-05T10:00:29.858Z",
+              "scanner": "axinbox_v0_static",
+              "sampled_bytes": 10332
+            }
+          },
+          "preview_state": "ok"
+        },
+        {
+          "object_id": "obj_01M6NJE5Y35B64E794B9JHB120",
+          "path": "index.html",
+          "size": 20386704,
+          "content_type": "text/html",
+          "sha256": "53842967664038cf1d3f1e47775c3f7e4517f1f7ea62dc29d008d2c9da23467e",
+          "state": "scanning",
+          "scan_verdict": null,
+          "role": null,
+          "primary": false,
+          "preview_url": "https://axinbox.com/h/hnd_SPp-Z2ogfsMJv4nP8y2yZguf7-cbUgX1xWKl43nXCH8/index.html/preview",
+          "diagnostics_url": "https://axinbox.com/v1/objects/obj_01M6NJE5Y35B64E794B9JHB120/diagnostics",
+          "log_url": "https://axinbox.com/v1/drops/01M6NJE34446PR85HRV4BCDSFJ/logs?object=index.html&tail=50",
+          "metadata": {
+            "r2": {
+              "key": "drops/01M6NJE34446PR85HRV4BCDSFJ/objects/obj_01M6NJE5Y35B64E794B9JHB120/index.html",
+              "uploaded_at": "2026-11-05T10:00:29.683Z",
+              "checksums": {
+                "md5": "17ee85e9167a396e3933e4e7a4b9988e"
+              },
+              "storage_class": "Standard"
+            }
+          },
+          "preview_state": "pending"
+        },
+        {
+          "object_id": "obj_01M6NJEA3XJJ090F0WQVZABNFQ",
+          "path": "manifest.json",
+          "size": 780,
+          "content_type": "application/json",
+          "sha256": "05d586b0388d2d5bd4bdb7bf2b132be517fe5ef4a4755180fb2827f3e5bc2795",
+          "state": "scanning",
+          "scan_verdict": null,
+          "role": null,
+          "primary": false,
+          "diagnostics_url": "https://axinbox.com/v1/objects/obj_01M6NJEA3XJJ090F0WQVZABNFQ/diagnostics",
+          "log_url": "https://axinbox.com/v1/drops/01M6NJE34446PR85HRV4BCDSFJ/logs?object=manifest.json&tail=50",
+          "metadata": {
+            "r2": {
+              "key": "drops/01M6NJE34446PR85HRV4BCDSFJ/objects/obj_01M6NJEA3XJJ090F0WQVZABNFQ/manifest.json",
+              "uploaded_at": "2026-11-05T10:00:33.176Z",
+              "checksums": {
+                "md5": "0c85b82cf61bd4e5cd44827f512ecdc2"
+              },
+              "storage_class": "Standard"
+            }
+          },
+          "preview_state": "pending"
+        },
+        {
+          "object_id": "obj_01M6NJE7TWVA1PQ5SJ4B6P24Y4",
+          "path": "prompts.md",
+          "size": 58918,
+          "content_type": "text/markdown",
+          "sha256": "cf536761f0517e2d46f50849daaed544996437daaf7372d7118d2a32249b564f",
+          "state": "scanning",
+          "scan_verdict": null,
+          "role": null,
+          "primary": false,
+          "preview_url": "https://axinbox.com/h/hnd_SPp-Z2ogfsMJv4nP8y2yZguf7-cbUgX1xWKl43nXCH8/prompts.md/preview",
+          "diagnostics_url": "https://axinbox.com/v1/objects/obj_01M6NJE7TWVA1PQ5SJ4B6P24Y4/diagnostics",
+          "log_url": "https://axinbox.com/v1/drops/01M6NJE34446PR85HRV4BCDSFJ/logs?object=prompts.md&tail=50",
+          "metadata": {
+            "r2": {
+              "key": "drops/01M6NJE34446PR85HRV4BCDSFJ/objects/obj_01M6NJE7TWVA1PQ5SJ4B6P24Y4/prompts.md",
+              "uploaded_at": "2026-11-05T10:00:30.795Z",
+              "checksums": {
+                "md5": "fbbddc4651efada8db39011b0c272153"
+              },
+              "storage_class": "Standard"
+            }
+          },
+          "preview_state": "pending"
+        },
+        {
+          "object_id": "obj_01M6NJE90M5S6WY8THFG7W1S5B",
+          "path": "summary.md",
+          "size": 3412,
+          "content_type": "text/markdown",
+          "sha256": "27a8f7bba887912ec40aecdc719a632644803117e0159294064db278181a6a84",
+          "state": "scanning",
+          "scan_verdict": null,
+          "role": null,
+          "primary": false,
+          "preview_url": "https://axinbox.com/h/hnd_SPp-Z2ogfsMJv4nP8y2yZguf7-cbUgX1xWKl43nXCH8/summary.md/preview",
+          "diagnostics_url": "https://axinbox.com/v1/objects/obj_01M6NJE90M5S6WY8THFG7W1S5B/diagnostics",
+          "log_url": "https://axinbox.com/v1/drops/01M6NJE34446PR85HRV4BCDSFJ/logs?object=summary.md&tail=50",
+          "metadata": {
+            "r2": {
+              "key": "drops/01M6NJE34446PR85HRV4BCDSFJ/objects/obj_01M6NJE90M5S6WY8THFG7W1S5B/summary.md",
+              "uploaded_at": "2026-11-05T10:00:31.936Z",
+              "checksums": {
+                "md5": "09603913abf811cd6c879547aeb24db8"
+              },
+              "storage_class": "Standard"
+            }
+          },
+          "preview_state": "pending"
+        }
+      ],
+      "agent_next_actions": [
+        "Fix manifest.json and upload it again.",
+        "Poll status with backoff until scanning finishes.",
+        "This drop expires 2026-11-08T10:00:25.476Z unless claimed — hand the human web_url or share_url before then."
+      ]
+    },
+    "diagnostics": {
+      "drop_id": "01M6NJE34446PR85HRV4BCDSFJ",
+      "state": "error",
+      "errors": [
+        {
+          "id": "diag_01M6NJEB5J32YC4Y559WMM1TSW",
+          "code": "manifest_invalid",
+          "severity": "error",
+          "source": "manifest",
+          "message": "Manifest name must be 1-128 safe display characters.",
+          "expected": "The manifest must match the AXINBOX drop manifest schema.",
+          "docs_url": "https://axinbox.com/docs/agents/manifests.md",
+          "agent_next_action": "Fix manifest.json and upload it again.",
+          "path": "manifest.json",
+          "drop_id": "01M6NJE34446PR85HRV4BCDSFJ",
+          "object_id": "obj_01M6NJEA3XJJ090F0WQVZABNFQ",
+          "created_at": "2026-11-05T10:00:33.714Z",
+          "metadata": {}
+        }
+      ],
+      "warnings": [],
+      "diagnostics": [
+        {
+          "id": "diag_01M6NJEB5J32YC4Y559WMM1TSW",
+          "code": "manifest_invalid",
+          "severity": "error",
+          "source": "manifest",
+          "message": "Manifest name must be 1-128 safe display characters.",
+          "expected": "The manifest must match the AXINBOX drop manifest schema.",
+          "docs_url": "https://axinbox.com/docs/agents/manifests.md",
+          "agent_next_action": "Fix manifest.json and upload it again.",
+          "path": "manifest.json",
+          "drop_id": "01M6NJE34446PR85HRV4BCDSFJ",
+          "object_id": "obj_01M6NJEA3XJJ090F0WQVZABNFQ",
+          "created_at": "2026-11-05T10:00:33.714Z",
+          "metadata": {}
+        },
+        {
+          "id": "diag_01M6NJE7KDT1NJX4Y8K7AWDFFZ",
+          "code": "manifest_missing",
+          "severity": "info",
+          "source": "manifest",
+          "message": "The drop has no manifest; AXINBOX inferred the primary artifact and roles.",
+          "expected": "Optionally upload manifest.json to declare explicit roles, primary, and preview settings.",
+          "docs_url": "https://axinbox.com/docs/agents/manifests.md",
+          "agent_next_action": "No action required for simple drops. Upload a manifest only when roles or preview policy need declaring.",
+          "drop_id": "01M6NJE34446PR85HRV4BCDSFJ",
+          "object_id": null,
+          "created_at": "2026-11-05T10:00:30.061Z",
+          "metadata": {
+            "uploaded_object_count": 2
+          }
+        }
+      ],
+      "logs_url": "https://axinbox.com/v1/drops/01M6NJE34446PR85HRV4BCDSFJ/logs?tail=50",
+      "agent_next_actions": [
+        "Fix manifest.json and upload it again."
+      ]
+    },
+    "manifest": {
+      "primary_artifact": "index.html",
+      "artifact_count": 4,
+      "preview_entrypoint": "index.html"
+    },
+    "skipped": []
+  },
+  "errors": [],
+  "warnings": [],
+  "metrics": {
+    "duration_ms": 9284
+  }
+}

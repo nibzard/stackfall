@@ -1,0 +1,516 @@
+# Pressure chapter capture session, portrait half (docs/backgrounds,
+# task T082): the same ladder of four-line clears through the rotated key
+# table of task T055 - `z` rotates clockwise, `key left` hard drops - on
+# the turned canvas from a saved orientation=portrait, so the four
+# tightening designs draw in their own 544x960 layout zones, three clock
+# phases per level.
+#
+#   pressure-13..pressure-16    the play frame of levels 13 through 16
+#   pressure-13b..pressure-16b  the same levels 64 ticks later on the clock
+#   pressure-13c..pressure-16c  and 64 ticks later still
+check pressure-title
+wait 1
+key enter down
+wait 2
+key enter up
+wait 2
+wait 0
+# 30 cycles: 120 lines reach level 13
+fixture four-line-ready
+wait 2
+key z down
+wait 2
+key z up
+wait 2
+key left down
+wait 2
+key left up
+wait 10
+fixture four-line-ready
+wait 2
+key z down
+wait 2
+key z up
+wait 2
+key left down
+wait 2
+key left up
+wait 10
+fixture four-line-ready
+wait 2
+key z down
+wait 2
+key z up
+wait 2
+key left down
+wait 2
+key left up
+wait 10
+fixture four-line-ready
+wait 2
+key z down
+wait 2
+key z up
+wait 2
+key left down
+wait 2
+key left up
+wait 10
+fixture four-line-ready
+wait 2
+key z down
+wait 2
+key z up
+wait 2
+key left down
+wait 2
+key left up
+wait 10
+fixture four-line-ready
+wait 2
+key z down
+wait 2
+key z up
+wait 2
+key left down
+wait 2
+key left up
+wait 10
+fixture four-line-ready
+wait 2
+key z down
+wait 2
+key z up
+wait 2
+key left down
+wait 2
+key left up
+wait 10
+fixture four-line-ready
+wait 2
+key z down
+wait 2
+key z up
+wait 2
+key left down
+wait 2
+key left up
+wait 10
+fixture four-line-ready
+wait 2
+key z down
+wait 2
+key z up
+wait 2
+key left down
+wait 2
+key left up
+wait 10
+fixture four-line-ready
+wait 2
+key z down
+wait 2
+key z up
+wait 2
+key left down
+wait 2
+key left up
+wait 10
+fixture four-line-ready
+wait 2
+key z down
+wait 2
+key z up
+wait 2
+key left down
+wait 2
+key left up
+wait 10
+fixture four-line-ready
+wait 2
+key z down
+wait 2
+key z up
+wait 2
+key left down
+wait 2
+key left up
+wait 10
+fixture four-line-ready
+wait 2
+key z down
+wait 2
+key z up
+wait 2
+key left down
+wait 2
+key left up
+wait 10
+fixture four-line-ready
+wait 2
+key z down
+wait 2
+key z up
+wait 2
+key left down
+wait 2
+key left up
+wait 10
+fixture four-line-ready
+wait 2
+key z down
+wait 2
+key z up
+wait 2
+key left down
+wait 2
+key left up
+wait 10
+fixture four-line-ready
+wait 2
+key z down
+wait 2
+key z up
+wait 2
+key left down
+wait 2
+key left up
+wait 10
+fixture four-line-ready
+wait 2
+key z down
+wait 2
+key z up
+wait 2
+key left down
+wait 2
+key left up
+wait 10
+fixture four-line-ready
+wait 2
+key z down
+wait 2
+key z up
+wait 2
+key left down
+wait 2
+key left up
+wait 10
+fixture four-line-ready
+wait 2
+key z down
+wait 2
+key z up
+wait 2
+key left down
+wait 2
+key left up
+wait 10
+fixture four-line-ready
+wait 2
+key z down
+wait 2
+key z up
+wait 2
+key left down
+wait 2
+key left up
+wait 10
+fixture four-line-ready
+wait 2
+key z down
+wait 2
+key z up
+wait 2
+key left down
+wait 2
+key left up
+wait 10
+fixture four-line-ready
+wait 2
+key z down
+wait 2
+key z up
+wait 2
+key left down
+wait 2
+key left up
+wait 10
+fixture four-line-ready
+wait 2
+key z down
+wait 2
+key z up
+wait 2
+key left down
+wait 2
+key left up
+wait 10
+fixture four-line-ready
+wait 2
+key z down
+wait 2
+key z up
+wait 2
+key left down
+wait 2
+key left up
+wait 10
+fixture four-line-ready
+wait 2
+key z down
+wait 2
+key z up
+wait 2
+key left down
+wait 2
+key left up
+wait 10
+fixture four-line-ready
+wait 2
+key z down
+wait 2
+key z up
+wait 2
+key left down
+wait 2
+key left up
+wait 10
+fixture four-line-ready
+wait 2
+key z down
+wait 2
+key z up
+wait 2
+key left down
+wait 2
+key left up
+wait 10
+fixture four-line-ready
+wait 2
+key z down
+wait 2
+key z up
+wait 2
+key left down
+wait 2
+key left up
+wait 10
+fixture four-line-ready
+wait 2
+key z down
+wait 2
+key z up
+wait 2
+key left down
+wait 2
+key left up
+wait 10
+fixture four-line-ready
+wait 2
+key z down
+wait 2
+key z up
+wait 2
+key left down
+wait 2
+key left up
+wait 10
+wait 45
+fixture tall-stack-ready
+wait 2
+key c down
+wait 2
+key c up
+wait 2
+check pressure-13
+wait 2
+wait 54
+fixture tall-stack-ready
+wait 2
+key c down
+wait 2
+key c up
+wait 2
+check pressure-13b
+wait 2
+wait 54
+fixture tall-stack-ready
+wait 2
+key c down
+wait 2
+key c up
+wait 2
+check pressure-13c
+# 3 more cycles: 132 lines reach level 14
+fixture four-line-ready
+wait 2
+key z down
+wait 2
+key z up
+wait 2
+key left down
+wait 2
+key left up
+wait 10
+fixture four-line-ready
+wait 2
+key z down
+wait 2
+key z up
+wait 2
+key left down
+wait 2
+key left up
+wait 10
+fixture four-line-ready
+wait 2
+key z down
+wait 2
+key z up
+wait 2
+key left down
+wait 2
+key left up
+wait 10
+wait 45
+fixture tall-stack-ready
+wait 2
+key c down
+wait 2
+key c up
+wait 2
+check pressure-14
+wait 2
+wait 54
+fixture tall-stack-ready
+wait 2
+key c down
+wait 2
+key c up
+wait 2
+check pressure-14b
+wait 2
+wait 54
+fixture tall-stack-ready
+wait 2
+key c down
+wait 2
+key c up
+wait 2
+check pressure-14c
+# 3 more cycles: 132 lines reach level 15
+fixture four-line-ready
+wait 2
+key z down
+wait 2
+key z up
+wait 2
+key left down
+wait 2
+key left up
+wait 10
+fixture four-line-ready
+wait 2
+key z down
+wait 2
+key z up
+wait 2
+key left down
+wait 2
+key left up
+wait 10
+fixture four-line-ready
+wait 2
+key z down
+wait 2
+key z up
+wait 2
+key left down
+wait 2
+key left up
+wait 10
+wait 45
+fixture tall-stack-ready
+wait 2
+key c down
+wait 2
+key c up
+wait 2
+check pressure-15
+wait 2
+wait 54
+fixture tall-stack-ready
+wait 2
+key c down
+wait 2
+key c up
+wait 2
+check pressure-15b
+wait 2
+wait 54
+fixture tall-stack-ready
+wait 2
+key c down
+wait 2
+key c up
+wait 2
+check pressure-15c
+# 3 more cycles: 132 lines reach level 16
+fixture four-line-ready
+wait 2
+key z down
+wait 2
+key z up
+wait 2
+key left down
+wait 2
+key left up
+wait 10
+fixture four-line-ready
+wait 2
+key z down
+wait 2
+key z up
+wait 2
+key left down
+wait 2
+key left up
+wait 10
+fixture four-line-ready
+wait 2
+key z down
+wait 2
+key z up
+wait 2
+key left down
+wait 2
+key left up
+wait 10
+wait 45
+fixture tall-stack-ready
+wait 2
+key c down
+wait 2
+key c up
+wait 2
+check pressure-16
+wait 2
+wait 54
+fixture tall-stack-ready
+wait 2
+key c down
+wait 2
+key c up
+wait 2
+check pressure-16b
+wait 2
+wait 54
+fixture tall-stack-ready
+wait 2
+key c down
+wait 2
+key c up
+wait 2
+check pressure-16c
+quit

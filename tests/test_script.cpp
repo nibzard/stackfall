@@ -80,10 +80,52 @@ void run_malformed_inputs_tests() {
   SC_CHECK(value == 7);
 }
 
+// The axis-value rule of `stick <axis> <value>` (task T86): the accepted
+// range is exactly the signed 16-bit SDL axis, because the value a script
+// names is the reading the virtual pad reports and the deadzone boundary of
+// specification section 5 must stay reachable from a session.
+void run_axis_value_tests() {
+  int value = -1;
+  // The far ends, the rest, and the deadzone boundary both ways.
+  SC_CHECK(stackfall::parseScriptAxisValue("32767", &value));
+  SC_CHECK(value == 32767);
+  SC_CHECK(stackfall::parseScriptAxisValue("-32767", &value));
+  SC_CHECK(value == -32767);
+  SC_CHECK(stackfall::parseScriptAxisValue("-32768", &value));
+  SC_CHECK(value == -32768);
+  SC_CHECK(stackfall::parseScriptAxisValue("0", &value));
+  SC_CHECK(value == 0);
+  SC_CHECK(stackfall::parseScriptAxisValue("8000", &value));
+  SC_CHECK(value == 8000);
+  SC_CHECK(stackfall::parseScriptAxisValue("-8000", &value));
+  SC_CHECK(value == -8000);
+  SC_CHECK(stackfall::parseScriptAxisValue("7999", &value));
+  SC_CHECK(value == 7999);
+
+  // One past each end is rejected, along with every malformed spelling.
+  value = 7;
+  const char* rejected[] = {
+      "32768", "-32769", "99999999999999999999", "-99999999999999999999",
+      "", "-", "--1", "+1", " 1", "1 ", "0x10", "1e3", "1.5", "one", "x",
+      "007abc", "1;", "8000,", "- 8000",
+  };
+  for (const char* text : rejected) {
+    SC_CHECK(stackfall::parseScriptAxisValue(text, &value) == false);
+    SC_CHECK(value == 7);
+  }
+  // A null pointer is a rejected argument, never a crash.
+  SC_CHECK(stackfall::parseScriptAxisValue(nullptr, &value) == false);
+  SC_CHECK(value == 7);
+  // Leading zeros stay decimal.
+  SC_CHECK(stackfall::parseScriptAxisValue("-008000", &value));
+  SC_CHECK(value == -8000);
+}
+
 }  // namespace
 
 void run_script_tests() {
   run_bounded_range_tests();
   run_crashing_inputs_tests();
   run_malformed_inputs_tests();
+  run_axis_value_tests();
 }

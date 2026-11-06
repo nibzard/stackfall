@@ -295,6 +295,13 @@ retriggered every fifth callback.
   obtained rate and buffer size stay device measurements (task T036
   follow-up); this row is the desktop evidence that the engine cannot
   plausibly overrun them.
+- Since task T096 (2026-11-06) the suite's assert reads the calling
+  thread's CPU clock, not the wall clock: a loaded parallel `ctest` run
+  deschedules the thread mid-mix and the wall p99 measures the host, not
+  the mix (a starved run read 105 percent of the buffer with the median
+  flat). The wall percentiles above still print unchanged and the second
+  printed line names the CPU-clock p99 the pin reads; the ceiling is
+  untouched at half the buffer.
 
 Command:
 
@@ -829,3 +836,209 @@ on this host. Actual RG503 frame tails, blocking vsync, storage latency, and
 battery stay with the blocked device gates T018 and T036, which no desktop
 evidence replaces; `tools/perf/device-capture.sh` is the procedure that runs
 them.
+
+## T085: the background rendering cost against Off (2026-11-06)
+
+The integrated background validation measured the wallpaper layer's cost:
+instrumented draw counts through the real core, work-mode wall times and
+max RSS through the real application, and paced frame-time percentiles -
+the same scripted workload under Off, Fixed 17 through 20, and Auto, both
+orientations, against the same revision. Evidence:
+`build/backgrounds/t085/perf/` (ignored build output; `draw-counts.txt`,
+`work-summary.txt` with `work2-summary.txt` the quiet-machine pass,
+`paced-*.json` and `paced-summary.txt`). The behavioral half of the pass,
+with its captures and clocks, is the T085 section of
+`notes/agent-testing.md`. Nothing here measures the RG503.
+
+### Source identity, host, and commands
+
+- Source: the task T085 tree over commit `bba0d35` ("Integrate T084") -
+  the validation tools and docs this task adds, no engine change. Driver:
+  `tools/backgrounds/perf_runs.sh`; the tool hashes are in the T085
+  section of `notes/agent-testing.md`.
+- Host: the recorded host of every earlier section - Linux 6.8.0-147
+  x86_64, i9-12900HK, 8 cores, SDL 2.30.0, Release `-O3 -DNDEBUG` in
+  `build-rel`, dummy video, dummy audio.
+- Commands, repository root:
+  1. The whole set: `tools/backgrounds/perf_runs.sh`
+     (draw counts, twelve work runs, twelve paced runs of 1800 frames,
+     30 s each, `--frame-times` through `tests/harness/frame_stats.py`).
+  2. The quiet-machine work pass (the table below):
+     the same twelve runs re-measured with the host otherwise idle;
+     `work2-summary.txt` holds it, `work-summary.txt` the first pass.
+  3. The workload: `catalog_gen.py stress-landscape` and
+     `stress-portrait` - the four-line ladder to level 20 (all nineteen
+     design changes in Auto) and 250 more cycles at the level-20 cap,
+     5964 ticks, seed 31337.
+
+### Instrumented draw counts (`stackfall_bg_counts`, Release)
+
+A counting painter receives every fill the wallpaper layer emits, per
+design and orientation, swept over each design's whole motion cycle at
+25 ms steps; the fade column samples every Auto-mode fade transition
+through its steps. The full table is `perf/draw-counts.txt`; the bounds:
+
+| Measure | Landscape | Portrait |
+| --- | --- | --- |
+| Off, any state | 0 fills | 0 fills |
+| Worst steady frame | 303 fills (design 19) | 294 fills (design 20) |
+| Worst fade frame | 300 fills (18 to 19) | 293 fills (19 to 20) |
+| One frame paint, worst design | 12 us | 53 us |
+
+A fade frame costs one grammar's fills - the outgoing one tinted toward
+the anchor in the first half, the incoming one in the second - never the
+sum of both (the 6 to 7 fade holds design 6's own 140 fills while design
+7's steady frame also holds 140): the renderer never doubles the budget
+during a transition. The 300-fills worst case is primitive expansion,
+not a record violation: Compression's 260 placed elements sit inside the
+300-element budget while the frame ring's clip splits wide bars into
+separate fills, exactly the expansion the design contract asks to
+document. Element-count ceilings per record are pinned by the runtime
+suites; this table is the emitted-command view. Painting never
+allocates (`backgrounds.hpp`: the painter contract), and the timed paint
+above is the whole wallpaper cost of a frame.
+
+### Work mode: the same workload, wall time is pure work
+
+`--tick-per-frame`, dummy driver, one run per mode, quiet host
+(1800-frame warm runs of the first pass agree within 3 percent):
+
+| Mode | Landscape | Portrait | Max RSS both |
+| --- | --- | --- | --- |
+| Off | 1702 ms | 1871 ms | 13.4-13.6 MB |
+| Fixed 17 | 2119 ms (+24%) | 2105 ms (+13%) | 13.3-13.6 MB |
+| Fixed 18 | 2113 ms (+24%) | 2114 ms (+13%) | 13.3-13.6 MB |
+| Fixed 19 | 2405 ms (+41%) | 2126 ms (+14%) | 13.4-13.6 MB |
+| Fixed 20 | 2283 ms (+34%) | 2172 ms (+16%) | 13.3-13.6 MB |
+| Auto | 2261 ms (+33%) | 2236 ms (+20%) | 13.3-13.7 MB |
+
+Auto carries all nineteen transitions of the ladder plus the level-20
+dwell and still sits between its Fixed neighbors: a transition frame
+costs one grammar, not two. Max RSS never moves with the mode - the
+wallpaper's retained state is fixed-size and no per-frame heap growth
+appears at 13 MB process scale.
+
+### Paced: 30 s at real time, frame-time percentiles
+
+The same stress scripts at real pacing, 1800 frames, 60.00 ticks/s in
+every run:
+
+| Run | Median | p95 | p99 | Max |
+| --- | --- | --- | --- | --- |
+| landscape Off | 16.623 ms | 17.506 | 17.627 | 17.785 |
+| landscape Fixed 17 | 16.679 | 17.353 | 17.667 | 42.956 |
+| landscape Fixed 18 | 16.687 | 17.344 | 17.675 | 33.064 |
+| landscape Fixed 19 | 16.720 | 17.310 | 17.691 | 17.781 |
+| landscape Fixed 20 | 16.700 | 17.536 | 18.437 | 20.830 |
+| landscape Auto | 16.698 | 17.330 | 17.694 | 17.799 |
+| portrait Off | 16.622 | 17.486 | 17.634 | 17.809 |
+| portrait Fixed 17 | 16.666 | 17.518 | 17.653 | 17.820 |
+| portrait Fixed 18 | 16.639 | 17.442 | 17.642 | 19.892 |
+| portrait Fixed 19 | 16.627 | 17.520 | 17.666 | 18.589 |
+| portrait Fixed 20 | 16.686 | 17.486 | 17.695 | 21.396 |
+| portrait Auto | 16.676 | 17.516 | 17.667 | 17.902 |
+
+Every median sits in the 60 Hz slot (15.5-17.5 ms) under every mode; the
+p99 band moves by at most 0.8 ms against Off (landscape Fixed 20). The
+max spikes above 20 ms are one-frame scheduler blips that Off shares the
+band of (17.8 ms) and the dummy driver's present path explains; the
+frame-tail distribution, not one frame, carries the comparison.
+
+### What stays open
+
+Desktop numbers only. The RG503's frame tails, blocking vsync, storage,
+and battery stay with the blocked device gates T018 and T036; no number
+above predicts device pacing. Off itself was re-measured here on the
+integrated revision, so the deltas describe the wallpaper layer alone.
+
+## T95: the per-piece in-cell designs against Off (2026-11-06)
+
+The PIECE DESIGNS preference of task T95 adds at most four filled
+rectangles to every drawn cell - the settled board, the active piece, and
+the Hold and Next previews - and nothing to the ghost, which carries no
+fill. The same P1-shaped measurement as T085 priced it: a scripted
+workload through the real application, work-mode wall time with pacing
+off, and paced frame-time percentiles, against Off in both orientations
+and against the pre-task baseline.
+
+### Source identity, host, and commands
+
+- Source: the task T95 candidate tree over commit `3ed2f9f`
+  ("Integrate T87"), no commit yet for the task itself. Driver:
+  `tools/perf/t095_piece_designs.sh`; the source hashes are in the T95
+  section of `notes/agent-testing.md`.
+- Host: Linux 6.8.0-147 x86_64, i9-12900HK, SDL 2.30.0, Release
+  `-O3 -DNDEBUG` in `build-rel`, dummy video, dummy audio.
+- Baseline: a Release build of `3ed2f9f` itself - `git archive HEAD`
+  into `build/perf/t095/baseline-src`, built beside the candidate - so
+  the default-path comparison is the same machine, the same compiler,
+  and the same day, against the exact tree the worktree began from.
+- The workload (the driver generates it): Enter starts a round,
+  `fixture perf-stack` settles ninety cells of all seven piece types -
+  no full row, free spawn rows - and soft-drop presses top the board out
+  by tick 187, so the frozen 110-cell board, every mark on it, and the
+  game-over overlay draw for the remaining 85 percent of the run. 1300
+  ticks per work run, five runs per variant, min and median kept;
+  1800 frames (30 s) per paced run. Seed 31337. No rotations: a
+  rotation that lifts a resting piece clears the lock streak without
+  spending the reset budget (SPEC section 4.5), so a rotate-heavy script
+  spins one piece at the floor forever - the first workload draft did
+  exactly that, and its zero settled cells exposed the trap.
+- Evidence: `build/perf/t095/` (ignored build output; `work-summary.txt`,
+  `paced-summary.txt`, the per-run `.time`, `.obs`, and `.json` files).
+
+### Work mode: wall time is pure work
+
+| Variant | Landscape | Portrait |
+| --- | --- | --- |
+| Off (candidate) | 2614 / 2713 ms | 3247 / 3274 ms |
+| On (candidate) | 2636 / 2714 ms | 3247 / 3292 ms |
+| HEAD baseline, Off | 2659 / 2737 ms | 3176 / 3201 ms |
+
+Min / median of five runs, 1300 ticks each. The enabled path costs at
+most 22 ms over the run - 0.8 percent of the landscape minimum, 0.6
+percent of the portrait median, zero on the portrait minimum - which is
+about 17 us per frame for 110 settled cells plus six preview cells, the
+fullest board the workload reaches. A full 200-cell board extrapolates
+to roughly 30 us a frame against the roughly 2.0 ms the whole frame
+costs in work mode: the marks stay a rounding error beside the cell
+painting itself, because each mark is one to four `fillRect` calls of
+the same kind the bevel already makes.
+
+### Default path: no regression
+
+The Off runs of the candidate sit inside the warm-run agreement band
+T085 recorded for this host (3 percent): 45 and 24 ms faster than the
+HEAD baseline in landscape, 71 and 73 ms slower in portrait - under 2.3
+percent either way, in both directions, which is noise on a shared
+desktop, not a cost. The code agrees with the measurement: with the
+setting off, `drawCell` runs the same statements as before plus one
+false branch per cell, the render suite pins the off frame's interiors
+to the flat fill alone, and every non-options observation stream of the
+harness is byte-identical to the headless reference.
+
+### Paced mode: the 60 Hz frame budget
+
+| Variant | Median | p99 | CPU | Max RSS |
+| --- | --- | --- | --- | --- |
+| Landscape Off | 16.461 ms | 17.595 ms | 13% | 16.0 MB |
+| Landscape On | 16.689 ms | 18.314 ms | 16% | 16.0 MB |
+| Portrait Off | 16.762 ms | 18.231 ms | 19% | 15.9 MB |
+| Portrait On | 16.821 ms | 17.492 ms | 17% | 15.9 MB |
+
+The medians ride the 16.67 ms pacing floor in every variant; the
+designs move the landscape median by 0.23 ms and the portrait median by
+0.06 ms, and the p99 ordering flips between orientations, so no tail
+belongs to the marks. This is a desktop pacing profile under the dummy
+video driver, never an RG503 claim; the device frame tails stay with
+the blocked device gates T018 and T036.
+
+### Draw-count bound
+
+`CellDesign` holds at most four rects (`kCellDesignMaxRects`) and
+`drawCell` paints them only when the setting is on, so the worst extra
+fill count of a frame is four per drawn cell: 200 settled cells plus
+the active piece's four and the six preview cells bound it near 820
+fills, against the roughly 3.6 fills per settled cell the base cell
+already draws. The marks allocate nothing and read no clock; they are
+plain integer rect math, like the bevel beside them.

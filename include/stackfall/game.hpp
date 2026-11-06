@@ -64,6 +64,10 @@ enum class Scene : std::uint8_t {
   Rebind,          // the controls customization screen behind the mappings
                    // screen: one row per gameplay action plus RESTORE
                    // DEFAULTS (task T066)
+  BackgroundOptions,  // the backgrounds page behind the BACKGROUNDS row:
+                      // MODE and PREFERRED, the wallpaper settings of task
+                      // T084; the values are platform state like every
+                      // options row
 };
 
 // Tick-flow constants of section 4.5, all counted in 60 Hz simulation ticks.
@@ -80,12 +84,23 @@ inline constexpr int kPauseItemCount = 4;   // Resume, Restart, Controls, Quit
 inline constexpr int kOverItemCount = 2;    // Play Again, Title
 // SOUND, GHOST, GRID, HOLD, NEXT PIECES, GRAYSCALE (task T044), ORIENTATION
 // (task T055), and MUSIC (task T062), appended so every earlier row keeps its
-// index. The MUSIC row opens the music settings page below.
-inline constexpr int kOptionsItemCount = 8;
+// index. The MUSIC row opens the music settings page below and the
+// BACKGROUNDS row the backgrounds page (task T084). The PIECE DESIGNS row of
+// task T095 follows the same append rule.
+inline constexpr int kOptionsItemCount = 10;
 inline constexpr int kOptionsMusicRow = 7;
+inline constexpr int kOptionsBackgroundsRow = 8;
+inline constexpr int kOptionsPieceDesignsRow = 9;
 // The music settings page of MUSIC.md's player controls: the mode row, both
 // volume rows, and the Next track action.
 inline constexpr int kMusicOptionsItemCount = 4;
+// The backgrounds page behind the BACKGROUNDS row (task T084): the mode row
+// Auto / Off / Fixed and the preferred design row 1..20. Select changes
+// nothing here for the same reason as every options row: the mode and the
+// preferred design are platform state the core never holds.
+inline constexpr int kBackgroundOptionsItemCount = 2;
+inline constexpr int kBackgroundOptionsModeRow = 0;
+inline constexpr int kBackgroundOptionsPreferredRow = 1;
 // The controls customization screen of task T066: eight rows, one per
 // rebindable gameplay action of stackfall/bindings.hpp, then RESTORE DEFAULTS.
 // A select changes nothing in the core - the binding tables are platform
@@ -175,8 +190,9 @@ class Game {
   // The highlighted item of each menu, 0-based: title Start Game / Controls /
   // Options / Quit, pause Resume / Restart / Controls / Quit to Title, game
   // over Play Again / Title, options SOUND / GHOST / GRID / HOLD / NEXT
-  // PIECES / GRAYSCALE / ORIENTATION / MUSIC, and the music page MUSIC /
-  // MUSIC VOLUME / EFFECTS VOLUME / NEXT TRACK (specification section 4.7).
+  // PIECES / GRAYSCALE / ORIENTATION / MUSIC / BACKGROUNDS, the music page
+  // MUSIC / MUSIC VOLUME / EFFECTS VOLUME / NEXT TRACK, and the backgrounds
+  // page MODE / PREFERRED (specification section 4.7).
   // Menu state only; a round never reads it and the state hash never folds
   // it.
   int titleSelection() const;
@@ -185,6 +201,7 @@ class Game {
   int optionsSelection() const;
   int musicSelection() const;
   int rebindSelection() const;
+  int backgroundsSelection() const;
 
   // The screen the customization screen returns to on back: Controls when the
   // title opened it, PauseControls when the pause overlay did (task T066).
@@ -304,6 +321,14 @@ class Game {
   // director.
   void tickMusicOptions(const MenuFrame& menu);
 
+  // BACKGROUND_OPTIONS: back returns to the options screen with the cursor
+  // still on the BACKGROUNDS row, and the D-pad moves the cursor over the two
+  // rows (task T084). Select changes nothing here for the same reason as the
+  // options screen: the background mode and the preferred design are platform
+  // state, so the platform layer reads the highlighted row and applies the
+  // change itself.
+  void tickBackgroundOptions(const MenuFrame& menu);
+
   // PAUSED: back resumes, the D-pad moves the cursor, A runs the highlighted
   // item, and the pause key alone still resumes. Every gameplay counter stays
   // frozen (section 4.5).
@@ -358,9 +383,11 @@ class Game {
   int titleCursor_ = 0;           // highlighted title item, 0..3
   int pauseCursor_ = 0;           // highlighted pause item, 0..3
   int overCursor_ = 0;            // highlighted game-over item, 0..1
-  int optionsCursor_ = 0;         // highlighted options row, 0..7
+  int optionsCursor_ = 0;         // highlighted options row, 0..8
   int musicCursor_ = 0;           // highlighted music page row, 0..3
   int rebindCursor_ = 0;          // highlighted rebind row, 0..8 (T066)
+  int backgroundsCursor_ = 0;     // highlighted backgrounds page row, 0..1
+                                   // (T084)
   Scene rebindFrom_ = Scene::Controls;  // where back returns (T066)
   bool newRecord_ = false;        // the ended round beat highScore_
   bool quitRequested_ = false;    // Quit confirmed on the title menu

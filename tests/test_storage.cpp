@@ -634,7 +634,9 @@ void testFailedWrites() {
 // True when `values` holds exactly the expected preference states. The
 // orientation defaults to landscape and the music settings to the MUSIC.md
 // defaults, the recovery values, so the callers that never set them keep
-// reading as before (tasks T055 and T062).
+// reading as before (tasks T055 and T062); the background pair defaults to
+// the Auto wallpaper over design 1 of task T084 and the piece designs to off
+// (task T095) the same way.
 bool valuesAre(const stackfall::SettingsValues& values, bool soundOn,
                bool ghostOn, bool gridOn, bool holdOn, int nextPreviews,
                bool grayscaleOn,
@@ -642,14 +644,21 @@ bool valuesAre(const stackfall::SettingsValues& values, bool soundOn,
                    stackfall::Orientation::Landscape,
                stackfall::MusicMode musicMode = stackfall::MusicMode::Auto,
                int musicVolume = stackfall::kSettingsMusicVolumeDefault,
-               int effectsVolume = stackfall::kSettingsEffectsVolumeDefault) {
+               int effectsVolume = stackfall::kSettingsEffectsVolumeDefault,
+               stackfall::backgrounds::Mode backgroundMode =
+                   stackfall::backgrounds::Mode::Auto,
+               int backgroundId = stackfall::kSettingsBackgroundFirst,
+               bool pieceDesignsOn = false) {
   return values.soundOn == soundOn && values.ghostOn == ghostOn &&
          values.gridOn == gridOn && values.holdOn == holdOn &&
          values.nextPreviews == nextPreviews &&
          values.grayscaleOn == grayscaleOn &&
          values.orientation == orientation &&
          values.musicMode == musicMode && values.musicVolume == musicVolume &&
-         values.effectsVolume == effectsVolume;
+         values.effectsVolume == effectsVolume &&
+         values.backgroundMode == backgroundMode &&
+         values.backgroundId == backgroundId &&
+         values.pieceDesignsOn == pieceDesignsOn;
 }
 
 // ---------------------------------------------------------------------------
@@ -793,12 +802,14 @@ void testSettingsFormatAndParse() {
 
   // The canonical rendering of specification sections 6.3 and 9: one line per
   // preference, grid, hold, next, and grayscale after the sound and ghost of
-  // the earlier eras (task T044), orientation next (task T055), and the music
-  // mode and both volume lines last (task T062, MUSIC.md persistence).
+  // the earlier eras (task T044), orientation next (task T055), the music
+  // mode and both volume lines after that (task T062, MUSIC.md persistence),
+  // the background mode and preferred design after those (task T084), and the
+  // piece designs last (task T095).
   SC_CHECK(formatSettingsFile(SettingsValues{}) ==
            "version=1\nsound=on\nghost=on\ngrid=on\nhold=on\nnext=5\n"
            "grayscale=off\norientation=landscape\nmusic=auto\nmusicvolume=6\n"
-           "effectsvolume=8\n");
+           "effectsvolume=8\nbackground=auto\nbackgroundid=1\npiecedesigns=off\n");
   {
     SettingsValues all;
     all.soundOn = false;
@@ -811,10 +822,13 @@ void testSettingsFormatAndParse() {
     all.musicMode = stackfall::MusicMode::Focus;
     all.musicVolume = 0;
     all.effectsVolume = 10;
+    all.backgroundMode = stackfall::backgrounds::Mode::Fixed;
+    all.backgroundId = 20;
+    all.pieceDesignsOn = true;
     SC_CHECK(formatSettingsFile(all) ==
              "version=1\nsound=off\nghost=off\ngrid=off\nhold=off\nnext=1\n"
              "grayscale=on\norientation=portrait\nmusic=focus\nmusicvolume=0\n"
-             "effectsvolume=10\n");
+             "effectsvolume=10\nbackground=fixed\nbackgroundid=20\npiecedesigns=on\n");
   }
 
   // Every canonical combination parses with the values it carries and
@@ -860,6 +874,100 @@ void testSettingsFormatAndParse() {
         SC_CHECK(formatSettingsFile(read) == bytes);
       }
     }
+  }
+
+  // The background pair of task T084 crosses every mode with every stable
+  // design ID 1..20: each combination parses with its values, renders back
+  // to the same bytes, and never touches the ten preferences before it.
+  for (const stackfall::backgrounds::Mode mode :
+       {stackfall::backgrounds::Mode::Auto, stackfall::backgrounds::Mode::Off,
+        stackfall::backgrounds::Mode::Fixed}) {
+    for (int design = stackfall::kSettingsBackgroundFirst;
+         design <= stackfall::kSettingsBackgroundLast; ++design) {
+      SettingsValues written;
+      written.backgroundMode = mode;
+      written.backgroundId = design;
+      const std::string bytes = formatSettingsFile(written);
+      SettingsValues read;  // sentinels
+      read.backgroundMode = stackfall::backgrounds::Mode::Off;
+      read.backgroundId = stackfall::kSettingsBackgroundLast;
+      SC_CHECK(parseSettingsFile(bytes, &read));
+      SC_CHECK(valuesAre(read, true, true, true, true, 5, false,
+                         stackfall::Orientation::Landscape,
+                         stackfall::MusicMode::Auto,
+                         stackfall::kSettingsMusicVolumeDefault,
+                         stackfall::kSettingsEffectsVolumeDefault, mode,
+                         design));
+      SC_CHECK(formatSettingsFile(read) == bytes);
+    }
+  }
+
+  // The piece designs line of task T095 crosses both values: each parses
+  // with its value, renders back to the same bytes, and never touches the
+  // twelve preferences before it.
+  for (const bool on : {false, true}) {
+    SettingsValues written;
+    written.pieceDesignsOn = on;
+    const std::string bytes = formatSettingsFile(written);
+    SC_CHECK(bytes.find("piecedesigns=") ==
+             bytes.rfind("piecedesigns="));  // exactly one line, at the end
+    SettingsValues read;  // sentinels
+    read.pieceDesignsOn = !on;
+    read.nextPreviews = 2;
+    SC_CHECK(parseSettingsFile(bytes, &read));
+    SC_CHECK(valuesAre(read, true, true, true, true, 5, false,
+                       stackfall::Orientation::Landscape,
+                       stackfall::MusicMode::Auto,
+                       stackfall::kSettingsMusicVolumeDefault,
+                       stackfall::kSettingsEffectsVolumeDefault,
+                       stackfall::backgrounds::Mode::Auto,
+                       stackfall::kSettingsBackgroundFirst, on));
+    SC_CHECK(formatSettingsFile(read) == bytes);
+  }
+
+  // The legacy thirteen-line file of the background era (task T084, the form
+  // before T095) keeps every saved value and receives the piece designs off,
+  // which is the upgrade every player with a saved settings file makes: off
+  // is the recovery value, so the cells stay plain until the player asks.
+  {
+    SettingsValues read;  // sentinels
+    read.pieceDesignsOn = true;
+    read.nextPreviews = 4;
+    SC_CHECK(parseSettingsFile(
+        "version=1\nsound=on\nghost=off\ngrid=on\nhold=off\nnext=4\n"
+        "grayscale=on\norientation=portrait\nmusic=arcade\nmusicvolume=1\n"
+        "effectsvolume=7\nbackground=fixed\nbackgroundid=9\n",
+        &read));
+    SC_CHECK(valuesAre(read, true, false, true, false, 4, true,
+                       stackfall::Orientation::Portrait,
+                       stackfall::MusicMode::Arcade, 1, 7,
+                       stackfall::backgrounds::Mode::Fixed, 9, false));
+    // The same file with the new line on keeps every value and the designs.
+    SettingsValues withLine = read;
+    withLine.pieceDesignsOn = true;
+    SC_CHECK(parseSettingsFile(formatSettingsFile(withLine), &read));
+    SC_CHECK(valuesAre(read, true, false, true, false, 4, true,
+                       stackfall::Orientation::Portrait,
+                       stackfall::MusicMode::Arcade, 1, 7,
+                       stackfall::backgrounds::Mode::Fixed, 9, true));
+  }
+
+  // The legacy eleven-line file of the music era (task T062, the form before
+  // T084) keeps every saved value and receives the Auto wallpaper over
+  // design 1, which is the upgrade every player with a saved settings file
+  // makes.
+  {
+    SettingsValues read;  // sentinels
+    read.backgroundMode = stackfall::backgrounds::Mode::Fixed;
+    read.backgroundId = 12;
+    SC_CHECK(parseSettingsFile(
+        "version=1\nsound=off\nghost=on\ngrid=on\nhold=on\nnext=3\n"
+        "grayscale=on\norientation=portrait\nmusic=focus\nmusicvolume=2\n"
+        "effectsvolume=9\n",
+        &read));
+    SC_CHECK(valuesAre(read, false, true, true, true, 3, true,
+                       stackfall::Orientation::Portrait,
+                       stackfall::MusicMode::Focus, 2, 9));
   }
 
   // The legacy six-line file of the grayscale era (task T044) keeps every
@@ -1093,6 +1201,97 @@ void testSettingsFormatAndParse() {
       "version=1\r\nsound=on\r\nghost=on\r\ngrid=on\r\nhold=on\r\nnext=5\r\n"
       "grayscale=off\r\norientation=landscape\r\nmusic=auto\r\n"
       "musicvolume=6\r\neffectsvolume=8\r\n",
+      // The background lines of task T084: the same damage shapes, plus mode
+      // words the wallpaper never had and design IDs outside the catalog's
+      // 1..20. The pair shipped together, so a file that stops between the
+      // two lines never existed and is damaged like every other deviation.
+      "version=1\nsound=on\nghost=on\ngrid=on\nhold=on\nnext=5\n"
+      "grayscale=off\norientation=landscape\nmusic=auto\nmusicvolume=6\n"
+      "effectsvolume=8\nbackground=",
+      "version=1\nsound=on\nghost=on\ngrid=on\nhold=on\nnext=5\n"
+      "grayscale=off\norientation=landscape\nmusic=auto\nmusicvolume=6\n"
+      "effectsvolume=8\nbackground=\n",
+      "version=1\nsound=on\nghost=on\ngrid=on\nhold=on\nnext=5\n"
+      "grayscale=off\norientation=landscape\nmusic=auto\nmusicvolume=6\n"
+      "effectsvolume=8\nbackground=maybe\n",
+      "version=1\nsound=on\nghost=on\ngrid=on\nhold=on\nnext=5\n"
+      "grayscale=off\norientation=landscape\nmusic=auto\nmusicvolume=6\n"
+      "effectsvolume=8\nbackground=Auto\n",
+      "version=1\nsound=on\nghost=on\ngrid=on\nhold=on\nnext=5\n"
+      "grayscale=off\norientation=landscape\nmusic=auto\nmusicvolume=6\n"
+      "effectsvolume=8\nbackground=on\n",
+      "version=1\nsound=on\nghost=on\ngrid=on\nhold=on\nnext=5\n"
+      "grayscale=off\norientation=landscape\nmusic=auto\nmusicvolume=6\n"
+      "effectsvolume=8\nbackground=auto \n",
+      "version=1\nsound=on\nghost=on\ngrid=on\nhold=on\nnext=5\n"
+      "grayscale=off\norientation=landscape\nmusic=auto\nmusicvolume=6\n"
+      "effectsvolume=8\nbackground=auto\n",
+      "version=1\nsound=on\nghost=on\ngrid=on\nhold=on\nnext=5\n"
+      "grayscale=off\norientation=landscape\nmusic=auto\nmusicvolume=6\n"
+      "effectsvolume=8\nbackgroundid=1\n",
+      "version=1\nsound=on\nghost=on\ngrid=on\nhold=on\nnext=5\n"
+      "grayscale=off\norientation=landscape\nmusic=auto\nmusicvolume=6\n"
+      "effectsvolume=8\nbackground=fixed\nbackgroundid=0\n",
+      "version=1\nsound=on\nghost=on\ngrid=on\nhold=on\nnext=5\n"
+      "grayscale=off\norientation=landscape\nmusic=auto\nmusicvolume=6\n"
+      "effectsvolume=8\nbackground=fixed\nbackgroundid=21\n",
+      "version=1\nsound=on\nghost=on\ngrid=on\nhold=on\nnext=5\n"
+      "grayscale=off\norientation=landscape\nmusic=auto\nmusicvolume=6\n"
+      "effectsvolume=8\nbackground=fixed\nbackgroundid=-1\n",
+      "version=1\nsound=on\nghost=on\ngrid=on\nhold=on\nnext=5\n"
+      "grayscale=off\norientation=landscape\nmusic=auto\nmusicvolume=6\n"
+      "effectsvolume=8\nbackground=fixed\nbackgroundid=07\n",
+      "version=1\nsound=on\nghost=on\ngrid=on\nhold=on\nnext=5\n"
+      "grayscale=off\norientation=landscape\nmusic=auto\nmusicvolume=6\n"
+      "effectsvolume=8\nbackground=fixed\nbackgroundid=1x\n",
+      "version=1\nsound=on\nghost=on\ngrid=on\nhold=on\nnext=5\n"
+      "grayscale=off\norientation=landscape\nmusic=auto\nmusicvolume=6\n"
+      "effectsvolume=8\nbackground=fixed\nbackgroundid=\n",
+      "version=1\nsound=on\nghost=on\ngrid=on\nhold=on\nnext=5\n"
+      "grayscale=off\norientation=landscape\nmusic=auto\nmusicvolume=6\n"
+      "effectsvolume=8\nbackground=off\nbackgroundid=1\nextra=1\n",
+      "version=1\nsound=on\nghost=on\ngrid=on\nhold=on\nnext=5\n"
+      "grayscale=off\norientation=landscape\nmusic=auto\nmusicvolume=6\n"
+      "effectsvolume=8\nbackgroundid=1\nbackground=off\n",
+      "version=1\nsound=on\nghost=on\ngrid=on\nhold=on\nnext=5\n"
+      "grayscale=off\norientation=landscape\nmusic=auto\nmusicvolume=6\n"
+      "effectsvolume=8\nbackground=off\nbackground=auto\nbackgroundid=1\n",
+      "version=2\nsound=on\nghost=on\ngrid=on\nhold=on\nnext=5\n"
+      "grayscale=off\norientation=landscape\nmusic=auto\nmusicvolume=6\n"
+      "effectsvolume=8\nbackground=off\nbackgroundid=4\n",
+      "version=1\r\nsound=on\r\nghost=on\r\ngrid=on\r\nhold=on\r\nnext=5\r\n"
+      "grayscale=off\r\norientation=landscape\r\nmusic=auto\r\n"
+      "musicvolume=6\r\neffectsvolume=8\r\nbackground=off\r\n"
+      "backgroundid=4\r\n",
+      // The piece designs line of task T095: the same damage shapes every
+      // earlier toggle rejects, plus a fifteenth line no era ever wrote and
+      // the full form that stops one line early.
+      "version=1\nsound=on\nghost=on\ngrid=on\nhold=on\nnext=5\n"
+      "grayscale=off\norientation=landscape\nmusic=auto\nmusicvolume=6\n"
+      "effectsvolume=8\nbackground=auto\nbackgroundid=1\npiecedesigns=maybe\n",
+      "version=1\nsound=on\nghost=on\ngrid=on\nhold=on\nnext=5\n"
+      "grayscale=off\norientation=landscape\nmusic=auto\nmusicvolume=6\n"
+      "effectsvolume=8\nbackground=auto\nbackgroundid=1\npiecedesigns=On\n",
+      "version=1\nsound=on\nghost=on\ngrid=on\nhold=on\nnext=5\n"
+      "grayscale=off\norientation=landscape\nmusic=auto\nmusicvolume=6\n"
+      "effectsvolume=8\nbackground=auto\nbackgroundid=1\npiecedesigns=1\n",
+      "version=1\nsound=on\nghost=on\ngrid=on\nhold=on\nnext=5\n"
+      "grayscale=off\norientation=landscape\nmusic=auto\nmusicvolume=6\n"
+      "effectsvolume=8\nbackground=auto\nbackgroundid=1\npiecedesigns=off \n",
+      "version=1\nsound=on\nghost=on\ngrid=on\nhold=on\nnext=5\n"
+      "grayscale=off\norientation=landscape\nmusic=auto\nmusicvolume=6\n"
+      "effectsvolume=8\nbackground=auto\nbackgroundid=1\npiecedesigns=\n",
+      "version=1\nsound=on\nghost=on\ngrid=on\nhold=on\nnext=5\n"
+      "grayscale=off\norientation=landscape\nmusic=auto\nmusicvolume=6\n"
+      "effectsvolume=8\nbackground=auto\nbackgroundid=1\npiecedesigns=off",
+      "version=1\nsound=on\nghost=on\ngrid=on\nhold=on\nnext=5\n"
+      "grayscale=off\norientation=landscape\nmusic=auto\nmusicvolume=6\n"
+      "effectsvolume=8\nbackground=auto\nbackgroundid=1\npiecedesigns=off\n"
+      "piecedesigns=off\n",
+      "version=1\nsound=on\nghost=on\ngrid=on\nhold=on\nnext=5\n"
+      "grayscale=off\norientation=landscape\nmusic=auto\nmusicvolume=6\n"
+      "effectsvolume=8\nbackground=auto\nbackgroundid=1\npiecedesigns=off\n"
+      "extra=1\n",
   };
   {
     SettingsValues read;  // any state; a rejection must not touch it
@@ -1164,7 +1363,8 @@ void testSettingsStores() {
     SC_CHECK(readRawFile(store.filePath()) ==
              "version=1\nsound=off\nghost=on\ngrid=on\nhold=on\nnext=5\n"
              "grayscale=off\norientation=landscape\nmusic=auto\n"
-             "musicvolume=6\neffectsvolume=8\n");
+             "musicvolume=6\neffectsvolume=8\nbackground=auto\n"
+             "backgroundid=1\npiecedesigns=off\n");
     SettingsResult result = SettingsStore(dir.path()).load();
     SC_CHECK(result.ok());
     SC_CHECK(valuesAre(result, false, true, true, true, 5, false));
@@ -1185,7 +1385,8 @@ void testSettingsStores() {
     SC_CHECK(readRawFile(store.filePath()) ==
              "version=1\nsound=off\nghost=off\ngrid=off\nhold=off\nnext=2\n"
              "grayscale=on\norientation=landscape\nmusic=auto\n"
-             "musicvolume=6\neffectsvolume=8\n");
+             "musicvolume=6\neffectsvolume=8\nbackground=auto\n"
+             "backgroundid=1\npiecedesigns=off\n");
 
     values = SettingsValues{};
     values.nextPreviews = 1;
@@ -1194,6 +1395,61 @@ void testSettingsStores() {
     SC_CHECK(result.ok());
     SC_CHECK(valuesAre(result, true, true, true, true, 1, false));
     SC_CHECK(entryNames(dir.path()).size() == 1);
+  }
+
+  // The full thirteen-preference set round-trips through the store, exactly
+  // as a relaunch reads what a session saved (tasks T062, T084, and T095):
+  // every later preference - the music pool, both volumes, the background
+  // mode, the preferred design, and the piece designs - comes back with the
+  // value the file carries, so a load never costs the player a saved choice.
+  {
+    TempDir dir;
+    const SettingsStore store(dir.path());
+    SettingsValues values;
+    values.soundOn = false;
+    values.ghostOn = true;
+    values.gridOn = true;
+    values.holdOn = false;
+    values.nextPreviews = 2;
+    values.grayscaleOn = true;
+    values.orientation = stackfall::Orientation::Portrait;
+    values.musicMode = stackfall::MusicMode::Groove;
+    values.musicVolume = 3;
+    values.effectsVolume = 1;
+    values.backgroundMode = stackfall::backgrounds::Mode::Fixed;
+    values.backgroundId = 17;
+    values.pieceDesignsOn = true;
+    SC_CHECK(store.save(values) == SaveStatus::Ok);
+    const SettingsResult result = SettingsStore(dir.path()).load();
+    SC_CHECK(result.ok());
+    SC_CHECK(valuesAre(result, false, true, true, false, 2, true,
+                       stackfall::Orientation::Portrait,
+                       stackfall::MusicMode::Groove, 3, 1,
+                       stackfall::backgrounds::Mode::Fixed, 17, true));
+    SC_CHECK(readRawFile(store.filePath()) ==
+             "version=1\nsound=off\nghost=on\ngrid=on\nhold=off\nnext=2\n"
+             "grayscale=on\norientation=portrait\nmusic=groove\n"
+             "musicvolume=3\neffectsvolume=1\nbackground=fixed\n"
+             "backgroundid=17\npiecedesigns=on\n");
+    // A damaged file recovers to the whole default set, background pair and
+    // piece designs included, and the read rewrites nothing on disk.
+    writeRawFile(store.filePath(),
+                 "version=1\nsound=on\nghost=on\ngrid=on\nhold=on\nnext=5\n"
+                 "grayscale=off\norientation=landscape\nmusic=auto\n"
+                 "musicvolume=6\neffectsvolume=8\nbackground=fixed\n"
+                 "backgroundid=99\n");
+    const SettingsResult broken = SettingsStore(dir.path()).load();
+    SC_CHECK(broken.status == SaveStatus::Invalid);
+    SC_CHECK(valuesAre(broken, true, true, true, true, 5, false));
+    SC_CHECK(valuesAre(broken, true, true, true, true, 5, false,
+                       stackfall::Orientation::Landscape,
+                       stackfall::MusicMode::Auto,
+                       stackfall::kSettingsMusicVolumeDefault,
+                       stackfall::kSettingsEffectsVolumeDefault,
+                       stackfall::backgrounds::Mode::Auto,
+                       stackfall::kSettingsBackgroundFirst, false));
+    SC_CHECK(readRawFile(store.filePath()).find("backgroundid=99\n") !=
+             std::string::npos);
   }
 
   // A legacy three-line file loads with its saved sound and ghost choices and
@@ -1211,7 +1467,8 @@ void testSettingsStores() {
     SC_CHECK(readRawFile(store.filePath()) ==
              "version=1\nsound=on\nghost=on\ngrid=on\nhold=on\nnext=5\n"
              "grayscale=off\norientation=landscape\nmusic=auto\n"
-             "musicvolume=6\neffectsvolume=8\n");
+             "musicvolume=6\neffectsvolume=8\nbackground=auto\n"
+             "backgroundid=1\npiecedesigns=off\n");
     result = SettingsStore(dir.path()).load();
     SC_CHECK(result.ok());
     SC_CHECK(valuesAre(result, true, true, true, true, 5, false));
@@ -1237,7 +1494,8 @@ void testSettingsStores() {
     SC_CHECK(readRawFile(store.filePath()) ==
              "version=1\nsound=off\nghost=on\ngrid=on\nhold=on\nnext=5\n"
              "grayscale=on\norientation=landscape\nmusic=auto\n"
-             "musicvolume=6\neffectsvolume=8\n");
+             "musicvolume=6\neffectsvolume=8\nbackground=auto\n"
+             "backgroundid=1\npiecedesigns=off\n");
     result = SettingsStore(dir.path()).load();
     SC_CHECK(result.ok());
     SC_CHECK(valuesAre(result, false, true, true, true, 5, true));

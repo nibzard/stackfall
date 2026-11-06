@@ -50,6 +50,11 @@ void run_record_writer_tests();
 // the section 5 default tables, the name vocabularies, the conflict rule,
 // and the controls file's canonical, legacy-free format.
 void run_bindings_tests();
+// The SDL-free half of the procedural level backgrounds (task T078): the
+// approved catalog, the caps, the cosmetic hash, the presentation clock,
+// the clipping layer, and the wallpaper state machine. The SDL half sits in
+// the background checks of tests/test_renderer_sdl.cpp.
+void run_backgrounds_tests();
 
 namespace {
 
@@ -135,6 +140,7 @@ int main(int argc, char** argv) {
   run_music_tests();
   run_record_writer_tests();
   run_bindings_tests();
+  run_backgrounds_tests();
 
   stackfall_test::print_summary();
   return stackfall_test::g_failures == 0 ? EXIT_SUCCESS : EXIT_FAILURE;

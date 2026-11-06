@@ -419,6 +419,12 @@ std::string formatSettingsFile(const SettingsValues& values) {
   bytes += std::to_string(values.musicVolume);
   bytes += "\neffectsvolume=";
   bytes += std::to_string(values.effectsVolume);
+  bytes += "\nbackground=";
+  bytes += backgrounds::modeName(values.backgroundMode);
+  bytes += "\nbackgroundid=";
+  bytes += std::to_string(values.backgroundId);
+  bytes += "\npiecedesigns=";
+  bytes += values.pieceDesignsOn ? "on" : "off";
   bytes += "\n";
   return bytes;
 }
@@ -542,6 +548,31 @@ bool parseSettingsFile(const std::string& bytes, SettingsValues* values) {
       ok = key == "effectsvolume" &&
            settingsCountValue(value, kSettingsVolumeMin,
                               kSettingsVolumeMax, &parsed.effectsVolume);
+    } else if (ok && line == 11) {
+      // The background lines of task T084: the mode word of the wallpaper and
+      // the preferred design of Fixed mode. The lines reject every other
+      // spelling and every ID outside the catalog's 1..20, under the same
+      // recovery rule as a volume past 10.
+      ok = key == "background";
+      if (ok) {
+        const std::string word(value);
+        backgrounds::Mode mode = backgrounds::Mode::Auto;
+        ok = backgrounds::modeFromName(word.c_str(), &mode);
+        if (ok) {
+          parsed.backgroundMode = mode;
+        }
+      }
+    } else if (ok && line == 12) {
+      ok = key == "backgroundid" &&
+           settingsCountValue(value, kSettingsBackgroundFirst,
+                              kSettingsBackgroundLast, &parsed.backgroundId);
+    } else if (ok && line == 13) {
+      // The piece designs line of task T095: on draws the per-piece in-cell
+      // marks, off the plain flat cells of every earlier year. The recovery
+      // default is off, so a file from before the line and a damaged value
+      // both leave the cells as they were.
+      ok = key == "piecedesigns" &&
+           settingsToggleValue(value, &parsed.pieceDesignsOn);
     } else {
       ok = false;  // past the last preference line
     }
@@ -554,10 +585,13 @@ bool parseSettingsFile(const std::string& bytes, SettingsValues* values) {
   // Only the forms that shipped parse (MUSIC.md, one parser for the
   // resulting format): the two-line sound-only file, the three-line
   // sound-and-ghost file, the seven-line grayscale-era file, the eight-line
-  // orientation-era file, and the full eleven-line music-era file. A file
-  // that stops between those - four or five lines, or new lines missing -
-  // never existed, so it is damaged like every other deviation.
-  if (line != 2 && line != 3 && line != 7 && line != 8 && line != 11) {
+  // orientation-era file, the eleven-line music-era file, the thirteen-line
+  // background-era file of task T084, and the fourteen-line piece-designs
+  // file of task T095. A file that stops between those - four or five lines,
+  // one background line without its pair - never existed, so it is damaged
+  // like every other deviation.
+  if (line != 2 && line != 3 && line != 7 && line != 8 && line != 11 &&
+      line != 13 && line != 14) {
     return false;
   }
   if (values != nullptr) {
@@ -593,25 +627,17 @@ SettingsResult SettingsStore::load() const {
       result.status = SaveStatus::Invalid;
       return result;
     }
-    result.soundOn = values.soundOn;
-    result.ghostOn = values.ghostOn;
-    result.gridOn = values.gridOn;
-    result.holdOn = values.holdOn;
-    result.nextPreviews = values.nextPreviews;
-    result.grayscaleOn = values.grayscaleOn;
-    result.orientation = values.orientation;
+    // The whole preference set travels to the session: every line the valid
+    // file named, including the music settings of task T062 and the
+    // background pair of task T084, because a load that dropped one would
+    // cost the player its saved choice on every relaunch.
+    static_cast<SettingsValues&>(result) = values;
     result.status = SaveStatus::Ok;
     return result;
   } catch (...) {
     // A damaged preference never costs more than the preferences: every one
     // stays at its default and the game carries on.
-    result.soundOn = true;
-    result.ghostOn = true;
-    result.gridOn = true;
-    result.holdOn = true;
-    result.nextPreviews = kSettingsNextMax;
-    result.grayscaleOn = false;
-    result.orientation = Orientation::Landscape;
+    static_cast<SettingsValues&>(result) = SettingsValues{};
     result.status = SaveStatus::Invalid;
     return result;
   }

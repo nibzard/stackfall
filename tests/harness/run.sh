@@ -6,15 +6,31 @@
 #   tests/harness/run.sh
 #
 # It builds the game and the headless reference replay, then drives
-# twenty-four sessions through the real SDL application under the dummy video
-# driver:
+# thirty-three sessions through the real SDL application under the dummy
+# video driver:
 # the full scene cycle on the keyboard and on the developer virtual
 # controller, the landscape default-hard-drop session of task T067 (D-pad up
 # hard drops, X carries nothing, and no press that returns to play drops a
-# piece), a normal planned game from an empty board, the options screen
-# round trip that turns the ghost preview off, the eight-row options screen
+# piece), the two thumbstick sessions of task T86 (a landscape round that
+# moves, soft drops, and hard drops on the stick with the deadzone pinned
+# from both sides and the D-pad and the keyboard beside it, and a portrait
+# session that turns with the stick deflected across the select and then
+# plays the turned round on the rotated stick table with the face buttons
+# beside it), the staged hard-drop rebind session of task T87 (a landscape
+# stage that pins the stick's edge rule on the T067 defaults, rebinds HARD
+# DROP to the face button X, the right shoulder R1, and key D, and plays the
+# rebound tables; a portrait stage that relaunches on the saved file, turns
+# through the ORIENTATION row, and rebinds through the turned menu roles; a
+# relaunch stage that proves the persisted portrait rebind and ends on
+# RESTORE DEFAULTS), a normal planned game from an empty board, the options screen
+# round trip that turns the ghost preview off, the ten-row options screen
 # on both inputs, the music settings page sessions on both inputs of the
-# soundtrack (T062), the hold-off round trip, the grayscale round trip, the
+# soundtrack (T062), the backgrounds page sessions of the saved Auto, Off,
+# and Fixed wallpaper options on both inputs plus the staged relaunch,
+# corrupted-file, and legacy-file stages (T084), the hold-off round trip,
+# the grayscale round trip, the three per-piece in-cell design sessions of
+# the tenth options row on the keyboard, on the pad, and under grayscale in
+# both orientations over the labeled all-pieces fixture (T095), the
 # staged relaunch, legacy-settings, and next-count sessions of the options
 # expansion (T045), the abandoned-round record session of the mid-round
 # persistence (T052), the two staged portrait sessions of tasks T055 and
@@ -280,7 +296,7 @@ run_stages() {
 seed=20261103
 settings_dir="$repo/tests/harness/settings"
 controls_dir="$repo/tests/harness/controls"
-sessions="scene-cycle-keyboard scene-cycle-pad harddrop-pad normal-game-clears options-ghost options-six-keyboard options-six-pad music-settings music-settings-pad hold-off grayscale options-relaunch options-legacy next-count portrait-keyboard portrait-pad record-abandon-save controls-keyboard controls-pad controls-relaunch controls-invalid fixture-four-line fixture-lockout fixture-blockout"
+sessions="scene-cycle-keyboard scene-cycle-pad harddrop-pad stick-pad stick-portrait harddrop-rebind normal-game-clears options-ghost options-six-keyboard options-six-pad music-settings music-settings-pad backgrounds-keyboard backgrounds-pad backgrounds-relaunch hold-off grayscale piece-designs-keyboard piece-designs-pad piece-designs-gray options-relaunch options-legacy next-count portrait-keyboard portrait-pad record-abandon-save controls-keyboard controls-pad controls-relaunch controls-invalid fixture-four-line fixture-lockout fixture-blockout"
 : > "$run_dir/sessions.txt"
 for session in $sessions; do
   echo "$session" >> "$run_dir/sessions.txt"

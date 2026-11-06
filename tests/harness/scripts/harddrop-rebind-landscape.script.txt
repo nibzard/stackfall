@@ -1,0 +1,265 @@
+# T87 stage one, landscape (docs/AGENT_TESTING.md): the hard-drop trigger
+# leaves Up on the developer virtual controller, seed 20261103. A first round
+# pins the T067 default and its sensitivity rules - a light stick reading
+# inside the deadzone drops nothing, a D-pad-up press drops once, and a full
+# stick-up deflection held across many ticks drops exactly once, because the
+# axis path is edge-triggered behind the deadzone. The customization screen
+# then rebinds HARD DROP to the face button X, to the right shoulder R1 - the
+# shoulder the T066 list could not reach, because the left one is Hold's
+# spare - and, on the keyboard half of the same row, to D. A second round on
+# the rebound tables proves the freed D-pad up, the freed stick-up arm, and
+# the X the second capture replaced all carry nothing, while R1 and D hard
+# drop. A `wait` follows every check, so no record carries the tick of the
+# input that comes after it.
+check title-start
+wait 1
+# the first round: the T067 defaults
+pad a down
+wait 2
+pad a up
+wait 2
+check playing-defaults
+wait 1
+# a light touch of the stick stays inside the deadzone: no accidental drop,
+# not on the deflection and not on the wobble back
+stick y -7999
+wait 2
+check stick-light-touch-quiet
+wait 1
+stick y 0
+wait 2
+stick y -7999
+wait 2
+stick y 0
+wait 2
+check stick-wobble-quiet
+wait 1
+# D-pad up hard drops on the default table: one press, one lock
+pad up down
+wait 2
+pad up up
+wait 2
+check dpad-up-harddrops
+wait 1
+# the full stick-up deflection crosses the deadzone and drops once; held
+# across the wait it never drops again, because the arm is an edge
+stick y -32767
+wait 2
+check stick-up-drops-once
+wait 10
+check stick-up-held-quiet
+wait 1
+stick y 0
+wait 2
+# leave the round through the pause overlay
+pad start down
+wait 2
+pad start up
+wait 2
+check paused-defaults
+wait 1
+pad down down
+wait 2
+pad down up
+wait 2
+pad down down
+wait 2
+pad down up
+wait 2
+pad down down
+wait 2
+pad down up
+wait 2
+check paused-at-quit
+wait 1
+pad a down
+wait 2
+pad a up
+wait 2
+check title-after-round
+wait 1
+# the customization screen: CONTROLS, then its confirm
+pad down down
+wait 2
+pad down up
+wait 2
+check title-at-controls
+wait 1
+pad a down
+wait 2
+pad a up
+wait 2
+check controls-open
+wait 1
+pad a down
+wait 2
+pad a up
+wait 2
+check rebind-open-landscape
+wait 1
+# five rows down is HARD DROP
+pad down down
+wait 2
+pad down up
+wait 2
+pad down down
+wait 2
+pad down up
+wait 2
+pad down down
+wait 2
+pad down up
+wait 2
+pad down down
+wait 2
+pad down up
+wait 2
+pad down down
+wait 2
+pad down up
+wait 2
+check rebind-at-harddrop
+wait 1
+# the face button first: X is free since T067, so hard drop moves to it and
+# D-pad up stops hard dropping
+pad a down
+wait 2
+pad a up
+wait 2
+check rebind-capture-armed
+wait 1
+pad x down
+wait 2
+pad x up
+wait 2
+check rebind-harddrop-x
+wait 1
+# the shoulder: arming again and pressing R1 moves the action off the face
+# button, because a capture replaces the control it had
+pad a down
+wait 2
+pad a up
+wait 2
+pad r1 down
+wait 2
+pad r1 up
+wait 2
+check rebind-harddrop-r1
+wait 1
+# the keyboard half of the same row: D names the keyboard table
+pad a down
+wait 2
+pad a up
+wait 2
+key d down
+wait 2
+key d up
+wait 2
+check rebind-harddrop-d
+wait 1
+# the way back out through the mappings page, which names R1 and D
+pad b down
+wait 2
+pad b up
+wait 2
+check controls-custom
+wait 1
+pad b down
+wait 2
+pad b up
+wait 2
+check title-custom
+wait 1
+# the second round, on the rebound tables; the title cursor sits on
+# CONTROLS, so one up reaches START GAME
+pad up down
+wait 2
+pad up up
+wait 2
+pad a down
+wait 2
+pad a up
+wait 2
+check playing-rebound
+wait 1
+# the freed D-pad up drops nothing: no lock, no score
+pad up down
+wait 2
+pad up up
+wait 2
+check dpad-up-dead
+wait 1
+# no second trigger on the axis path: a full stick-up deflection resolves to
+# the freed arm and carries its menu role alone
+stick y -32767
+wait 4
+check stick-up-dead
+wait 1
+stick y 0
+wait 2
+# the face button the second capture replaced carries nothing either
+pad x down
+wait 2
+pad x up
+wait 2
+check face-x-dead
+wait 1
+# the shoulder hard drops: the piece locks in the same tick
+pad r1 down
+wait 2
+pad r1 up
+wait 2
+check r1-harddrops
+wait 1
+# the keyboard's bound control drops on the same tables
+key d down
+wait 2
+key d up
+wait 2
+check d-harddrops
+wait 1
+# quit through the pause overlay and the title menu
+pad start down
+wait 2
+pad start up
+wait 2
+check paused-rebound
+wait 1
+pad down down
+wait 2
+pad down up
+wait 2
+pad down down
+wait 2
+pad down up
+wait 2
+pad down down
+wait 2
+pad down up
+wait 2
+check paused-at-quit-again
+wait 1
+pad a down
+wait 2
+pad a up
+wait 2
+check title-after-rebound
+wait 1
+pad down down
+wait 2
+pad down up
+wait 2
+pad down down
+wait 2
+pad down up
+wait 2
+pad down down
+wait 2
+pad down up
+wait 2
+check title-at-quit
+check quit-confirmed
+pad a down
+wait 2
+pad a up
+wait 2
